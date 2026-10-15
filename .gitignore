@@ -1,0 +1,31 @@
+# Secrets and local config
+.env
+*.tfvars
+!*.tfvars.example
+*.pem
+*.key
+age.key
+
+# Generated
+.artifacts/
+ansible/inventory/hosts.yml
+ansible/collections/
+
+# Terraform
+.terraform/
+.terraform-lint/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+.terraform.tfstate.lock.info
+
+# Devbox
+.devbox/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp

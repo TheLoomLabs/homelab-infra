@@ -1,0 +1,43 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/main/.schema/devbox.schema.json",
+  "packages": [
+    "terraform@latest",
+    "tflint@latest",
+    "ansible@latest",
+    "ansible-lint@latest",
+    "yamllint@latest",
+    "kubectl@latest",
+    "kubernetes-helm@latest",
+    "cilium-cli@latest",
+    "hubble@latest",
+    "k9s@latest",
+    "kubeconform@latest",
+    "sops@latest",
+    "age@latest",
+    "pre-commit@latest",
+    "jq@latest",
+    "yq-go@latest",
+    "shellcheck@latest",
+    "gnumake@latest"
+  ],
+  "env": {
+    "KUBECONFIG": "$PWD/.artifacts/kubeconfig",
+    "ANSIBLE_CONFIG": "$PWD/ansible/ansible.cfg",
+    "TF_CLI_ARGS_plan": "-compact-warnings",
+    "SOPS_AGE_KEY_FILE": "$PWD/.artifacts/age.key"
+  },
+  "shell": {
+    "init_hook": [
+      "mkdir -p .artifacts",
+      "[ -f .env ] && set -a && . ./.env && set +a || true",
+      "echo 'homelab-infra devbox ready. Run: make help'"
+    ],
+    "scripts": {
+      "setup": "make setup",
+      "lint": "make lint",
+      "plan": "make tf-plan",
+      "apply": "make tf-apply",
+      "site": "make site"
+    }
+  }
+}
