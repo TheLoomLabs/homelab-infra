@@ -39,6 +39,9 @@ UFW on each node denies incoming traffic by default. Traffic is accepted from th
    - installs Cilium as the kube-proxy replacement, with Hubble relay and UI
    - fetches the admin kubeconfig to `.artifacts/kubeconfig` (git-ignored), where devbox points `KUBECONFIG`
 6. **Ansible** `swarm.yml` installs Docker CE, creates the swarm on the first manager and joins the rest.
+7. **Ansible** `argocd.yml` bootstraps GitOps:
+   - installs Helm on the first control-plane node and installs the `argo-cd` chart, using the version from `kubernetes/apps/argocd.yaml` and the values from `kubernetes/platform/argocd/values.yaml`
+   - applies the `root` Application. From then on Argo CD syncs everything in `kubernetes/apps/`, including itself.
 
 ## Why two orchestrators?
 

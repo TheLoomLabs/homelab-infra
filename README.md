@@ -17,6 +17,7 @@ Proxmox VE ──Terraform──▶ 8 Ubuntu VMs ──Ansible──▶ hardened
 | Provisioning | Terraform + [`bpg/proxmox`](https://registry.terraform.io/providers/bpg/proxmox) | Reusable VM module, Ubuntu cloud image import, cloud-init, static IPs, **generated Ansible inventory** |
 | OS baseline | Ansible roles `common`, `hardening` | SSH key-only, UFW default-deny, fail2ban, sysctl hardening, unattended security updates, chrony |
 | Kubernetes | Ansible roles `k8s_*`, `cilium` | kubeadm, **3 control-plane nodes behind a kube-vip VIP**, containerd 2.x, **Cilium with kube-proxy replacement**, Hubble |
+| GitOps | Argo CD (Helm), role `argocd` | Bootstrapped by Ansible, then **app of apps**: Argo CD syncs `kubernetes/apps/` and manages itself |
 | Swarm | Ansible roles `docker`, `swarm` | Docker CE, 3-manager Raft quorum, node labels |
 | Quality | GitHub Actions, pre-commit | `terraform fmt/validate`, tflint, yamllint, ansible-lint (production profile), gitleaks |
 
@@ -69,11 +70,16 @@ make tf-plan && make tf-apply     # also writes ansible/inventory/hosts.yml
 
 # 4. Configuration
 make ping
-make site                         # base + Kubernetes + Swarm
+make site                         # base + Kubernetes + Argo CD + Swarm
 
 # 5. Use it
 kubectl get nodes -o wide         # KUBECONFIG is set by devbox
 cilium status
+kubectl -n argocd get applications
+
+# Argo CD UI on https://localhost:8080 (user admin)
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
+kubectl -n argocd port-forward svc/argocd-server 8080:443
 ```
 
 The one-time Proxmox preparation (API token, storage content types) is in [docs/bootstrap.md](docs/bootstrap.md).
@@ -88,10 +94,13 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 │   ├── modules/proxmox-vm/     # one VM: disk import, cloud-init snippet, network
 │   └── envs/homelab/           # the lab: node map → VMs → Ansible inventory
 ├── ansible/
-│   ├── playbooks/              # site, base, kubernetes, swarm
+│   ├── playbooks/              # site, base, kubernetes, argocd, swarm
 │   ├── roles/                  # common, hardening, docker, swarm,
-│   │                           # k8s_prereqs, k8s_control_plane, k8s_worker, cilium
+│   │                           # k8s_prereqs, k8s_control_plane, k8s_worker, cilium, argocd
 │   └── inventory/group_vars/   # versions and CIDRs
+├── kubernetes/
+│   ├── apps/                   # Argo CD Applications (app of apps, synced from main)
+│   └── platform/               # Helm values per component
 └── docs/                       # architecture, bootstrap, ADRs, roadmap
 ```
 
