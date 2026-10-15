@@ -1,0 +1,65 @@
+---
+- name: Wait for cloud-init to finish
+  ansible.builtin.command: cloud-init status --wait
+  changed_when: false
+  failed_when: false
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Set timezone
+  community.general.timezone:
+    name: "{{ timezone }}"
+
+- name: Enable chrony
+  ansible.builtin.systemd_service:
+    name: chrony
+    enabled: true
+    state: started
+
+- name: Configure unattended security upgrades (no automatic reboot)
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/52homelab-unattended-upgrades
+    content: |
+      Unattended-Upgrade::Allowed-Origins {
+        "${distro_id}:${distro_codename}-security";
+      };
+      Unattended-Upgrade::Automatic-Reboot "false";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable periodic apt runs
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Create journald drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Cap persistent journal size
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/10-size.conf
+    content: |
+      [Journal]
+      Storage=persistent
+      SystemMaxUse={{ common_journald_max_use }}
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart journald

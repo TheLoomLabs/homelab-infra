@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AuthenticationMethods publickey
+MaxAuthTries 3
+LoginGraceTime 30
+X11Forwarding no
+AllowAgentForwarding no
+# 'local' keeps ssh -L tunnels (kubectl, dashboards) working
+AllowTcpForwarding local
+ClientAliveInterval 300
+ClientAliveCountMax 2
+AllowUsers {{ hardening_ssh_allow_users | join(' ') }}

@@ -1,0 +1,14 @@
+---
+common_packages:
+  - apt-transport-https
+  - ca-certificates
+  - chrony
+  - curl
+  - gnupg
+  - htop
+  - jq
+  - qemu-guest-agent
+  - unattended-upgrades
+  - vim
+
+common_journald_max_use: 500M

@@ -1,0 +1,23 @@
+---
+hardening_ssh_allow_users:
+  - "{{ admin_user }}"
+
+hardening_sysctl:
+  kernel.kptr_restrict: 2
+  kernel.dmesg_restrict: 1
+  net.ipv4.tcp_syncookies: 1
+  net.ipv4.conf.all.accept_redirects: 0
+  net.ipv4.conf.default.accept_redirects: 0
+  net.ipv4.conf.all.send_redirects: 0
+  net.ipv4.conf.all.accept_source_route: 0
+  net.ipv4.conf.all.log_martians: 1
+  net.ipv6.conf.all.accept_redirects: 0
+
+# Container networking (Docker, Kubernetes) needs routed traffic allowed.
+hardening_ufw_routed_policy: allow
+
+# Extra per-host or per-group rules, e.g.
+#   - {port: "443", proto: tcp, comment: "ingress https"}
+hardening_ufw_extra_rules: []
+
+hardening_fail2ban_enabled: true

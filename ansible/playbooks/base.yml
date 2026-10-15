@@ -1,0 +1,7 @@
+---
+- name: Base OS configuration and hardening
+  hosts: all
+  become: true
+  roles:
+    - common
+    - hardening

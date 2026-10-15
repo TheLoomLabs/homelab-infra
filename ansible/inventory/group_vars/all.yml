@@ -1,0 +1,13 @@
+---
+admin_user: "{{ ansible_user }}"
+timezone: Europe/Zagreb
+
+# Networks allowed to reach every port on the nodes (cluster east-west traffic).
+# The lab network itself is always trusted; add your workstation or Tailscale
+# range here if it lives elsewhere.
+trusted_cidrs:
+  - "{{ lab_network_cidr }}"
+
+# SSH is reachable from these networks only.
+ssh_allowed_cidrs:
+  - "{{ lab_network_cidr }}"
