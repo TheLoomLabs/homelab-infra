@@ -1,0 +1,94 @@
+# Per-VM cloud-init user-data. Kept minimal on purpose: identity, access and
+# the guest agent only. Everything else is Ansible's job.
+resource "proxmox_virtual_environment_file" "user_data" {
+  content_type = "snippets"
+  datastore_id = var.snippets_datastore_id
+  node_name    = var.node_name
+
+  source_raw {
+    file_name = "${var.name}-user-data.yaml"
+    data = templatefile("${path.module}/templates/user-data.yaml.tftpl", {
+      hostname        = var.name
+      fqdn            = "${var.name}.${var.dns_domain}"
+      admin_user      = var.admin_user
+      ssh_public_keys = var.ssh_public_keys
+      timezone        = var.timezone
+    })
+  }
+}
+
+resource "proxmox_virtual_environment_vm" "this" {
+  name        = var.name
+  description = "Managed by Terraform (homelab-infra)"
+  tags        = sort(distinct(concat(["terraform"], var.tags)))
+  node_name   = var.node_name
+  vm_id       = var.vm_id
+  started     = var.started
+  on_boot     = true
+
+  machine       = "q35"
+  bios          = "seabios"
+  scsi_hardware = "virtio-scsi-single"
+
+  # The guest agent is installed by cloud-init; Terraform waits for it to
+  # report the IP address.
+  agent {
+    enabled = true
+    timeout = "10m"
+  }
+
+  stop_on_destroy = true
+
+  cpu {
+    cores = var.cores
+    type  = "x86-64-v2-AES"
+  }
+
+  memory {
+    dedicated = var.memory_mb
+  }
+
+  disk {
+    datastore_id = var.datastore_id
+    import_from  = var.image_file_id
+    interface    = "scsi0"
+    size         = var.disk_gb
+    discard      = "on"
+    iothread     = true
+    ssd          = true
+  }
+
+  network_device {
+    bridge  = var.bridge
+    vlan_id = var.vlan_id
+  }
+
+  operating_system {
+    type = "l26"
+  }
+
+  serial_device {}
+
+  initialization {
+    datastore_id = var.datastore_id
+
+    dns {
+      domain  = var.dns_domain
+      servers = var.dns_servers
+    }
+
+    ip_config {
+      ipv4 {
+        address = var.ipv4_cidr
+        gateway = var.ipv4_gateway
+      }
+    }
+
+    user_data_file_id = proxmox_virtual_environment_file.user_data.id
+  }
+
+  lifecycle {
+    # A newer cloud image must not recreate running cluster nodes.
+    ignore_changes = [disk[0].import_from]
+  }
+}
