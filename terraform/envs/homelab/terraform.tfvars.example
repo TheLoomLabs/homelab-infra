@@ -1,0 +1,21 @@
+# Copy to terraform.tfvars (git-ignored) and adjust to your environment.
+
+proxmox_node   = "pve"
+vm_datastore   = "local-lvm"
+file_datastore = "local"
+
+network_cidr = "192.168.10.0/24"
+gateway      = "192.168.10.1"
+dns_servers  = ["192.168.10.1"]
+dns_domain   = "lab.example.internal"
+
+admin_user = "ops"
+ssh_public_keys = [
+  "ssh-ed25519 AAAA...replace-me... you@devbox",
+]
+
+# Override 'nodes' here to resize the lab, e.g. a single control-plane node:
+# nodes = {
+#   k8s-cp-01 = { vm_id = 221, group = "k8s_control_plane", ip_offset = 21, cores = 2, memory_mb = 4096, disk_gb = 40 }
+#   k8s-wk-01 = { vm_id = 231, group = "k8s_workers",       ip_offset = 31, cores = 4, memory_mb = 8192, disk_gb = 80 }
+# }

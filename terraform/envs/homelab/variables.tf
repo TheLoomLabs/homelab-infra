@@ -1,0 +1,142 @@
+# --- Proxmox -----------------------------------------------------------------
+
+variable "proxmox_node" {
+  description = "Proxmox node name."
+  type        = string
+  default     = "pve"
+}
+
+variable "proxmox_insecure_tls" {
+  description = "Skip TLS verification (self-signed Proxmox certificate)."
+  type        = bool
+  default     = true
+}
+
+variable "proxmox_ssh_user" {
+  description = "SSH user on the Proxmox node, used to upload snippets."
+  type        = string
+  default     = "root"
+}
+
+variable "vm_datastore" {
+  description = "Datastore for VM disks."
+  type        = string
+  default     = "local-lvm"
+}
+
+variable "file_datastore" {
+  description = "File datastore with 'Import' and 'Snippets' content types enabled."
+  type        = string
+  default     = "local"
+}
+
+variable "cloud_image_url" {
+  description = "Ubuntu cloud image used for every node."
+  type        = string
+  default     = "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
+}
+
+# --- Network -----------------------------------------------------------------
+
+variable "bridge" {
+  description = "Linux bridge for the VMs."
+  type        = string
+  default     = "vmbr0"
+}
+
+variable "vlan_id" {
+  description = "Optional VLAN tag for the lab network."
+  type        = number
+  default     = null
+}
+
+variable "network_cidr" {
+  description = "Lab network. Node IPs are derived from it with host offsets."
+  type        = string
+  default     = "192.168.10.0/24"
+}
+
+variable "gateway" {
+  description = "Default gateway."
+  type        = string
+  default     = "192.168.10.1"
+}
+
+variable "dns_servers" {
+  description = "DNS resolvers."
+  type        = list(string)
+  default     = ["192.168.10.1"]
+}
+
+variable "dns_domain" {
+  description = "Lab DNS domain."
+  type        = string
+  default     = "lab.example.internal"
+}
+
+# --- Access ------------------------------------------------------------------
+
+variable "admin_user" {
+  description = "Admin user created on every VM."
+  type        = string
+  default     = "ops"
+}
+
+variable "ssh_public_keys" {
+  description = "SSH public keys for the admin user."
+  type        = list(string)
+}
+
+variable "timezone" {
+  description = "Guest timezone."
+  type        = string
+  default     = "Europe/Zagreb"
+}
+
+# --- Clusters ----------------------------------------------------------------
+
+variable "k8s_api_vip_offset" {
+  description = "Host offset in network_cidr for the Kubernetes API virtual IP (kube-vip)."
+  type        = number
+  default     = 20
+}
+
+variable "nodes" {
+  description = <<-EOT
+    Every VM in the lab. 'group' maps to the Ansible inventory group
+    (k8s_control_plane, k8s_workers, swarm_managers, swarm_workers);
+    'ip_offset' is the host number inside network_cidr.
+  EOT
+  type = map(object({
+    vm_id     = number
+    group     = string
+    ip_offset = number
+    cores     = number
+    memory_mb = number
+    disk_gb   = number
+  }))
+
+  default = {
+    k8s-cp-01  = { vm_id = 221, group = "k8s_control_plane", ip_offset = 21, cores = 2, memory_mb = 4096, disk_gb = 40 }
+    k8s-cp-02  = { vm_id = 222, group = "k8s_control_plane", ip_offset = 22, cores = 2, memory_mb = 4096, disk_gb = 40 }
+    k8s-cp-03  = { vm_id = 223, group = "k8s_control_plane", ip_offset = 23, cores = 2, memory_mb = 4096, disk_gb = 40 }
+    k8s-wk-01  = { vm_id = 231, group = "k8s_workers", ip_offset = 31, cores = 4, memory_mb = 8192, disk_gb = 80 }
+    k8s-wk-02  = { vm_id = 232, group = "k8s_workers", ip_offset = 32, cores = 4, memory_mb = 8192, disk_gb = 80 }
+    swarm-m-01 = { vm_id = 241, group = "swarm_managers", ip_offset = 41, cores = 2, memory_mb = 4096, disk_gb = 40 }
+    swarm-m-02 = { vm_id = 242, group = "swarm_managers", ip_offset = 42, cores = 2, memory_mb = 4096, disk_gb = 40 }
+    swarm-m-03 = { vm_id = 243, group = "swarm_managers", ip_offset = 43, cores = 2, memory_mb = 4096, disk_gb = 40 }
+  }
+
+  validation {
+    condition = alltrue([
+      for n in values(var.nodes) :
+      contains(["k8s_control_plane", "k8s_workers", "swarm_managers", "swarm_workers"], n.group)
+    ])
+    error_message = "Each node group must be one of: k8s_control_plane, k8s_workers, swarm_managers, swarm_workers."
+  }
+
+  validation {
+    condition     = length(distinct([for n in values(var.nodes) : n.ip_offset])) == length(var.nodes)
+    error_message = "ip_offset values must be unique."
+  }
+}
