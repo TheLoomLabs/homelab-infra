@@ -82,11 +82,13 @@
   ansible.builtin.command: >-
     kubectl --namespace {{ argocd_namespace }} wait application/argocd
     --for=jsonpath='{.status.health.status}'=Healthy
-    --timeout=2m
+    --timeout=30s
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   register: argocd_wait
-  retries: 5
+  # The root app must sync from GitHub before application/argocd exists;
+  # until then kubectl wait fails immediately with NotFound.
+  retries: 30
   delay: 10
   until: argocd_wait.rc == 0
   changed_when: false
