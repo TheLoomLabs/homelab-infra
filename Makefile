@@ -34,7 +34,7 @@ tf-destroy: ## Destroy all lab VMs
 
 ## --- Ansible -----------------------------------------------------------------
 
-.PHONY: ping base k8s argocd swarm site
+.PHONY: ping base k8s cilium argocd swarm site
 ping: ## Check SSH to every node
 	cd $(ANSIBLE_DIR) && ansible all -m ansible.builtin.ping
 
@@ -43,6 +43,9 @@ base: ## OS baseline + hardening on every node
 
 k8s: ## Build the Kubernetes cluster (kubeadm, kube-vip, Cilium)
 	$(PLAYBOOK) playbooks/kubernetes.yml
+
+cilium: ## Re-apply Cilium Helm values (cilium upgrade if they changed)
+	$(PLAYBOOK) playbooks/cilium.yml
 
 argocd: ## Bootstrap Argo CD and the root app (push kubernetes/ first)
 	$(PLAYBOOK) playbooks/argocd.yml

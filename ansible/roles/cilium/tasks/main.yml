@@ -32,6 +32,7 @@
     owner: root
     group: root
     mode: "0644"
+  register: cilium_values
 
 - name: Install Cilium (kube-proxy replacement, Hubble)
   ansible.builtin.command: >-
@@ -41,6 +42,21 @@
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   when: cilium_ds.rc != 0
+  changed_when: true
+
+# The values file is the full config, so reset to chart defaults + this file
+# instead of merging with whatever was set before.
+- name: Upgrade Cilium when its values changed
+  ansible.builtin.command: >-
+    cilium upgrade
+    --version {{ cilium_version }}
+    --reset-values
+    --values /etc/kubernetes/cilium-values.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when:
+    - cilium_ds.rc == 0
+    - cilium_values is changed
   changed_when: true
 
 - name: Wait for Cilium to become ready

@@ -1,0 +1,8 @@
+---
+# Re-apply only the Cilium config (for example after editing its Helm values).
+# The full cluster build in kubernetes.yml runs the same role.
+- name: Kubernetes | Cilium CNI
+  hosts: k8s_control_plane[0]
+  become: true
+  roles:
+    - cilium

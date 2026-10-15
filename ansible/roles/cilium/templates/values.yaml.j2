@@ -1,6 +1,6 @@
 # {{ ansible_managed }}
-# Helm values for Cilium. Changes after the first install are applied with
-# `cilium upgrade --values` (or later, by Argo CD).
+# Helm values for Cilium. This file is the full source of truth: the role runs
+# `cilium upgrade --reset-values` with it whenever it changes.
 kubeProxyReplacement: true
 k8sServiceHost: {{ k8s_api_vip }}
 k8sServicePort: 6443
@@ -10,6 +10,22 @@ ipam:
 
 operator:
   replicas: 2
+  # Restart the operator when its config changes.
+  rollOutPods: true
+
+# Restart the agents when the cilium-config ConfigMap changes, so new settings
+# (like the ones below) take effect without a manual rollout.
+rollOutCiliumPods: true
+
+# LoadBalancer services: LB IPAM hands out IPs from CiliumLoadBalancerIPPool
+# objects (kubernetes/platform/cilium-lb), and L2 announcements answer ARP for
+# them on the LAN. Every announced service holds a Kubernetes lease, so the
+# agents need a higher API client rate limit than the default 5 QPS / 10 burst.
+l2announcements:
+  enabled: true
+k8sClientRateLimit:
+  qps: 20
+  burst: 40
 
 hubble:
   relay:
