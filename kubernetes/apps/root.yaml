@@ -1,0 +1,22 @@
+---
+# App of apps. Every Application manifest in kubernetes/apps/ (this file
+# included) is synced by this one, so adding a platform component is a commit.
+# Ansible applies this file once during bootstrap; after that Argo CD owns it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+    targetRevision: main
+    path: kubernetes/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

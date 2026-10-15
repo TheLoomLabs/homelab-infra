@@ -1,0 +1,25 @@
+---
+# Helm values for the argo-cd chart. Used both by the Ansible bootstrap and by
+# the self-managed `argocd` Application, so the two never drift.
+global:
+  domain: argocd.lab.example.internal
+
+configs:
+  cm:
+    # Cilium creates CiliumIdentity objects at runtime. Without this exclusion
+    # Argo CD shows apps that contain pods as out of sync.
+    resource.exclusions: |
+      - apiGroups:
+          - cilium.io
+        kinds:
+          - CiliumIdentity
+        clusters:
+          - "*"
+
+# No SSO yet: the local admin account is enough for a single-user lab.
+dex:
+  enabled: false
+
+# Enabled later together with Alertmanager → Mattermost.
+notifications:
+  enabled: false

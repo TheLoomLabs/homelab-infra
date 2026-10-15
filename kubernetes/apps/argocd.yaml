@@ -1,0 +1,35 @@
+---
+# Argo CD manages itself. Ansible installs the same chart version with the same
+# values once (see ansible/roles/argocd), then Argo CD adopts the release.
+# To upgrade Argo CD, bump targetRevision here and push.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  project: default
+  sources:
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-cd
+      targetRevision: 10.10.5
+      helm:
+        releaseName: argocd
+        valueFiles:
+          - $values/kubernetes/platform/argocd/values.yaml
+    - repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      # Never let a bad commit delete Argo CD's own resources.
+      prune: false
+      selfHeal: true
+    syncOptions:
+      # The ApplicationSet CRD is too large for client-side apply.
+      - ServerSideApply=true
