@@ -1,0 +1,92 @@
+---
+# One-time bootstrap. After the root Application exists, Argo CD manages
+# itself from Git and this role only re-applies the root app if it is missing.
+
+- name: Download Helm
+  ansible.builtin.get_url:
+    url: "https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz"
+    checksum: "sha256:https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz.sha256sum"
+    dest: "/tmp/helm-{{ helm_version }}.tar.gz"
+    mode: "0644"
+
+- name: Install Helm
+  ansible.builtin.unarchive:
+    src: "/tmp/helm-{{ helm_version }}.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    include: [linux-amd64/helm]
+    extra_opts: [--strip-components=1]
+    creates: /usr/local/bin/helm
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Read chart source from the argocd Application
+  ansible.builtin.set_fact:
+    argocd_chart: >-
+      {{ (lookup('ansible.builtin.file', argocd_app_manifest) | from_yaml).spec.sources
+         | selectattr('chart', 'defined') | first }}
+
+- name: Create bootstrap directory
+  ansible.builtin.file:
+    path: "{{ argocd_remote_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Copy Argo CD values and root Application
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ argocd_remote_dir }}/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop:
+    - {src: "{{ argocd_values_file }}", dest: values.yaml}
+    - {src: "{{ argocd_root_app_manifest }}", dest: root.yaml}
+  loop_control:
+    label: "{{ item.dest }}"
+
+- name: Check for an existing Argo CD release
+  ansible.builtin.command: helm status {{ argocd_release_name }} --namespace {{ argocd_namespace }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: argocd_release
+  changed_when: false
+  failed_when: false
+
+- name: Install Argo CD {{ argocd_chart.targetRevision }}
+  ansible.builtin.command: >-
+    helm install {{ argocd_release_name }} {{ argocd_chart.chart }}
+    --repo {{ argocd_chart.repoURL }}
+    --version {{ argocd_chart.targetRevision }}
+    --namespace {{ argocd_namespace }}
+    --create-namespace
+    --values {{ argocd_remote_dir }}/values.yaml
+    --wait
+    --timeout 10m
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: argocd_release.rc != 0
+  changed_when: true
+
+- name: Apply the root Application (app of apps)
+  ansible.builtin.command: kubectl apply -f {{ argocd_remote_dir }}/root.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: argocd_root_apply
+  changed_when: "'unchanged' not in argocd_root_apply.stdout"
+
+- name: Wait for Argo CD to adopt itself
+  ansible.builtin.command: >-
+    kubectl --namespace {{ argocd_namespace }} wait application/argocd
+    --for=jsonpath='{.status.health.status}'=Healthy
+    --timeout=2m
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: argocd_wait
+  retries: 5
+  delay: 10
+  until: argocd_wait.rc == 0
+  changed_when: false

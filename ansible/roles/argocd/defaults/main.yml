@@ -1,0 +1,14 @@
+---
+argocd_namespace: argocd
+argocd_release_name: argocd
+
+# The GitOps tree in this repo, read on the machine running Ansible.
+argocd_manifests_dir: "{{ playbook_dir }}/../../kubernetes"
+
+# Chart repo and version are read from the self-managed Application, so there
+# is only one place to bump them.
+argocd_app_manifest: "{{ argocd_manifests_dir }}/apps/argocd.yaml"
+argocd_values_file: "{{ argocd_manifests_dir }}/platform/argocd/values.yaml"
+argocd_root_app_manifest: "{{ argocd_manifests_dir }}/apps/root.yaml"
+
+argocd_remote_dir: /etc/kubernetes/argocd

@@ -5,5 +5,8 @@
 - name: Kubernetes
   ansible.builtin.import_playbook: kubernetes.yml
 
+- name: Argo CD
+  ansible.builtin.import_playbook: argocd.yml
+
 - name: Docker Swarm
   ansible.builtin.import_playbook: swarm.yml

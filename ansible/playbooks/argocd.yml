@@ -1,0 +1,6 @@
+---
+- name: Kubernetes | Argo CD bootstrap (GitOps)
+  hosts: k8s_control_plane[0]
+  become: true
+  roles:
+    - argocd
