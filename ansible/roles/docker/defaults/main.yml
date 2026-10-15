@@ -1,0 +1,18 @@
+---
+docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin
+  - python3-docker # used by community.docker modules
+
+docker_users:
+  - "{{ admin_user }}"
+
+docker_daemon_config:
+  log-driver: json-file
+  log-opts:
+    max-size: 10m
+    max-file: "3"
+  live-restore: false # must stay off in Swarm mode

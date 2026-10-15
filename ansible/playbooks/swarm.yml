@@ -1,0 +1,12 @@
+---
+- name: Docker Swarm | Docker Engine
+  hosts: swarm
+  become: true
+  roles:
+    - docker
+
+- name: Docker Swarm | Cluster
+  hosts: swarm
+  become: true
+  roles:
+    - swarm

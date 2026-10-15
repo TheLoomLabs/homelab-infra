@@ -1,0 +1,4 @@
+---
+swarm_leader: "{{ groups['swarm_managers'] | first }}"
+swarm_default_addr_pool: 10.20.0.0/16
+swarm_default_addr_pool_mask_length: 24

@@ -1,0 +1,44 @@
+---
+- name: Initialise the swarm on the first manager
+  community.docker.docker_swarm:
+    state: present
+    advertise_addr: "{{ ansible_host }}"
+    listen_addr: "{{ ansible_host }}:2377"
+    default_addr_pool: ["{{ swarm_default_addr_pool }}"]
+    subnet_size: "{{ swarm_default_addr_pool_mask_length }}"
+  register: swarm_init
+  run_once: true
+  delegate_to: "{{ swarm_leader }}"
+
+- name: Read join tokens
+  ansible.builtin.set_fact:
+    swarm_manager_token: "{{ swarm_init.swarm_facts.JoinTokens.Manager }}"
+    swarm_worker_token: "{{ swarm_init.swarm_facts.JoinTokens.Worker }}"
+  run_once: true
+  no_log: true
+
+- name: Join additional managers
+  community.docker.docker_swarm:
+    state: join
+    advertise_addr: "{{ ansible_host }}"
+    join_token: "{{ swarm_manager_token }}"
+    remote_addrs: ["{{ hostvars[swarm_leader].ansible_host }}:2377"]
+  when:
+    - inventory_hostname in groups['swarm_managers']
+    - inventory_hostname != swarm_leader
+
+- name: Join workers
+  community.docker.docker_swarm:
+    state: join
+    advertise_addr: "{{ ansible_host }}"
+    join_token: "{{ swarm_worker_token }}"
+    remote_addrs: ["{{ hostvars[swarm_leader].ansible_host }}:2377"]
+  when: inventory_hostname in groups['swarm_workers'] | default([])
+
+- name: Label nodes with their role
+  community.docker.docker_node:
+    hostname: "{{ inventory_hostname }}"
+    labels:
+      homelab.role: "{{ 'manager' if inventory_hostname in groups['swarm_managers'] else 'worker' }}"
+    labels_state: merge
+  delegate_to: "{{ swarm_leader }}"
