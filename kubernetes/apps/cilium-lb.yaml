@@ -1,0 +1,24 @@
+---
+# LoadBalancer IP pool and L2 announcement policy for Cilium. Cilium itself is
+# installed by Ansible (it must exist before Argo CD can run); only these
+# custom resources are managed here.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cilium-lb
+  namespace: argocd
+  annotations:
+    # Before anything that creates a LoadBalancer service.
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+    targetRevision: main
+    path: kubernetes/platform/cilium-lb
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

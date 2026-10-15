@@ -1,0 +1,12 @@
+---
+# Addresses for LoadBalancer services. Must be outside the router's DHCP range
+# and not used by any host. These are private LAN addresses, so they are
+# committed as real values (Argo CD reads this repo from GitHub).
+apiVersion: cilium.io/v2
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: lan
+spec:
+  blocks:
+    - start: 192.168.1.60
+      stop: 192.168.1.79

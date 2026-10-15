@@ -1,0 +1,19 @@
+---
+# Answer ARP for LoadBalancer IPs from the worker nodes. One node per service
+# holds a lease and announces the IP; another takes over if it goes down.
+# Control-plane nodes are left out so ingress traffic lands on workers.
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: lan
+spec:
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: DoesNotExist
+  # NIC name on the Proxmox VMs (virtio): ens18 on Ubuntu, eth0 on some images.
+  interfaces:
+    - ^ens[0-9]+
+    - ^eth[0-9]+
+  loadBalancerIPs: true
+  externalIPs: false
