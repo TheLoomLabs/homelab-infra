@@ -16,7 +16,7 @@ Proxmox VE ──Terraform──▶ 8 Ubuntu VMs ──Ansible──▶ hardened
 | Toolchain | [Devbox](https://www.jetify.com/devbox) (Nix) | Pinned versions of terraform, ansible, kubectl, helm, cilium, k9s, sops… nothing on the host OS |
 | Provisioning | Terraform + [`bpg/proxmox`](https://registry.terraform.io/providers/bpg/proxmox) | Reusable VM module, Ubuntu cloud image import, cloud-init, static IPs, **generated Ansible inventory** |
 | OS baseline | Ansible roles `common`, `hardening` | SSH key-only, UFW default-deny, fail2ban, sysctl hardening, unattended security updates, chrony |
-| Kubernetes | Ansible roles `k8s_*`, `cilium` | kubeadm, **3 control-plane nodes behind a kube-vip VIP**, containerd 2.x, **Cilium with kube-proxy replacement**, Hubble |
+| Kubernetes | Ansible roles `k8s_*`, `cilium` | kubeadm, **3 control-plane nodes behind a kube-vip VIP**, containerd 2.x, **Cilium with kube-proxy replacement**, Hubble, **LB IPAM + L2 announcements** for `LoadBalancer` services |
 | GitOps | Argo CD (Helm), role `argocd` | Bootstrapped by Ansible, then **app of apps**: Argo CD syncs `kubernetes/apps/` and manages itself |
 | Swarm | Ansible roles `docker`, `swarm` | Docker CE, 3-manager Raft quorum, node labels |
 | Quality | GitHub Actions, pre-commit | `terraform fmt/validate`, tflint, yamllint, ansible-lint (production profile), gitleaks |
@@ -94,7 +94,7 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 │   ├── modules/proxmox-vm/     # one VM: disk import, cloud-init snippet, network
 │   └── envs/homelab/           # the lab: node map → VMs → Ansible inventory
 ├── ansible/
-│   ├── playbooks/              # site, base, kubernetes, argocd, swarm
+│   ├── playbooks/              # site, base, kubernetes, cilium, argocd, swarm
 │   ├── roles/                  # common, hardening, docker, swarm,
 │   │                           # k8s_prereqs, k8s_control_plane, k8s_worker, cilium, argocd
 │   └── inventory/group_vars/   # versions and CIDRs
@@ -106,7 +106,8 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 
 ## Security notes
 
-- This is a public repo, so all addresses and domains are placeholders (`192.168.10.0/24`, `lab.example.internal`). Real values live in git-ignored `terraform.tfvars` and `.env` files.
+- This is a public repo. Node addresses and domains in the Terraform and Ansible code are placeholders (`192.168.10.0/24`, `lab.example.internal`); real values live in git-ignored `terraform.tfvars` and `.env` files.
+- Manifests that Argo CD syncs from GitHub must hold real values. Private LAN addresses (like the LoadBalancer pool in `kubernetes/platform/cilium-lb/`) are committed as is, because they are not reachable from outside. Secrets never are.
 - No secrets are committed. gitleaks runs in CI and `detect-private-key` runs in pre-commit.
 - Nodes accept SSH keys only, run a default-deny firewall, and allow cluster traffic only from the lab, pod and service networks.
 

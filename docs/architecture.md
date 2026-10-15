@@ -21,7 +21,7 @@ That adds up to about 40 GB of RAM. The rest stays free for the Proxmox host and
 | `10.244.0.0/16` | Kubernetes pods (Cilium, IPAM mode `kubernetes`) |
 | `10.96.0.0/12` | Kubernetes services |
 | `10.20.0.0/16` | Swarm overlay networks (default address pool) |
-| `.200–.220` | Reserved for MetalLB / Cilium LB IPAM (phase 2) |
+| `.60–.79` | `LoadBalancer` services (Cilium LB IPAM pool, announced with L2/ARP) |
 
 UFW on each node denies incoming traffic by default. Traffic is accepted from the lab, pod and service ranges (`trusted_cidrs`). SSH accepts keys only and is rate-limited.
 
@@ -36,12 +36,23 @@ UFW on each node denies incoming traffic by default. Traffic is accepted from th
    - runs `kubeadm init` on the first control-plane node. kube-vip runs as a static pod and holds the API VIP (ARP mode with leader election). kube-proxy is skipped.
    - joins the other control-plane nodes one at a time (`serial: 1`) using a fresh token and certificate key
    - joins the workers
-   - installs Cilium as the kube-proxy replacement, with Hubble relay and UI
+   - installs Cilium as the kube-proxy replacement, with Hubble relay, Hubble UI and L2 announcements. When the Helm values change, the role runs `cilium upgrade` (`playbooks/cilium.yml` re-applies only this part)
    - fetches the admin kubeconfig to `.artifacts/kubeconfig` (git-ignored), where devbox points `KUBECONFIG`
 6. **Ansible** `swarm.yml` installs Docker CE, creates the swarm on the first manager and joins the rest.
 7. **Ansible** `argocd.yml` bootstraps GitOps:
    - installs Helm on the first control-plane node and installs the `argo-cd` chart, using the version from `kubernetes/apps/argocd.yaml` and the values from `kubernetes/platform/argocd/values.yaml`
    - applies the `root` Application. From then on Argo CD syncs everything in `kubernetes/apps/`, including itself.
+
+## LoadBalancer services
+
+Cilium gives `LoadBalancer` services an address on the LAN, so no MetalLB is needed (ADR 0005):
+
+- **LB IPAM** assigns each service an IP from the `CiliumLoadBalancerIPPool` in `kubernetes/platform/cilium-lb/`.
+- **L2 announcements** make one worker node answer ARP for that IP. The node holds a Kubernetes lease per service; if it goes down, another worker takes the lease and announces the IP.
+- Control-plane nodes don't announce. The API VIP (`.20`) is separate and stays with kube-vip.
+- The pool and the announcement policy are an Argo CD Application (`cilium-lb`). Cilium itself is still installed by Ansible.
+
+The pool range must stay outside the router's DHCP range. `externalTrafficPolicy: Local` does not work with L2 announcements, so services keep the default `Cluster`.
 
 ## Why two orchestrators?
 
