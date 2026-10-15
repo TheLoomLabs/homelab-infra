@@ -16,6 +16,12 @@ configs:
         clusters:
           - "*"
 
+# LAN IP from the Cilium LB pool until ingress (argocd.<lab domain>) exists.
+# Then switch back to ClusterIP.
+server:
+  service:
+    type: LoadBalancer
+
 # No SSO yet: the local admin account is enough for a single-user lab.
 dex:
   enabled: false
