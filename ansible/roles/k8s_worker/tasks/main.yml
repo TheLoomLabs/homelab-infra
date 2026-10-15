@@ -1,0 +1,30 @@
+---
+- name: Check whether this node is already part of a cluster
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: k8s_worker_kubelet_conf
+
+- name: Join the cluster
+  when: not k8s_worker_kubelet_conf.stat.exists
+  block:
+    - name: Create a join token on the first control-plane node
+      ansible.builtin.command: kubeadm token create --print-join-command --ttl 30m
+      register: k8s_worker_join_command
+      delegate_to: "{{ groups['k8s_control_plane'] | first }}"
+      changed_when: true
+      no_log: true
+
+    - name: Join as worker node
+      ansible.builtin.command: >-
+        {{ k8s_worker_join_command.stdout }}
+        --node-name {{ inventory_hostname }}
+      changed_when: true
+      no_log: true
+
+- name: Label node as worker
+  ansible.builtin.command: >-
+    kubectl --kubeconfig /etc/kubernetes/admin.conf
+    label node {{ inventory_hostname }} node-role.kubernetes.io/worker= --overwrite
+  delegate_to: "{{ groups['k8s_control_plane'] | first }}"
+  register: k8s_worker_label
+  changed_when: "'not labeled' not in k8s_worker_label.stdout"

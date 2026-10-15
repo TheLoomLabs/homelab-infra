@@ -1,0 +1,32 @@
+---
+- name: Check whether this node is already part of a cluster
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: k8s_control_plane_kubelet_conf
+
+- name: Bootstrap the first control-plane node
+  ansible.builtin.include_tasks: init.yml
+  when: inventory_hostname == k8s_control_plane_first_node
+
+- name: Join additional control-plane nodes
+  ansible.builtin.include_tasks: join.yml
+  when:
+    - inventory_hostname != k8s_control_plane_first_node
+    - not k8s_control_plane_kubelet_conf.stat.exists
+
+- name: Create kubeconfig directory for the admin user
+  ansible.builtin.file:
+    path: "/home/{{ admin_user }}/.kube"
+    state: directory
+    owner: "{{ admin_user }}"
+    group: "{{ admin_user }}"
+    mode: "0700"
+
+- name: Install kubeconfig for the admin user
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "/home/{{ admin_user }}/.kube/config"
+    remote_src: true
+    owner: "{{ admin_user }}"
+    group: "{{ admin_user }}"
+    mode: "0600"

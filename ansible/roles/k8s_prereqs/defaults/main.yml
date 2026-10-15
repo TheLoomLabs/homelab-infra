@@ -1,0 +1,5 @@
+---
+k8s_prereqs_packages:
+  - kubelet
+  - kubeadm
+  - kubectl

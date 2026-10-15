@@ -1,0 +1,3 @@
+---
+k8s_control_plane_first_node: "{{ groups['k8s_control_plane'] | first }}"
+k8s_control_plane_kube_vip_kubeconfig: /etc/kubernetes/admin.conf

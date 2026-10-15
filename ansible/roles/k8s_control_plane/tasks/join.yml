@@ -1,0 +1,32 @@
+---
+- name: Create a join token on the first control-plane node
+  ansible.builtin.command: kubeadm token create --print-join-command --ttl 30m
+  register: k8s_control_plane_join_command
+  delegate_to: "{{ k8s_control_plane_first_node }}"
+  changed_when: true
+  no_log: true
+
+- name: Re-upload control-plane certificates and get the certificate key
+  ansible.builtin.command: kubeadm init phase upload-certs --upload-certs
+  register: k8s_control_plane_upload_certs
+  delegate_to: "{{ k8s_control_plane_first_node }}"
+  changed_when: true
+  no_log: true
+
+- name: Place kube-vip manifest
+  ansible.builtin.template:
+    src: kube-vip.yaml.j2
+    dest: /etc/kubernetes/manifests/kube-vip.yaml
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Join as control-plane node
+  ansible.builtin.command: >-
+    {{ k8s_control_plane_join_command.stdout }}
+    --control-plane
+    --certificate-key {{ k8s_control_plane_upload_certs.stdout_lines | last }}
+    --apiserver-advertise-address {{ ansible_host }}
+    --node-name {{ inventory_hostname }}
+  changed_when: true
+  no_log: true

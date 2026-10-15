@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+# Minimal containerd 2.x config: defaults for everything except the cgroup
+# driver, which must match the kubelet (systemd).
+version = 3
+
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runc]
+  runtime_type = 'io.containerd.runc.v2'
+
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runc.options]
+  SystemdCgroup = true

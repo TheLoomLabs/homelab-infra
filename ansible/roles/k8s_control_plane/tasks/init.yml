@@ -1,0 +1,46 @@
+---
+- name: Render kubeadm configuration
+  ansible.builtin.template:
+    src: kubeadm-init.yaml.j2
+    dest: /etc/kubernetes/kubeadm-init.yaml
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Place kube-vip manifest (bootstrap kubeconfig)
+  ansible.builtin.template:
+    src: kube-vip.yaml.j2
+    dest: /etc/kubernetes/manifests/kube-vip.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  vars:
+    k8s_control_plane_kube_vip_kubeconfig: /etc/kubernetes/super-admin.conf
+  when: not k8s_control_plane_kubelet_conf.stat.exists
+
+- name: Run kubeadm init
+  ansible.builtin.command: >-
+    kubeadm init
+    --config /etc/kubernetes/kubeadm-init.yaml
+    --upload-certs
+  register: k8s_control_plane_kubeadm_init
+  changed_when: true
+  when: not k8s_control_plane_kubelet_conf.stat.exists
+
+- name: Switch kube-vip to the regular admin kubeconfig
+  ansible.builtin.template:
+    src: kube-vip.yaml.j2
+    dest: /etc/kubernetes/manifests/kube-vip.yaml
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Wait for the API server behind the VIP
+  ansible.builtin.uri:
+    url: "https://{{ k8s_api_vip }}:6443/livez"
+    validate_certs: false
+    status_code: 200
+  register: k8s_control_plane_api_livez
+  retries: 30
+  delay: 5
+  until: k8s_control_plane_api_livez.status == 200

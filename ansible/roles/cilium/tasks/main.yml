@@ -1,0 +1,50 @@
+---
+- name: Download cilium CLI
+  ansible.builtin.get_url:
+    url: "https://github.com/cilium/cilium-cli/releases/download/{{ cilium_cli_version }}/cilium-linux-amd64.tar.gz"
+    checksum: "sha256:https://github.com/cilium/cilium-cli/releases/download/{{ cilium_cli_version }}/cilium-linux-amd64.tar.gz.sha256sum"
+    dest: "/tmp/cilium-{{ cilium_cli_version }}.tar.gz"
+    mode: "0644"
+
+- name: Install cilium CLI
+  ansible.builtin.unarchive:
+    src: "/tmp/cilium-{{ cilium_cli_version }}.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    include: [cilium]
+    creates: /usr/local/bin/cilium
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Check for an existing Cilium installation
+  ansible.builtin.command: kubectl -n kube-system get daemonset cilium
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: cilium_ds
+  changed_when: false
+  failed_when: false
+
+- name: Render Cilium Helm values
+  ansible.builtin.template:
+    src: values.yaml.j2
+    dest: /etc/kubernetes/cilium-values.yaml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install Cilium (kube-proxy replacement, Hubble)
+  ansible.builtin.command: >-
+    cilium install
+    --version {{ cilium_version }}
+    --values /etc/kubernetes/cilium-values.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: cilium_ds.rc != 0
+  changed_when: true
+
+- name: Wait for Cilium to become ready
+  ansible.builtin.command: cilium status --wait --wait-duration 10m
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false

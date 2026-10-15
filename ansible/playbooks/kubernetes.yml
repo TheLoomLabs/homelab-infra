@@ -1,0 +1,42 @@
+---
+- name: Kubernetes | Node prerequisites (containerd, kubeadm)
+  hosts: k8s
+  become: true
+  roles:
+    - k8s_prereqs
+
+- name: Kubernetes | Control plane (kubeadm + kube-vip HA)
+  hosts: k8s_control_plane
+  become: true
+  serial: 1 # control-plane nodes join etcd one at a time
+  roles:
+    - k8s_control_plane
+
+- name: Kubernetes | Workers
+  hosts: k8s_workers
+  become: true
+  roles:
+    - k8s_worker
+
+- name: Kubernetes | Cilium CNI
+  hosts: k8s_control_plane[0]
+  become: true
+  roles:
+    - cilium
+
+- name: Kubernetes | Fetch kubeconfig for the devbox
+  hosts: k8s_control_plane[0]
+  become: true
+  tasks:
+    - name: Fetch admin kubeconfig
+      ansible.builtin.fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: "{{ kubeconfig_local_path }}"
+        flat: true
+
+    - name: Restrict kubeconfig permissions locally
+      ansible.builtin.file:
+        path: "{{ kubeconfig_local_path }}"
+        mode: "0600"
+      delegate_to: localhost
+      become: false

@@ -1,0 +1,37 @@
+# {{ ansible_managed }}
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: {{ ansible_host }}
+  bindPort: 6443
+nodeRegistration:
+  name: {{ inventory_hostname }}
+  criSocket: unix:///run/containerd/containerd.sock
+  kubeletExtraArgs:
+    - name: node-ip
+      value: {{ ansible_host }}
+# Cilium replaces kube-proxy entirely.
+skipPhases:
+  - addon/kube-proxy
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+clusterName: {{ cluster_name }}
+controlPlaneEndpoint: {{ k8s_api_vip }}:6443
+networking:
+  podSubnet: {{ pod_cidr }}
+  serviceSubnet: {{ service_cidr }}
+  dnsDomain: {{ cluster_dns_domain }}
+apiServer:
+  certSANs:
+    - {{ k8s_api_vip }}
+    - k8s-api.{{ lab_dns_domain }}
+{% for host in groups['k8s_control_plane'] %}
+    - {{ hostvars[host].ansible_host }}
+    - {{ host }}
+{% endfor %}
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd
+serverTLSBootstrap: false

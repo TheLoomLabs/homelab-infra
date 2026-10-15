@@ -1,0 +1,19 @@
+---
+kubernetes_minor_version: "1.37"
+cluster_name: homelab
+pod_cidr: 10.244.0.0/16
+service_cidr: 10.96.0.0/12
+cluster_dns_domain: cluster.local
+
+kube_vip_version: v1.2.4
+cilium_version: 1.20.3
+cilium_cli_version: v0.20.1
+
+# Pod and service traffic must pass the host firewall too.
+trusted_cidrs:
+  - "{{ lab_network_cidr }}"
+  - "{{ pod_cidr }}"
+  - "{{ service_cidr }}"
+
+# The kubeconfig is fetched here on the machine running Ansible (git-ignored).
+kubeconfig_local_path: "{{ playbook_dir }}/../../.artifacts/kubeconfig"
