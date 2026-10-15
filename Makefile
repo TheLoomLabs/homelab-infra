@@ -52,9 +52,12 @@ site: ## Everything: base + Kubernetes + Swarm
 
 ## --- Quality -----------------------------------------------------------------
 
-.PHONY: fmt lint
+.PHONY: fmt secrets lint
 fmt: ## Format Terraform code
 	terraform fmt -recursive terraform
+
+secrets: ## Scan the full git history for leaked secrets (gitleaks)
+	gitleaks git --redact --verbose --exit-code 1 .
 
 lint: ## Run all linters (same as CI)
 	terraform fmt -check -recursive terraform
@@ -63,3 +66,4 @@ lint: ## Run all linters (same as CI)
 	tflint --init && tflint --recursive --config "$(CURDIR)/.tflint.hcl"
 	yamllint .
 	cd $(ANSIBLE_DIR) && ansible-lint
+	$(MAKE) secrets

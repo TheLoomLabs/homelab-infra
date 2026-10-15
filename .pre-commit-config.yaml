@@ -30,3 +30,8 @@ repos:
         language: system
         files: ^ansible/
         pass_filenames: false
+      - id: gitleaks
+        name: gitleaks (staged changes)
+        entry: gitleaks git --pre-commit --staged --redact --verbose
+        language: system
+        pass_filenames: false
