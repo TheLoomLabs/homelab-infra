@@ -1,0 +1,9 @@
+---
+# Prepares the Kubernetes workers for Longhorn (packages, kernel modules,
+# multipathd, data disk). Longhorn itself is an Argo CD Application
+# (kubernetes/apps/longhorn.yaml); run this before it syncs.
+- name: Kubernetes | Longhorn storage nodes
+  hosts: k8s_workers
+  become: true
+  roles:
+    - longhorn_node

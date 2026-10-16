@@ -1,0 +1,36 @@
+---
+# multipathd grabs the iSCSI block devices Longhorn attaches and the volume then
+# fails to mount ("already mounted or mount point busy"). Longhorn's iSCSI
+# devices report vendor IET / product VIRTUAL-DISK; blacklist exactly those.
+
+- name: Gather package facts
+  ansible.builtin.package_facts:
+    manager: apt
+
+- name: Blacklist Longhorn devices in multipathd
+  when: "'multipath-tools' in ansible_facts.packages"
+  block:
+    - name: Create multipath drop-in directory
+      ansible.builtin.file:
+        path: /etc/multipath/conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Write the Longhorn blacklist drop-in
+      ansible.builtin.copy:
+        dest: /etc/multipath/conf.d/longhorn.conf
+        content: |
+          # Managed by Ansible (role longhorn_node). Longhorn volumes are iSCSI
+          # devices from its own target; multipath must leave them alone.
+          blacklist {
+              device {
+                  vendor "IET"
+                  product "VIRTUAL-DISK"
+              }
+          }
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload multipathd

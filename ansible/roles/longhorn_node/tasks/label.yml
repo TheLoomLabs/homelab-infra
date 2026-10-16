@@ -1,0 +1,8 @@
+---
+- name: Label node for a Longhorn default disk
+  ansible.builtin.command: >-
+    kubectl --kubeconfig /etc/kubernetes/admin.conf
+    label node {{ inventory_hostname }} {{ longhorn_node_label }} --overwrite
+  delegate_to: "{{ groups['k8s_control_plane'] | first }}"
+  register: longhorn_node_label_result
+  changed_when: "'not labeled' not in longhorn_node_label_result.stdout"

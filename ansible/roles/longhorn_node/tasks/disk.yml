@@ -1,0 +1,36 @@
+---
+# Longhorn keeps replicas under {{ longhorn_node_data_path }}. It must be the
+# dedicated disk, never the root filesystem, so a missing disk is an error.
+
+- name: Find the data disk by serial
+  ansible.builtin.find:
+    paths: /dev/disk/by-id
+    file_type: link
+    patterns: "scsi-*_{{ longhorn_node_disk_serial }}"
+  register: longhorn_node_disk
+
+- name: Require exactly one data disk
+  ansible.builtin.assert:
+    that: longhorn_node_disk.files | length == 1
+    fail_msg: >-
+      Expected one disk with serial '{{ longhorn_node_disk_serial }}' under
+      /dev/disk/by-id, found {{ longhorn_node_disk.files | length }}. Set
+      data_disk_gb for this node in Terraform and apply first.
+    quiet: true
+
+- name: Create the filesystem (only if the disk is blank)
+  community.general.filesystem:
+    dev: "{{ longhorn_node_disk.files[0].path }}"
+    fstype: "{{ longhorn_node_disk_fstype }}"
+    opts: -L longhorn
+
+# nofail: a missing disk must not stop the node from booting. Longhorn then
+# finds no longhorn-disk.cfg under the path and marks the disk not ready
+# instead of writing replicas to the root filesystem.
+- name: Mount the data disk
+  ansible.posix.mount:
+    path: "{{ longhorn_node_data_path }}"
+    src: "{{ longhorn_node_disk.files[0].path }}"
+    fstype: "{{ longhorn_node_disk_fstype }}"
+    opts: defaults,nofail,x-systemd.device-timeout=30s
+    state: mounted

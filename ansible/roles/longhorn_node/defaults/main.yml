@@ -1,0 +1,25 @@
+---
+# Packages Longhorn needs on every storage node (V1 data engine):
+# iSCSI initiator, NFSv4 client (RWX volumes, NFS backup targets), and
+# cryptsetup + dmsetup for encrypted volumes.
+longhorn_node_packages:
+  - open-iscsi
+  - nfs-common
+  - cryptsetup
+  - dmsetup
+
+longhorn_node_kernel_modules:
+  - iscsi_tcp
+  - dm_crypt
+
+# The data disk Terraform adds to each worker (data_disk_gb, serial "longhorn").
+# QEMU exposes the serial in the by-id name: scsi-SQEMU_QEMU_HARDDISK_<serial>
+# (the role matches scsi-*_<serial>).
+longhorn_node_disk_serial: longhorn
+longhorn_node_disk_fstype: ext4
+longhorn_node_data_path: /var/lib/longhorn
+
+# Longhorn only creates its default disk on nodes with this label
+# (defaultSettings.createDefaultDiskLabeledNodes), so control-plane nodes never
+# hold replicas even if they could run Longhorn pods.
+longhorn_node_label: node.longhorn.io/create-default-disk=true

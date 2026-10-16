@@ -1,0 +1,28 @@
+---
+- name: Install Longhorn node packages
+  ansible.builtin.apt:
+    name: "{{ longhorn_node_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Load kernel modules at boot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/longhorn.conf
+    content: "{{ longhorn_node_kernel_modules | join('\n') }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+
+# iscsi_tcp must be loaded before iscsid starts.
+- name: Load kernel modules now
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ longhorn_node_kernel_modules }}"
+
+- name: Enable and start iscsid
+  ansible.builtin.systemd_service:
+    name: iscsid
+    enabled: true
+    state: started

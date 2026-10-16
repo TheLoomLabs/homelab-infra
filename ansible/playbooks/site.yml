@@ -8,6 +8,9 @@
 - name: Kubernetes
   ansible.builtin.import_playbook: kubernetes.yml
 
+- name: Longhorn storage nodes
+  ansible.builtin.import_playbook: longhorn.yml
+
 - name: SOPS age key
   ansible.builtin.import_playbook: sops.yml
 

@@ -34,7 +34,7 @@ tf-destroy: ## Destroy all lab VMs
 
 ## --- Ansible -----------------------------------------------------------------
 
-.PHONY: ping base dns k8s cilium sops-key argocd swarm site
+.PHONY: ping base dns k8s cilium longhorn sops-key argocd swarm site
 ping: ## Check SSH to every node
 	cd $(ANSIBLE_DIR) && ansible all -m ansible.builtin.ping
 
@@ -49,6 +49,9 @@ k8s: ## Build the Kubernetes cluster (kubeadm, kube-vip, Cilium)
 
 cilium: ## Re-apply Cilium Helm values (cilium upgrade if they changed)
 	$(PLAYBOOK) playbooks/cilium.yml
+
+longhorn: ## Prepare the workers for Longhorn (packages, data disk, node label)
+	$(PLAYBOOK) playbooks/longhorn.yml
 
 sops-key: ## Load the age private key into the cluster (SOPS)
 	$(PLAYBOOK) playbooks/sops.yml

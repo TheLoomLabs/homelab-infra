@@ -1,0 +1,12 @@
+---
+- name: Packages and kernel modules
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Keep multipathd away from Longhorn devices
+  ansible.builtin.import_tasks: multipath.yml
+
+- name: Data disk
+  ansible.builtin.import_tasks: disk.yml
+
+- name: Node label
+  ansible.builtin.import_tasks: label.yml
