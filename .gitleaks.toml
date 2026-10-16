@@ -10,10 +10,13 @@ useDefault = true
 #   in a *.sops.yaml file is still caught, because only ENC[...] lines match.
 # - Published SHA-256 checksums of downloads (Ansible vars named *_sha256, like
 #   gateway_api_crds_sha256). Only a bare 64-char hex value is allowed.
+# - The LUKS cipher name in docs/storage.md (CRYPTO_KEY_CIPHER: aes-xts-plain64)
+#   is a public algorithm name, not a key.
 [allowlist]
-description = "SOPS ciphertext, download checksums"
+description = "SOPS ciphertext, download checksums, LUKS cipher names"
 regexTarget = "line"
 regexes = [
   '''ENC\[AES256_GCM,data:[A-Za-z0-9+/=]*,iv:[A-Za-z0-9+/=]+,tag:[A-Za-z0-9+/=]+,type:[a-z]+\]''',
   '''^\s*[a-z0-9_]+_sha256: "?[0-9a-f]{64}"?\s*$''',
+  '''^\s*CRYPTO_KEY_CIPHER: "?aes-[a-z0-9-]+"?\s*$''',
 ]
