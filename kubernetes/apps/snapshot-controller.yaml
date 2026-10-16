@@ -1,0 +1,33 @@
+---
+# CSI snapshot support: the VolumeSnapshot CRDs and the common snapshot
+# controller. Longhorn ships the CSI snapshotter sidecar but not these. Velero
+# uses VolumeSnapshots to have Longhorn back up volumes (ADR 0010).
+# Keep the version equal to Longhorn's csi-snapshotter image (Longhorn 1.13.0:
+# v8.6.0), as the Longhorn docs require.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: snapshot-controller
+  namespace: argocd
+  annotations:
+    # Before longhorn (-4), whose VolumeSnapshotClass needs the CRDs.
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  project: default
+  sources:
+    - repoURL: https://github.com/kubernetes-csi/external-snapshotter.git
+      targetRevision: v8.6.0
+      path: client/config/crd
+    - repoURL: https://github.com/kubernetes-csi/external-snapshotter.git
+      targetRevision: v8.6.0
+      path: deploy/kubernetes/snapshot-controller
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      # Deleting the CRDs would delete every VolumeSnapshot.
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

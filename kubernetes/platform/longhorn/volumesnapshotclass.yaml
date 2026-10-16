@@ -1,0 +1,15 @@
+---
+# CSI VolumeSnapshots of Longhorn volumes become Longhorn backups in R2
+# (type: bak), not local snapshots, so they survive the loss of the cluster.
+# Velero picks this class through the label (one per CSI driver). Backups of
+# encrypted volumes stay encrypted.
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: longhorn-backup
+  labels:
+    velero.io/csi-volumesnapshot-class: "true"
+driver: driver.longhorn.io
+deletionPolicy: Delete
+parameters:
+  type: bak
