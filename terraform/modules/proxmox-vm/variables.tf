@@ -118,3 +118,20 @@ variable "startup_order" {
   type        = number
   default     = null
 }
+
+variable "data_disk_gb" {
+  description = "Size in GiB of an optional second, empty disk (scsi1). null = no data disk."
+  type        = number
+  default     = null
+}
+
+variable "data_disk_serial" {
+  description = "Serial of the data disk, so the guest finds it under /dev/disk/by-id/ regardless of device order."
+  type        = string
+  default     = "data"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_-]{1,20}$", var.data_disk_serial))
+    error_message = "data_disk_serial must be 1-20 characters: letters, digits, '_' or '-'."
+  }
+}

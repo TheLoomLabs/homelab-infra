@@ -42,6 +42,9 @@ module "vm" {
   memory_mb = each.value.memory_mb
   disk_gb   = each.value.disk_gb
 
+  data_disk_gb     = each.value.data_disk_gb
+  data_disk_serial = "longhorn"
+
   datastore_id          = var.vm_datastore
   snippets_datastore_id = var.file_datastore
   image_file_id         = proxmox_download_file.ubuntu.id

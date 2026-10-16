@@ -65,6 +65,24 @@ resource "proxmox_virtual_environment_vm" "this" {
     ssd          = true
   }
 
+  # Optional empty data disk (e.g. Longhorn on Kubernetes workers). Ansible
+  # finds it by its serial (/dev/disk/by-id/*_<serial>), formats and mounts it.
+  # It is left out of Proxmox backups: the application backs up its own data.
+  dynamic "disk" {
+    for_each = var.data_disk_gb == null ? [] : [var.data_disk_gb]
+    content {
+      datastore_id = var.datastore_id
+      interface    = "scsi1"
+      size         = disk.value
+      file_format  = "raw"
+      serial       = var.data_disk_serial
+      discard      = "on"
+      iothread     = true
+      ssd          = true
+      backup       = false
+    }
+  }
+
   network_device {
     bridge  = var.bridge
     vlan_id = var.vlan_id

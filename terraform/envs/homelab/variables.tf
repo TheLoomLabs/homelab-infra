@@ -113,6 +113,8 @@ variable "nodes" {
     (dns, k8s_control_plane, k8s_workers, swarm_managers, swarm_workers);
     'ip_offset' is the host number inside network_cidr. 'startup_order' sets
     the Proxmox boot order (lower starts first; unset = no order).
+    'data_disk_gb' adds an empty second disk for Longhorn (Kubernetes workers
+    only; unset = none).
   EOT
   type = map(object({
     vm_id         = number
@@ -122,6 +124,7 @@ variable "nodes" {
     memory_mb     = number
     disk_gb       = number
     startup_order = optional(number)
+    data_disk_gb  = optional(number)
   }))
 
   default = {
@@ -131,8 +134,8 @@ variable "nodes" {
     k8s-cp-01  = { vm_id = 221, group = "k8s_control_plane", ip_offset = 21, cores = 2, memory_mb = 4096, disk_gb = 40 }
     k8s-cp-02  = { vm_id = 222, group = "k8s_control_plane", ip_offset = 22, cores = 2, memory_mb = 4096, disk_gb = 40 }
     k8s-cp-03  = { vm_id = 223, group = "k8s_control_plane", ip_offset = 23, cores = 2, memory_mb = 4096, disk_gb = 40 }
-    k8s-wk-01  = { vm_id = 231, group = "k8s_workers", ip_offset = 31, cores = 4, memory_mb = 8192, disk_gb = 80 }
-    k8s-wk-02  = { vm_id = 232, group = "k8s_workers", ip_offset = 32, cores = 4, memory_mb = 8192, disk_gb = 80 }
+    k8s-wk-01  = { vm_id = 231, group = "k8s_workers", ip_offset = 31, cores = 4, memory_mb = 8192, disk_gb = 80, data_disk_gb = 100 }
+    k8s-wk-02  = { vm_id = 232, group = "k8s_workers", ip_offset = 32, cores = 4, memory_mb = 8192, disk_gb = 80, data_disk_gb = 100 }
     swarm-m-01 = { vm_id = 241, group = "swarm_managers", ip_offset = 41, cores = 2, memory_mb = 4096, disk_gb = 40 }
     swarm-m-02 = { vm_id = 242, group = "swarm_managers", ip_offset = 42, cores = 2, memory_mb = 4096, disk_gb = 40 }
     swarm-m-03 = { vm_id = 243, group = "swarm_managers", ip_offset = 43, cores = 2, memory_mb = 4096, disk_gb = 40 }
@@ -149,5 +152,11 @@ variable "nodes" {
   validation {
     condition     = length(distinct([for n in values(var.nodes) : n.ip_offset])) == length(var.nodes)
     error_message = "ip_offset values must be unique."
+  }
+
+  validation {
+    # Longhorn runs on the workers only; control-plane nodes stay storage-free.
+    condition     = alltrue([for n in values(var.nodes) : n.data_disk_gb == null || n.group == "k8s_workers"])
+    error_message = "data_disk_gb is only supported on k8s_workers nodes (Longhorn)."
   }
 }
