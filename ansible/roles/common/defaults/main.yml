@@ -17,6 +17,10 @@ common_journald_max_use: 500M
 # DNS VMs override this with the public resolvers (group_vars/dns.yml). An
 # empty list leaves the resolvers cloud-init set on first boot.
 common_dns_servers: "{{ lab_dns_servers | default([]) }}"
-common_dns_search:
-  - "{{ lab_dns_domain }}"
+# No search domain: the lab zone has a wildcard (*.lab.theloomlabs.org -> the
+# Gateway), so with a search domain every unknown name also "exists" as
+# <name>.lab.theloomlabs.org. Pods (ndots:5) try the search domains first, so
+# external names such as <account>.r2.cloudflarestorage.com resolved to the
+# Gateway. Use full names (k8s-cp-01.lab.theloomlabs.org) instead.
+common_dns_search: []
 common_netplan_file: /etc/netplan/50-cloud-init.yaml

@@ -64,14 +64,16 @@
 - name: DNS | Apply the resolvers now (no interface restart)
   ansible.builtin.shell: >-
     resolvectl dns {{ item.item.value['set-name'] | default(item.item.key) }} {{ common_dns_servers | join(' ') }} &&
-    resolvectl domain {{ item.item.value['set-name'] | default(item.item.key) }} {{ common_dns_search | join(' ') }}
+    resolvectl domain {{ item.item.value['set-name'] | default(item.item.key) }}
+    {{ (common_dns_search | map('quote') | join(' ')) if common_dns_search else "''" }}
   loop: "{{ common_dns_live.results }}"
   loop_control:
     label: "{{ item.item.key }}"
   changed_when: true
   # IPv6 servers learned from router advertisements (the Starlink router, which
   # forwards to the lab DNS anyway) may sit next to them and are ignored here.
+  # An empty domain list prints an empty second line, which stdout_lines drops.
   when: >-
-    item.stdout_lines | length < 2 or
+    item.stdout_lines | length < 1 or
     item.stdout_lines[0].split() | select('match', '^[0-9.]+$') | list != common_dns_servers or
-    item.stdout_lines[1].split() != common_dns_search
+    (item.stdout_lines[1] | default('')).split() != common_dns_search

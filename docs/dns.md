@@ -73,7 +73,10 @@ Both servers get the new key in the same run. Commit the file.
 
 ## Lab VM resolvers
 
-The lab VMs resolve through `dns-01` and `dns-02` with the search domain `lab.theloomlabs.org`. The DNS VMs themselves use the public resolvers (`upstream_dns_servers`).
+The lab VMs resolve through `dns-01` and `dns-02`. The DNS VMs themselves use the public resolvers (`upstream_dns_servers`).
+
+- **No search domain.** The zone has a wildcard (`*` → the Gateway), so with `lab.theloomlabs.org` as a search domain every name that doesn't exist would still resolve as `<name>.lab.theloomlabs.org`. Kubernetes pods use `ndots:5` and try the search domains before the name itself, so an external name like `<account>.r2.cloudflarestorage.com` resolved to `192.168.1.61` (Longhorn's backups to R2 failed with "connection reset by peer"). Use full names, e.g. `ssh ops@k8s-cp-01.lab.theloomlabs.org`.
+- Pods get the node's search domains when they start. After a change, restart the pods that resolve external names.
 
 - Cloud-init writes the network config once, on first boot. Terraform ignores cloud-init changes on existing VMs, because changing them would recreate the VM (ADR 0008).
 - The role `common` rewrites the `nameservers` in `/etc/netplan/50-cloud-init.yaml`, stops cloud-init from regenerating it, and applies the change with `resolvectl`. It never runs `netplan apply`, which can drop addresses netplan doesn't know about, such as the kube-vip VIP.
