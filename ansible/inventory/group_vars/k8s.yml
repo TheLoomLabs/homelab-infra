@@ -10,6 +10,12 @@ cilium_version: 1.20.3
 cilium_cli_version: v0.20.1
 helm_version: v4.2.3 # installed on the first control-plane node for the Argo CD bootstrap
 
+# Gateway API CRDs (standard channel) for Cilium's Gateway controller. Keep this
+# at the version the Cilium release supports (see the Cilium Gateway API docs).
+# The checksum pins the release asset standard-install.yaml.
+gateway_api_version: v1.6.3
+gateway_api_crds_sha256: 356c2b8e286a964dc20995435659ad1095386329974793af10bbfe3eff977fe5
+
 # Pod and service traffic must pass the host firewall too.
 trusted_cidrs:
   - "{{ lab_network_cidr }}"

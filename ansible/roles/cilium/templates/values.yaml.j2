@@ -27,6 +27,14 @@ k8sClientRateLimit:
   qps: 20
   burst: 40
 
+# Gateway API: Cilium's Envoy serves the Gateways in kubernetes/platform/gateway.
+# The role installs the Gateway API CRDs first. Each Gateway gets its own
+# LoadBalancer service, so its address comes from the LB IPAM pool above.
+gatewayAPI:
+  enabled: true
+  gatewayClass:
+    create: true
+
 hubble:
   relay:
     enabled: true

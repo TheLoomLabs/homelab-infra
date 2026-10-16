@@ -17,6 +17,38 @@
     group: root
     mode: "0755"
 
+# Cilium only starts its Gateway API controller (and creates the `cilium`
+# GatewayClass) if these CRDs exist, so they go in before Cilium is installed
+# or upgraded. They are cluster prerequisites like Cilium itself, not an Argo
+# CD app: Argo CD's own HTTPRoute needs them during the bootstrap.
+- name: Download Gateway API CRDs
+  ansible.builtin.get_url:
+    url: "https://github.com/kubernetes-sigs/gateway-api/releases/download/{{ gateway_api_version }}/standard-install.yaml"
+    checksum: "sha256:{{ gateway_api_crds_sha256 }}"
+    dest: "/etc/kubernetes/gateway-api-{{ gateway_api_version }}.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Read the installed Gateway API CRD version
+  ansible.builtin.command: >-
+    kubectl get crd gateways.gateway.networking.k8s.io
+    -o 'jsonpath={.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}'
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: cilium_gateway_api_installed
+  changed_when: false
+  failed_when: false
+
+- name: Install Gateway API CRDs
+  ansible.builtin.command: >-
+    kubectl apply --server-side --force-conflicts
+    -f /etc/kubernetes/gateway-api-{{ gateway_api_version }}.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: cilium_gateway_api_installed.stdout != gateway_api_version
+  changed_when: true
+
 - name: Check for an existing Cilium installation
   ansible.builtin.command: kubectl -n kube-system get daemonset cilium
   environment:
