@@ -1,6 +1,11 @@
 # Secrets (SOPS + age)
 
-Secrets are committed encrypted, as `SopsSecret` manifests named `*.sops.yaml`. sops-secrets-operator decrypts them in the cluster (ADR 0006). This page covers the day-to-day tasks.
+Secrets are committed encrypted, as files named `*.sops.yaml`:
+
+- **Kubernetes:** `SopsSecret` manifests under `kubernetes/`, decrypted in the cluster by sops-secrets-operator (ADR 0006). Only `spec.secretTemplates` is encrypted.
+- **Ansible:** plain YAML variables, such as `dns/tsig.sops.yaml` for BIND. Every value is encrypted. The playbook decrypts them on the workstation with `community.sops.load_vars`, using the same age key.
+
+This page covers the day-to-day tasks.
 
 ## One-time: the age key
 
@@ -49,6 +54,19 @@ make sops-check     # confirms the file is encrypted
 
 The `SopsSecret` must be part of an Argo CD Application (its `path` or `sources`). That Application needs `SkipDryRunOnMissingResource=true` in `syncOptions`, so it does not fail on a fresh cluster before the CRD exists.
 
+## Add an Ansible secret
+
+```bash
+f=dns/example.sops.yaml          # path must match a rule in .sops.yaml
+read -rsp 'Value: ' VALUE; echo
+printf 'example_secret: "%s"\n' "$VALUE" |
+  sops encrypt --filename-override "$f" --input-type yaml --output-type yaml /dev/stdin > "$f"
+unset VALUE
+make sops-check
+```
+
+Load it in the playbook with `community.sops.load_vars` (see `ansible/playbooks/dns.yml`) and set `no_log: true` on tasks that use it. The BIND TSIG key is rotated as described in [dns.md](dns.md#rotate-the-tsig-key).
+
 ## Edit or read a secret
 
 ```bash
@@ -70,7 +88,7 @@ kubectl -n sops logs deploy/sops-secrets-operator
 2. Re-encrypt every file. `SOPS_AGE_KEY_FILE` still points at the old key, which sops needs to decrypt:
 
    ```bash
-   for f in $(git ls-files 'kubernetes/*.sops.yaml'); do sops updatekeys -y "$f"; done
+   for f in $(git ls-files 'kubernetes/*.sops.yaml' 'dns/*.sops.yaml'); do sops updatekeys -y "$f"; done
    ```
 
 3. `mv .artifacts/age.key.new .artifacts/age.key`, run `make sops-key`, update the backup, commit.

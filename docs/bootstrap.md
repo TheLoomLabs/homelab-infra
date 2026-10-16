@@ -39,12 +39,15 @@ PROXMOX_VE_API_TOKEN=terraform@pve!provider=<token-secret>
 
 ## 4. SSH to the Proxmox node
 
-Uploading snippets goes over SSH, using the key in your ssh-agent:
+Uploading snippets goes over SSH as `root`, using **only** the key in your ssh-agent (the provider ignores `~/.ssh/config`):
 
 ```bash
 ssh-copy-id root@<proxmox-host>
 ssh-add -l   # make sure the key is loaded
+# no agent? eval "$(ssh-agent -s)" && ssh-add ~/.ssh/id_ed25519
 ```
+
+Check `ssh-add -l` before every apply that changes snippets. Without a working agent, Terraform deletes the old snippets and then fails to upload the new ones (see [dns.md](dns.md#gotchas)).
 
 ## 5. Settings
 
@@ -52,4 +55,16 @@ ssh-add -l   # make sure the key is loaded
 cp terraform/envs/homelab/terraform.tfvars.example terraform/envs/homelab/terraform.tfvars
 ```
 
-Set `network_cidr`, `gateway`, `dns_servers`, `dns_domain` and `ssh_public_keys`. If your workstation is outside the lab network, add its subnet to `ssh_allowed_cidrs` in `ansible/inventory/group_vars/all.yml`.
+Set `network_cidr`, `gateway`, `dns_servers`, `dns_domain` and `ssh_public_keys`. `dns_servers` are the lab DNS VMs (`dns-01`, `dns-02`).
+
+## 6. First build: DNS VMs first
+
+Every other VM resolves through `dns-01` and `dns-02` from its first boot, and cloud-init installs packages then. On a build from scratch, create and configure the DNS VMs first (they use the public resolvers themselves):
+
+```bash
+terraform -chdir=terraform/envs/homelab apply -target='module.vm["dns-01"]' -target='module.vm["dns-02"]' -target=local_file.ansible_inventory
+cd ansible && ansible-playbook playbooks/base.yml --limit dns && cd ..
+make dns
+make tf-plan && make tf-apply     # the rest of the lab
+make site
+``` If your workstation is outside the lab network, add its subnet to `ssh_allowed_cidrs` in `ansible/inventory/group_vars/all.yml`.
