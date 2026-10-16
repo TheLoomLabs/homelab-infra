@@ -2,6 +2,9 @@
 - name: Base
   ansible.builtin.import_playbook: base.yml
 
+- name: DNS
+  ansible.builtin.import_playbook: dns.yml
+
 - name: Kubernetes
   ansible.builtin.import_playbook: kubernetes.yml
 

@@ -1,0 +1,43 @@
+---
+# Lab DNS: BIND on the hosts of the `dns` inventory group. The first host is the
+# primary (zone files rendered by Ansible), the others are secondaries that pull
+# the zones over AXFR signed with a TSIG key. Every server also resolves
+# everything else for the lab clients. See docs/dns.md.
+
+# Authoritative zone and extra records. The real values live in
+# dns/records.yml, which playbooks/dns.yml loads. Every inventory host gets an A
+# record automatically (name = inventory hostname, address = ansible_host).
+bind_zone: "{{ lab_dns_domain }}"
+# Items: {name: "*", type: A, value: 192.168.10.61, ttl: 300 (optional)}
+bind_records: []
+
+# PTR records for lab_network_cidr (a /24), built from the A records above.
+bind_reverse_zone_enabled: true
+
+bind_primary: "{{ groups['dns'] | first }}"
+bind_secondaries: "{{ groups['dns'] | difference([bind_primary]) }}"
+
+# Who may query and use recursion. Add the Tailscale range here later.
+bind_client_cidrs:
+  - "{{ lab_network_cidr }}"
+
+# Upstream resolvers for everything outside the lab zones. "first" falls back
+# to full recursion from the root servers if both forwarders are unreachable.
+bind_forwarders:
+  - 1.1.1.1
+  - 9.9.9.9
+bind_forward_policy: first
+
+# TSIG key for NOTIFY and zone transfers. The secret (bind_tsig_secret) comes
+# from dns/tsig.sops.yaml and is never stored in plain text.
+bind_tsig_key_name: lab-xfr
+bind_tsig_algorithm: hmac-sha256
+
+# Zone timers (seconds). The long expire keeps the secondaries answering for
+# two weeks if the primary is down.
+bind_ttl: 300
+bind_soa_refresh: 3600
+bind_soa_retry: 600
+bind_soa_expire: 1209600
+bind_soa_negative_ttl: 300
+bind_hostmaster: "hostmaster.{{ bind_zone }}"

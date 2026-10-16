@@ -1,0 +1,15 @@
+---
+# Lab zone, served by BIND on dns-01 (primary) and dns-02 (secondary).
+# Every host in the Ansible inventory already gets an A record from its
+# inventory name and address, and a PTR record. List only the extra names here.
+# `make dns` deploys it; the SOA serial is bumped automatically. See docs/dns.md.
+bind_zone: lab.theloomlabs.org
+
+bind_records:
+  # Shared Cilium Gateway (gateway/lab): every app name that is not listed
+  # below or in the inventory, e.g. argocd.lab.theloomlabs.org.
+  - {name: "*", type: A, value: 192.168.1.61}
+
+  # Infrastructure outside the inventory.
+  - {name: pve, type: A, value: 192.168.1.200}
+  - {name: k8s-api, type: A, value: 192.168.1.20}

@@ -1,0 +1,25 @@
+// {{ ansible_managed }}
+// Lab zones. {{ bind_primary }} is the primary; the secondaries pull the zones
+// over AXFR/IXFR, signed with the TSIG key {{ bind_tsig_key_name }}.
+
+include "/etc/bind/{{ bind_tsig_key_name }}.key";
+{% for zone in bind_zones %}
+
+zone "{{ zone.name }}" {
+{% if bind_is_primary %}
+    type primary;
+    file "{{ bind_zone_dir }}/db.{{ zone.name }}";
+    allow-transfer { key {{ bind_tsig_key_name }}; };
+    also-notify {
+{% for host in bind_secondaries %}
+        {{ hostvars[host].ansible_host }} key {{ bind_tsig_key_name }};
+{% endfor %}
+    };
+{% else %}
+    type secondary;
+    file "{{ bind_secondary_dir }}/db.{{ zone.name }}";
+    masterfile-format text;
+    primaries { {{ hostvars[bind_primary].ansible_host }} key {{ bind_tsig_key_name }}; };
+{% endif %}
+};
+{% endfor %}

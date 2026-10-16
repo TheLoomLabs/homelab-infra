@@ -1,0 +1,73 @@
+---
+# Zone files on the primary.
+# The SOA serial is date based (YYYYMMDDnn) and only moves when the rendered
+# zone changes: render with the current serial in check mode first, and bump
+# it only for zones that would change. Re-runs stay idempotent and nobody has
+# to bump a serial by hand.
+
+- name: Zones | Zone directory
+  ansible.builtin.file:
+    path: "{{ bind_zone_dir }}"
+    state: directory
+    owner: root
+    group: bind
+    mode: "0755"
+
+- name: Zones | Read the current zone files
+  ansible.builtin.slurp:
+    src: "{{ bind_zone_dir }}/db.{{ item.name }}"
+  loop: "{{ bind_zones }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: bind_zone_current
+  failed_when: false
+
+- name: Zones | Current serials
+  ansible.builtin.set_fact:
+    bind_zone_serials: >-
+      {{ bind_zone_serials | default({}) | combine({item.item.name: (
+           (item.content | default('') | b64decode | regex_search('(\d+)\s*; serial', '\1') or ['0']) | first | int)}) }}
+  loop: "{{ bind_zone_current.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Zones | Detect changed zones
+  ansible.builtin.template:
+    src: "{{ item.template }}"
+    dest: "{{ bind_zone_dir }}/db.{{ item.name }}"
+    owner: root
+    group: bind
+    mode: "0644"
+  vars:
+    bind_zone_serial: "{{ bind_zone_serials[item.name] }}"
+  loop: "{{ bind_zones }}"
+  loop_control:
+    label: "{{ item.name }}"
+  check_mode: true
+  diff: false
+  register: bind_zone_check
+
+- name: Zones | Next serials
+  ansible.builtin.set_fact:
+    bind_zone_serials: >-
+      {{ bind_zone_serials | combine({item.item.name: (
+           [bind_today_serial | int, bind_zone_serials[item.item.name] + 1] | max
+           if item.changed else bind_zone_serials[item.item.name])}) }}
+  loop: "{{ bind_zone_check.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Zones | Render zone files
+  ansible.builtin.template:
+    src: "{{ item.template }}"
+    dest: "{{ bind_zone_dir }}/db.{{ item.name }}"
+    owner: root
+    group: bind
+    mode: "0644"
+    validate: "named-checkzone {{ item.name }} %s"
+  vars:
+    bind_zone_serial: "{{ bind_zone_serials[item.name] }}"
+  loop: "{{ bind_zones }}"
+  loop_control:
+    label: "{{ item.name }} (serial {{ bind_zone_serials[item.name] }})"
+  notify: Reload named

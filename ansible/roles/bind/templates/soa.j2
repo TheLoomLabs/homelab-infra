@@ -1,0 +1,11 @@
+$TTL {{ bind_ttl }}
+@       IN SOA  {{ bind_primary }}.{{ bind_zone }}. {{ bind_hostmaster }}. (
+                {{ bind_zone_serial }} ; serial
+                {{ bind_soa_refresh }} ; refresh
+                {{ bind_soa_retry }} ; retry
+                {{ bind_soa_expire }} ; expire
+                {{ bind_soa_negative_ttl }} ; negative TTL
+                )
+{% for host in groups['dns'] %}
+        IN NS   {{ host }}.{{ bind_zone }}.
+{% endfor %}

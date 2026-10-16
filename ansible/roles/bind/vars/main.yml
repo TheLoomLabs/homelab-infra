@@ -1,0 +1,22 @@
+---
+bind_packages:
+  - bind9
+  - bind9-utils
+  - bind9-dnsutils
+
+bind_zone_dir: /etc/bind/zones
+bind_secondary_dir: /var/cache/bind
+
+# 192.168.10.0/24 -> "192.168.10." and "10.168.192.in-addr.arpa"
+bind_net_octets: "{{ lab_network_cidr.split('/')[0].split('.')[:3] }}"
+bind_reverse_prefix: "{{ bind_net_octets | join('.') }}."
+bind_reverse_zone: "{{ bind_net_octets | reverse | join('.') }}.in-addr.arpa"
+
+bind_zones: >-
+  {{ [{'name': bind_zone, 'template': 'db.forward.j2'}]
+     + ([{'name': bind_reverse_zone, 'template': 'db.reverse.j2'}] if bind_reverse_zone_enabled else []) }}
+
+bind_is_primary: "{{ inventory_hostname == bind_primary }}"
+
+# Today's first serial in the YYYYMMDDnn scheme.
+bind_today_serial: "{{ now(fmt='%Y%m%d') | int * 100 }}"

@@ -1,0 +1,18 @@
+; {{ ansible_managed }}
+; Rendered by the Ansible role bind: PTR records for the A records of the
+; forward zone {{ bind_zone }} inside {{ lab_network_cidr }}. Do not edit on the server.
+$ORIGIN {{ bind_reverse_zone }}.
+{% include 'soa.j2' %}
+
+{% set ptrs = {} %}
+{% for host in groups['all'] %}
+{%   set _ = ptrs.update({hostvars[host].ansible_host: host ~ '.' ~ bind_zone}) %}
+{% endfor %}
+{% for record in bind_records
+     if (record.type | default('A')) == 'A' and '*' not in record.name and record.value.startswith(bind_reverse_prefix)
+        and record.value not in ptrs %}
+{%   set _ = ptrs.update({record.value: (bind_zone if record.name == '@' else record.name ~ '.' ~ bind_zone)}) %}
+{% endfor %}
+{% for octet in ptrs | select('match', bind_reverse_prefix | regex_escape) | map('split', '.') | map('last') | map('int') | sort %}
+{{ '%-6s' | format(octet) }} IN PTR {{ ptrs[bind_reverse_prefix ~ octet] }}.
+{% endfor %}

@@ -1,0 +1,15 @@
+---
+- name: DNS | BIND primary and secondaries
+  hosts: dns
+  become: true
+  pre_tasks:
+    - name: Load the zone records (dns/records.yml)
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../dns/records.yml"
+
+    - name: Load the TSIG secret (dns/tsig.sops.yaml, decrypted with the age key)
+      community.sops.load_vars:
+        file: "{{ playbook_dir }}/../../dns/tsig.sops.yaml"
+      no_log: true
+  roles:
+    - bind

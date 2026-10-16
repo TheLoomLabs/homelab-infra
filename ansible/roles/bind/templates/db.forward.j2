@@ -1,0 +1,15 @@
+; {{ ansible_managed }}
+; Rendered by the Ansible role bind from the inventory and dns/records.yml.
+; Do not edit on the server.
+$ORIGIN {{ bind_zone }}.
+{% include 'soa.j2' %}
+
+; Inventory hosts
+{% for host in groups['all'] | sort %}
+{{ '%-24s' | format(host) }} IN A     {{ hostvars[host].ansible_host }}
+{% endfor %}
+
+; dns/records.yml
+{% for record in bind_records %}
+{{ '%-24s' | format(record.name) }} {{ (record.ttl ~ ' ') if record.ttl is defined else '' }}IN {{ '%-5s' | format(record.type | default('A')) }} {{ record.value }}
+{% endfor %}

@@ -1,0 +1,90 @@
+---
+- name: Preflight | Check the inputs
+  ansible.builtin.assert:
+    that:
+      - bind_tsig_secret is defined
+      - bind_tsig_secret | length >= 32
+      - not bind_reverse_zone_enabled or lab_network_cidr.endswith('/24')
+    fail_msg: >-
+      bind_tsig_secret must come from dns/tsig.sops.yaml (see docs/dns.md), and the
+      reverse zone only supports a /24 lab network.
+    quiet: true
+
+- name: Packages | Install BIND
+  ansible.builtin.apt:
+    name: "{{ bind_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Config | TSIG key for NOTIFY and zone transfers
+  ansible.builtin.template:
+    src: tsig.key.j2
+    dest: "/etc/bind/{{ bind_tsig_key_name }}.key"
+    owner: root
+    group: bind
+    mode: "0640"
+  no_log: true
+  diff: false
+  notify: Reload named
+
+- name: Config | Global options (resolver, ACLs, forwarders)
+  ansible.builtin.template:
+    src: named.conf.options.j2
+    dest: /etc/bind/named.conf.options
+    owner: root
+    group: bind
+    mode: "0644"
+    validate: named-checkconf %s
+  notify: Reload named
+
+- name: Zones | Render the zone files on the primary
+  ansible.builtin.include_tasks: zones.yml
+  when: bind_is_primary
+
+# --- Zone definitions (primary or secondary) ---------------------------------
+
+- name: Config | Zones (primary or secondary)
+  ansible.builtin.template:
+    src: named.conf.local.j2
+    dest: /etc/bind/named.conf.local
+    owner: root
+    group: bind
+    mode: "0644"
+    validate: named-checkconf %s
+  notify: Reload named
+
+- name: Config | Check the full configuration and the primary zones
+  ansible.builtin.command: named-checkconf -z /etc/bind/named.conf
+  changed_when: false
+
+- name: Service | Enable and start named
+  ansible.builtin.systemd_service:
+    name: named
+    enabled: true
+    state: started
+
+- name: Service | Apply pending changes
+  ansible.builtin.meta: flush_handlers
+
+# --- Verify ------------------------------------------------------------------
+
+- name: Verify | Every server answers the zones with the primary's serial
+  ansible.builtin.command: "dig +short +norecurse @127.0.0.1 {{ item }} SOA"
+  register: bind_verify_soa
+  until: >-
+    bind_verify_soa.stdout.split() | length > 2 and
+    bind_verify_soa.stdout.split()[2] | int == hostvars[bind_primary].bind_zone_serials[item] | int
+  retries: 10
+  delay: 3
+  changed_when: false
+  loop: "{{ bind_zones | map(attribute='name') }}"
+  when: hostvars[bind_primary].bind_zone_serials is defined
+
+- name: Verify | Recursion works
+  ansible.builtin.command: dig +short @127.0.0.1 cloudflare.com A
+  register: bind_verify_recursion
+  until: bind_verify_recursion.stdout | length > 0
+  retries: 5
+  delay: 3
+  changed_when: false

@@ -1,0 +1,40 @@
+// {{ ansible_managed }}
+// Lab resolver: authoritative for the lab zones (named.conf.local), recursive
+// for everything else, for lab clients only.
+
+acl lab_clients {
+    127.0.0.0/8;
+{% for cidr in bind_client_cidrs %}
+    {{ cidr }};
+{% endfor %}
+};
+
+options {
+    directory "{{ bind_secondary_dir }}";
+
+    listen-on port 53 { 127.0.0.1; {{ ansible_host }}; };
+    listen-on-v6 { none; };
+
+    allow-query { lab_clients; };
+    allow-query-cache { lab_clients; };
+    recursion yes;
+    allow-recursion { lab_clients; };
+    allow-transfer { none; };
+    allow-update { none; };
+
+    forwarders {
+{% for fwd in bind_forwarders %}
+        {{ fwd }};
+{% endfor %}
+    };
+    forward {{ bind_forward_policy }};
+    dnssec-validation auto;
+
+    // NOTIFY only goes to the also-notify lists in named.conf.local.
+    notify explicit;
+
+    minimal-responses yes;
+    version none;
+    hostname none;
+    server-id none;
+};

@@ -34,12 +34,15 @@ tf-destroy: ## Destroy all lab VMs
 
 ## --- Ansible -----------------------------------------------------------------
 
-.PHONY: ping base k8s cilium sops-key argocd swarm site
+.PHONY: ping base dns k8s cilium sops-key argocd swarm site
 ping: ## Check SSH to every node
 	cd $(ANSIBLE_DIR) && ansible all -m ansible.builtin.ping
 
 base: ## OS baseline + hardening on every node
 	$(PLAYBOOK) playbooks/base.yml
+
+dns: ## Deploy BIND on dns-01/dns-02 (zone data: dns/records.yml)
+	$(PLAYBOOK) playbooks/dns.yml
 
 k8s: ## Build the Kubernetes cluster (kubeadm, kube-vip, Cilium)
 	$(PLAYBOOK) playbooks/kubernetes.yml
@@ -66,7 +69,7 @@ fmt: ## Format Terraform code
 	terraform fmt -recursive terraform
 
 sops-check: ## Fail if a *.sops.yaml manifest is not encrypted
-	@rc=0; for f in $$(git ls-files --cached --others --exclude-standard 'kubernetes/*.sops.yaml'); do \
+	@rc=0; for f in $$(git ls-files --cached --others --exclude-standard 'kubernetes/*.sops.yaml' 'dns/*.sops.yaml'); do \
 		grep -q '^sops:' "$$f" || { echo "not encrypted: $$f"; rc=1; }; \
 	done; exit $$rc
 
