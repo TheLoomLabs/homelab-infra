@@ -68,3 +68,8 @@ schedules:
       # restored by Velero; Longhorn restores volumes from its backups.
       excludedNamespaces:
         - longhorn-system
+      # Cilium recreates these for every pod; restoring old copies only
+      # produces stale objects.
+      excludedResources:
+        - ciliumendpoints.cilium.io
+        - ciliumidentities.cilium.io
