@@ -42,6 +42,7 @@ UFW on each node denies incoming traffic by default. Traffic is accepted from th
 7. **Ansible** `argocd.yml` bootstraps GitOps:
    - installs Helm on the first control-plane node and installs the `argo-cd` chart, using the version from `kubernetes/apps/argocd.yaml` and the values from `kubernetes/platform/argocd/values.yaml`
    - applies the `root` Application. From then on Argo CD syncs everything in `kubernetes/apps/`, including itself.
+8. **Ansible** `sops.yml` loads the age private key into the cluster, so sops-secrets-operator can decrypt the secrets in Git. In `site.yml` it runs before `argocd.yml`.
 
 ## LoadBalancer services
 
@@ -53,6 +54,17 @@ Cilium gives `LoadBalancer` services an address on the LAN, so no MetalLB is nee
 - The pool and the announcement policy are an Argo CD Application (`cilium-lb`). Cilium itself is still installed by Ansible.
 
 The pool range must stay outside the router's DHCP range. `externalTrafficPolicy: Local` does not work with L2 announcements, so services keep the default `Cluster`.
+
+## Secrets
+
+Secrets are stored in Git, encrypted with SOPS and age (ADR 0006):
+
+- Each secret is a `SopsSecret` manifest (`*.sops.yaml`) next to the component that uses it. Only `spec.secretTemplates` is encrypted.
+- **sops-secrets-operator** (Argo CD Application `sops-secrets-operator`, namespace `sops`) decrypts them and creates normal `Secret`s. Argo CD never sees plaintext.
+- The age private key is the one secret not in Git. It lives in `.artifacts/age.key` on the workstation, with an offline backup, and Ansible (`playbooks/sops.yml`) loads it into the cluster as `sops/sops-age-key-file`.
+- Pre-commit, `make sops-check` and CI reject a `*.sops.yaml` file that is not encrypted.
+
+How to add, edit and rotate secrets: [secrets.md](secrets.md).
 
 ## Why two orchestrators?
 

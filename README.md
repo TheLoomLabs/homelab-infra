@@ -18,8 +18,9 @@ Proxmox VE ──Terraform──▶ 8 Ubuntu VMs ──Ansible──▶ hardened
 | OS baseline | Ansible roles `common`, `hardening` | SSH key-only, UFW default-deny, fail2ban, sysctl hardening, unattended security updates, chrony |
 | Kubernetes | Ansible roles `k8s_*`, `cilium` | kubeadm, **3 control-plane nodes behind a kube-vip VIP**, containerd 2.x, **Cilium with kube-proxy replacement**, Hubble, **LB IPAM + L2 announcements** for `LoadBalancer` services |
 | GitOps | Argo CD (Helm), role `argocd` | Bootstrapped by Ansible, then **app of apps**: Argo CD syncs `kubernetes/apps/` and manages itself |
+| Secrets | SOPS + age, sops-secrets-operator, role `sops_age` | Secrets committed **encrypted**, decrypted in the cluster; Argo CD never sees plaintext |
 | Swarm | Ansible roles `docker`, `swarm` | Docker CE, 3-manager Raft quorum, node labels |
-| Quality | GitHub Actions, pre-commit | `terraform fmt/validate`, tflint, yamllint, ansible-lint (production profile), gitleaks |
+| Quality | GitHub Actions, pre-commit | `terraform fmt/validate`, tflint, yamllint, ansible-lint (production profile), gitleaks, SOPS encryption check |
 
 ## Architecture
 
@@ -70,7 +71,8 @@ make tf-plan && make tf-apply     # also writes ansible/inventory/hosts.yml
 
 # 4. Configuration
 make ping
-make site                         # base + Kubernetes + Argo CD + Swarm
+age-keygen -o .artifacts/age.key  # once, then back it up (docs/secrets.md)
+make site                         # base + Kubernetes + age key + Argo CD + Swarm
 
 # 5. Use it
 kubectl get nodes -o wide         # KUBECONFIG is set by devbox
@@ -88,19 +90,20 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 
 ```
 .
-├── devbox.json                 # pinned toolchain + env (KUBECONFIG, ANSIBLE_CONFIG)
+├── devbox.json                 # pinned toolchain + env (KUBECONFIG, ANSIBLE_CONFIG, SOPS_AGE_KEY_FILE)
+├── .sops.yaml                  # which files sops encrypts, and for which age key
 ├── Makefile                    # entry point: make help
 ├── terraform/
 │   ├── modules/proxmox-vm/     # one VM: disk import, cloud-init snippet, network
 │   └── envs/homelab/           # the lab: node map → VMs → Ansible inventory
 ├── ansible/
-│   ├── playbooks/              # site, base, kubernetes, cilium, argocd, swarm
-│   ├── roles/                  # common, hardening, docker, swarm,
-│   │                           # k8s_prereqs, k8s_control_plane, k8s_worker, cilium, argocd
+│   ├── playbooks/              # site, base, kubernetes, cilium, sops, argocd, swarm
+│   ├── roles/                  # common, hardening, docker, swarm, k8s_prereqs,
+│   │                           # k8s_control_plane, k8s_worker, cilium, sops_age, argocd
 │   └── inventory/group_vars/   # versions and CIDRs
 ├── kubernetes/
 │   ├── apps/                   # Argo CD Applications (app of apps, synced from main)
-│   └── platform/               # Helm values per component
+│   └── platform/               # Helm values, manifests and *.sops.yaml secrets per component
 └── docs/                       # architecture, bootstrap, ADRs, roadmap
 ```
 
@@ -108,7 +111,8 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 
 - This is a public repo. Node addresses and domains in the Terraform and Ansible code are placeholders (`192.168.10.0/24`, `lab.example.internal`); real values live in git-ignored `terraform.tfvars` and `.env` files.
 - Manifests that Argo CD syncs from GitHub must hold real values. Private LAN addresses (like the LoadBalancer pool in `kubernetes/platform/cilium-lb/`) are committed as is, because they are not reachable from outside. Secrets never are.
-- No secrets are committed. gitleaks runs in CI and `detect-private-key` runs in pre-commit.
+- Secrets are committed only as SOPS-encrypted `*.sops.yaml` files and decrypted in the cluster by sops-secrets-operator ([docs/secrets.md](docs/secrets.md)). The age private key exists only on the workstation, in an offline backup and in the cluster.
+- gitleaks runs in CI and pre-commit, `detect-private-key` in pre-commit, and a check rejects unencrypted `*.sops.yaml` files.
 - Nodes accept SSH keys only, run a default-deny firewall, and allow cluster traffic only from the lab, pod and service networks.
 
 ## License
