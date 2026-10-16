@@ -34,7 +34,7 @@ tf-destroy: ## Destroy all lab VMs
 
 ## --- Ansible -----------------------------------------------------------------
 
-.PHONY: ping base k8s cilium argocd swarm site
+.PHONY: ping base k8s cilium sops-key argocd swarm site
 ping: ## Check SSH to every node
 	cd $(ANSIBLE_DIR) && ansible all -m ansible.builtin.ping
 
@@ -47,6 +47,9 @@ k8s: ## Build the Kubernetes cluster (kubeadm, kube-vip, Cilium)
 cilium: ## Re-apply Cilium Helm values (cilium upgrade if they changed)
 	$(PLAYBOOK) playbooks/cilium.yml
 
+sops-key: ## Load the age private key into the cluster (SOPS)
+	$(PLAYBOOK) playbooks/sops.yml
+
 argocd: ## Bootstrap Argo CD and the root app (push kubernetes/ first)
 	$(PLAYBOOK) playbooks/argocd.yml
 
@@ -58,9 +61,14 @@ site: ## Everything: base + Kubernetes + Swarm
 
 ## --- Quality -----------------------------------------------------------------
 
-.PHONY: fmt secrets lint
+.PHONY: fmt sops-check secrets lint
 fmt: ## Format Terraform code
 	terraform fmt -recursive terraform
+
+sops-check: ## Fail if a *.sops.yaml manifest is not encrypted
+	@rc=0; for f in $$(git ls-files --cached --others --exclude-standard 'kubernetes/*.sops.yaml'); do \
+		grep -q '^sops:' "$$f" || { echo "not encrypted: $$f"; rc=1; }; \
+	done; exit $$rc
 
 secrets: ## Scan the full git history for leaked secrets (gitleaks)
 	gitleaks git --redact --verbose --exit-code 1 .
@@ -72,4 +80,5 @@ lint: ## Run all linters (same as CI)
 	tflint --init && tflint --recursive --config "$(CURDIR)/.tflint.hcl"
 	yamllint .
 	cd $(ANSIBLE_DIR) && ansible-lint
+	$(MAKE) sops-check
 	$(MAKE) secrets

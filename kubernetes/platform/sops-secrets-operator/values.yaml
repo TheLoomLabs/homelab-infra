@@ -1,0 +1,13 @@
+---
+# Helm values for the sops-secrets-operator chart.
+
+# The age private key. Ansible (playbooks/sops.yml) creates this Secret from
+# .artifacts/age.key on the workstation; it is never stored in Git.
+secretsAsFiles:
+  - name: sops-age-key-file
+    mountPath: /etc/sops-age-key-file
+    secretName: sops-age-key-file
+
+extraEnv:
+  - name: SOPS_AGE_KEY_FILE
+    value: /etc/sops-age-key-file/key

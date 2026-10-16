@@ -1,0 +1,15 @@
+title = "homelab-infra"
+
+# Keep all of gitleaks' default rules.
+[extend]
+useDefault = true
+
+# SOPS-encrypted values look like high-entropy tokens next to key names such
+# as "api-token". They are ciphertext, so they are allowed. A plaintext value in
+# a *.sops.yaml file is still caught, because only ENC[...] lines match.
+[allowlist]
+description = "SOPS ciphertext"
+regexTarget = "line"
+regexes = [
+  '''ENC\[AES256_GCM,data:[A-Za-z0-9+/=]*,iv:[A-Za-z0-9+/=]+,tag:[A-Za-z0-9+/=]+,type:[a-z]+\]''',
+]

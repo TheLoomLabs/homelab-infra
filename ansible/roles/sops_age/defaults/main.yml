@@ -1,0 +1,10 @@
+---
+# Must match kubernetes/platform/sops-secrets-operator/values.yaml and the
+# destination namespace in kubernetes/apps/sops-secrets-operator.yaml.
+sops_age_namespace: sops
+sops_age_secret_name: sops-age-key-file
+sops_age_secret_key: key
+
+# The age private key on the machine running Ansible (git-ignored). devbox sets
+# SOPS_AGE_KEY_FILE to the same path, so sops and this role use one key.
+sops_age_key_local_path: "{{ lookup('ansible.builtin.env', 'SOPS_AGE_KEY_FILE', default=playbook_dir ~ '/../../.artifacts/age.key') }}"

@@ -74,3 +74,6 @@ jobs:
 
       - name: Scan full git history
         run: gitleaks git --redact --verbose --exit-code 1 .
+
+      - name: SOPS files are encrypted
+        run: make sops-check

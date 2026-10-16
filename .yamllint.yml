@@ -9,6 +9,8 @@ ignore: |
   .artifacts/
   # Jinja templates are not plain YAML
   *.j2
+  # Written by sops (no document start marker, long encrypted lines)
+  kubernetes/**/*.sops.yaml
 
 rules:
   line-length:

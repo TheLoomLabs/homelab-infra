@@ -5,6 +5,9 @@
 - name: Kubernetes
   ansible.builtin.import_playbook: kubernetes.yml
 
+- name: SOPS age key
+  ansible.builtin.import_playbook: sops.yml
+
 - name: Argo CD
   ansible.builtin.import_playbook: argocd.yml
 

@@ -1,0 +1,6 @@
+---
+- name: Kubernetes | age key for SOPS secrets
+  hosts: k8s_control_plane[0]
+  become: true
+  roles:
+    - sops_age

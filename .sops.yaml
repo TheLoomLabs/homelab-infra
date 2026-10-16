@@ -1,0 +1,12 @@
+---
+# sops uses the first rule whose path_regex matches the file being encrypted.
+# The age public key below is not secret. The private key lives in
+# .artifacts/age.key (git-ignored, SOPS_AGE_KEY_FILE in devbox.json) and, inside
+# the cluster, in the Secret that playbooks/sops.yml creates. See docs/secrets.md.
+creation_rules:
+  # SopsSecret manifests synced by Argo CD. Only spec.secretTemplates is
+  # encrypted, so apiVersion, kind and metadata stay readable for Argo CD and
+  # for review.
+  - path_regex: kubernetes/.*\.sops\.yaml$
+    encrypted_suffix: Templates
+    age: age1fjsagzw9yzjhd5p6n4fmjstjvud9ucdp383mwe2gqn0k7rfaffrsa3asek
