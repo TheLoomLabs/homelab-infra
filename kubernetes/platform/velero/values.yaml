@@ -1,0 +1,70 @@
+---
+# Helm values for the Velero chart (ADR 0010).
+
+image:
+  # The chart's appVersion is v1.18.2; same minor, newer patch.
+  tag: v1.18.4
+
+initContainers:
+  - name: velero-plugin-for-aws
+    image: velero/velero-plugin-for-aws:v1.14.4
+    imagePullPolicy: IfNotPresent
+    volumeMounts:
+      - mountPath: /target
+        name: plugins
+
+# Argo CD applies the chart's crds/ directory itself; the CRD upgrade hook job
+# is for plain Helm.
+upgradeCRDs: false
+
+# The Secret velero-r2 comes from r2-credentials.sops.yaml. Key "cloud" is an
+# AWS credentials file that also holds endpoint_url, so the R2 account ID never
+# appears in Git; key "customer-key" is the SSE-C key.
+credentials:
+  useSecret: true
+  existingSecret: velero-r2
+
+# No Velero volume snapshotter and no file-system backups: volumes are backed
+# up by Longhorn through CSI VolumeSnapshots (class longhorn-backup).
+snapshotsEnabled: false
+deployNodeAgent: false
+
+configuration:
+  features: EnableCSI
+  defaultVolumesToFsBackup: false
+  defaultSnapshotMoveData: false
+  backupStorageLocation:
+    - name: default
+      provider: aws
+      bucket: theloomlabs-velero
+      default: true
+      config:
+        region: auto
+        s3ForcePathStyle: "true"
+        # No flexible checksums; S3-compatible stores like R2 don't all
+        # support them.
+        checksumAlgorithm: ""
+        # SSE-C: R2 encrypts every object with our key and can't read it
+        # without. The backups contain Kubernetes Secrets.
+        customerKeyEncryptionSecret: velero-r2/customer-key
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+schedules:
+  daily:
+    # 03:00 UTC, after Longhorn's own daily backup (02:00).
+    schedule: "0 3 * * *"
+    useOwnerReferencesInBackup: false
+    template:
+      ttl: 720h # 30 days
+      storageLocation: default
+      snapshotVolumes: true
+      # Longhorn's own objects (volumes, replicas, engines) must never be
+      # restored by Velero; Longhorn restores volumes from its backups.
+      excludedNamespaces:
+        - longhorn-system
