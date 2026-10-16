@@ -4,12 +4,16 @@ title = "homelab-infra"
 [extend]
 useDefault = true
 
-# SOPS-encrypted values look like high-entropy tokens next to key names such
-# as "api-token". They are ciphertext, so they are allowed. A plaintext value in
-# a *.sops.yaml file is still caught, because only ENC[...] lines match.
+# Lines that look like secrets but aren't (matched against the whole line):
+# - SOPS-encrypted values look like high-entropy tokens next to key names such
+#   as "api-token". They are ciphertext, so they are allowed. A plaintext value
+#   in a *.sops.yaml file is still caught, because only ENC[...] lines match.
+# - Published SHA-256 checksums of downloads (Ansible vars named *_sha256, like
+#   gateway_api_crds_sha256). Only a bare 64-char hex value is allowed.
 [allowlist]
-description = "SOPS ciphertext"
+description = "SOPS ciphertext, download checksums"
 regexTarget = "line"
 regexes = [
   '''ENC\[AES256_GCM,data:[A-Za-z0-9+/=]*,iv:[A-Za-z0-9+/=]+,tag:[A-Za-z0-9+/=]+,type:[a-z]+\]''',
+  '''^\s*[a-z0-9_]+_sha256: "?[0-9a-f]{64}"?\s*$''',
 ]
