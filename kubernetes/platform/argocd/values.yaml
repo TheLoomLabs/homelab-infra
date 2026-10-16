@@ -2,7 +2,7 @@
 # Helm values for the argo-cd chart. Used both by the Ansible bootstrap and by
 # the self-managed `argocd` Application, so the two never drift.
 global:
-  domain: argocd.lab.example.internal
+  domain: argocd.lab.theloomlabs.org
 
 configs:
   cm:
@@ -15,12 +15,22 @@ configs:
           - CiliumIdentity
         clusters:
           - "*"
+  params:
+    # TLS ends at the shared Gateway (wildcard cert), which forwards plain HTTP.
+    server.insecure: true
 
-# LAN IP from the Cilium LB pool until ingress (argocd.<lab domain>) exists.
-# Then switch back to ClusterIP.
+# Reached through the shared Gateway (kubernetes/platform/gateway) at
+# https://argocd.lab.theloomlabs.org. The service stays ClusterIP.
+# The argocd CLI needs --grpc-web through the Gateway.
 server:
-  service:
-    type: LoadBalancer
+  httproute:
+    enabled: true
+    parentRefs:
+      - name: lab
+        namespace: gateway
+        sectionName: https
+    hostnames:
+      - argocd.lab.theloomlabs.org
 
 # No SSO yet: the local admin account is enough for a single-user lab.
 dex:
