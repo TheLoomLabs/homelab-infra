@@ -1,0 +1,52 @@
+---
+# Helm values for the Longhorn chart (ADR 0009).
+
+# The pre-upgrade check is a Helm hook that does not fit GitOps; Longhorn's own
+# docs say to disable it under Argo CD. The manager still refuses unsupported
+# upgrade paths at start (upgradeVersionCheck stays on).
+preUpgradeChecker:
+  jobEnabled: false
+
+# The chart's StorageClass "longhorn" stays for data that needs no backup
+# (metrics, caches). It is not the default: the default is longhorn-encrypted
+# (storageclass-encrypted.yaml), so app data is encrypted at rest and in R2.
+persistence:
+  defaultClass: false
+  defaultClassReplicaCount: 2
+  reclaimPolicy: Delete
+
+csi:
+  # The encrypted StorageClass only uses node-side Secret references, which the
+  # kubelet resolves. The CSI controller sidecars don't need cluster-wide read
+  # access to every Secret.
+  allowControllerSecretAccess: false
+
+defaultSettings:
+  # Only nodes labelled node.longhorn.io/create-default-disk=true (the workers,
+  # role longhorn_node) get a disk; control-plane nodes stay storage-free.
+  createDefaultDiskLabeledNodes: true
+  # The dedicated data disk, mounted by Ansible.
+  defaultDataPath: /var/lib/longhorn/
+  # Two workers -> two replicas. Raise to 3 with a third worker.
+  defaultReplicaCount:
+    v1: "2"
+    v2: "2"
+  # The disk is dedicated to Longhorn; keep only a small reserve.
+  storageReservedPercentageForDefaultDisk: 10
+  # Don't drain a node that holds the last healthy replica of a volume; evict
+  # it to the other node first.
+  nodeDrainPolicy: block-for-eviction-if-contains-last-replica
+  # Spread replicas again when a node comes back or a new one joins.
+  replicaAutoBalance: best-effort
+  # Versions are pinned in Git; no calls home.
+  upgradeChecker: false
+  allowCollectingLonghornUsageMetrics: false
+
+# Two eligible nodes; the default of 3 would stack two on one worker.
+longhornGlobalManager:
+  replicas: 2
+
+# The UI has no authentication. It is not exposed (no HTTPRoute) until SSO
+# exists; use kubectl port-forward (docs/storage.md).
+longhornUI:
+  replicas: 1

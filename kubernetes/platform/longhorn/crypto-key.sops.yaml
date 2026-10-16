@@ -1,0 +1,29 @@
+apiVersion: isindir.github.com/v1alpha3
+kind: SopsSecret
+metadata:
+    name: longhorn-crypto
+    namespace: longhorn-system
+spec:
+    secretTemplates:
+        - name: ENC[AES256_GCM,data:xmFCYs1+z2tmyiM62EeS,iv:R7I4dJN21UakZwL9zqPpQhJ1m4jjYcLcdTs5Me1aFdo=,tag:gQihtMAmC0ktU72XKdCIjg==,type:str]
+          stringData:
+            CRYPTO_KEY_VALUE: ENC[AES256_GCM,data:dOhSnsmQ83/Iq1Q8GdN1nyYMHNDYDacnpRnW/x539Cn/h/kTc1RNNT5UH+Mp080h2cpb1IAOXgU4/j4U629whA==,iv:5kXOJB54mXDqEUWwjsG6al/P/3vRjIFyTHit/5vxDfQ=,tag:885iRvc1q4PfODUWbOhhsQ==,type:str]
+            CRYPTO_KEY_PROVIDER: ENC[AES256_GCM,data:DBpQrt6s,iv:VHXi1q0TwDI2VZ2MTUwt0+21whedxa2SIAiiaobEn9M=,tag:lj7yzRpGepm0rxLElbmh7A==,type:str]
+            CRYPTO_KEY_CIPHER: ENC[AES256_GCM,data:YonKF/pOrn1hKRNjuxbj,iv:HqjaMZR5zvO7cqBZNIBIXYXMdFYa2rn/3aUBtEhfxCo=,tag:z0EhnnxQu2jPu/F5vgJ1HQ==,type:str]
+            CRYPTO_KEY_HASH: ENC[AES256_GCM,data:vY1AUOUx,iv:emtEDJLPZ3B/QKttq2NbhOrRX3hTtqjV1cWSK2mzayE=,tag:RUjdygYHCoWv+oPJAF2fRw==,type:str]
+            CRYPTO_KEY_SIZE: ENC[AES256_GCM,data:U/Sh,iv:aSGXhHFEv1Rn7Mure1Rh2rW3N3HaS4xu3i1Y7FxWDfY=,tag:hOAxFnlc4TlkrDyo4d3xIg==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBsNEczNjRrNjBYL1RvbzBp
+            YlYzNXM1QkNKdTZsWWtRNVJOY3ltbVp0dFdBClhETERoUDRObG5FakluMG43Qi9v
+            VEl1encraEw4ZEZZUlFla1R3TUZ3bkkKLS0tIGtKZWZ0NUZJekh3VG1GL0ozaGE1
+            VGx1UVdPSEtVVHREWXVlS21HMkZ3QmsKiPQesGanIAiJcD+xhWqKvZvf1gASBLb0
+            vr7eELo4mWIUddWkJxKp8egq16BfD0xGYFTkCA01VtIAGZCaojtGHg==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1fjsagzw9yzjhd5p6n4fmjstjvud9ucdp383mwe2gqn0k7rfaffrsa3asek
+    encrypted_suffix: Templates
+    lastmodified: "2026-10-16T15:49:44Z"
+    mac: ENC[AES256_GCM,data:jgJhK32GPe6XuXmfUskO/hNp6qCIVZN+Ouc8HeT60X0tmZA8aUK/HrDNBDxgW0ZIOHI+zcf9DZc3e03ezDJnru6m8ooYbLNM7DcQviMgOO9qFKIz6PPEhp8p45MezILwYKbHZphLAN5SUurlHqKiDcdNb50Cr1yuAIpsirgXH2s=,iv:7lmfxWoYl7A4qFDl1hGaq4aZes3fdX694TZezTOi9HU=,tag:HQHklkhWK7RT+7tPB3LGLQ==,type:str]
+    version: 3.13.3

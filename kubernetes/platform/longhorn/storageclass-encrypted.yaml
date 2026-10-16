@@ -1,0 +1,32 @@
+---
+# Default StorageClass: Longhorn volumes encrypted with LUKS (dm-crypt). Their
+# backups are encrypted too, so the off-site copies in Cloudflare R2 are
+# ciphertext. The key is the Secret longhorn-crypto (crypto-key.sops.yaml).
+# Losing that key means losing every volume and backup made with it: keep an
+# offline copy, like the age key (docs/storage.md).
+#
+# StorageClass parameters are immutable. To change them, delete the
+# StorageClass and let Argo CD recreate it (existing volumes are not affected).
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn-encrypted
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+# App data stays when its PVC is deleted by mistake; clean up by hand.
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "2"
+  staleReplicaTimeout: "2880" # 48 hours, in minutes
+  fsType: ext4
+  dataEngine: v1
+  encrypted: "true"
+  csi.storage.k8s.io/node-publish-secret-name: longhorn-crypto
+  csi.storage.k8s.io/node-publish-secret-namespace: longhorn-system
+  csi.storage.k8s.io/node-stage-secret-name: longhorn-crypto
+  csi.storage.k8s.io/node-stage-secret-namespace: longhorn-system
+  csi.storage.k8s.io/node-expand-secret-name: longhorn-crypto
+  csi.storage.k8s.io/node-expand-secret-namespace: longhorn-system

@@ -1,0 +1,53 @@
+---
+# Longhorn: replicated block storage on the Kubernetes workers (ADR 0009). The
+# nodes are prepared by Ansible first (playbooks/longhorn.yml: iSCSI, NFS,
+# cryptsetup, data disk at /var/lib/longhorn). The same app ships the encrypted
+# default StorageClass and its key (SopsSecret).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: longhorn
+  namespace: argocd
+  annotations:
+    # After sops-secrets-operator (-8); nothing earlier needs storage.
+    argocd.argoproj.io/sync-wave: "-4"
+spec:
+  project: default
+  sources:
+    - repoURL: https://charts.longhorn.io
+      chart: longhorn
+      targetRevision: 1.13.0
+      helm:
+        releaseName: longhorn
+        valueFiles:
+          - $values/kubernetes/platform/longhorn/values.yaml
+    - repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+      targetRevision: main
+      ref: values
+    # StorageClass + SopsSecret. values.yaml is Helm input, not a manifest.
+    - repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+      targetRevision: main
+      path: kubernetes/platform/longhorn
+      directory:
+        exclude: values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: longhorn-system
+  syncPolicy:
+    automated:
+      # Never let a bad commit delete the storage system or its volumes.
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # The Longhorn CRDs are too large for client-side apply.
+      - ServerSideApply=true
+      # The SopsSecret CRD comes from another app; don't fail the dry run on a
+      # fresh cluster.
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
