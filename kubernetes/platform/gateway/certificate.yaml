@@ -1,0 +1,22 @@
+---
+# One wildcard certificate for all lab hosts. Only the wildcard name shows up
+# in Certificate Transparency logs, so individual service names stay private.
+# The Secret lives next to the Gateway, so no ReferenceGrant is needed.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: lab-wildcard
+  namespace: gateway
+spec:
+  secretName: lab-wildcard-tls
+  dnsNames:
+    - lab.theloomlabs.org
+    - "*.lab.theloomlabs.org"
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: letsencrypt-staging

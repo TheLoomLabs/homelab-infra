@@ -1,0 +1,38 @@
+---
+# Entry point for HTTP(S) traffic into the cluster. Cilium creates a
+# LoadBalancer service for it, with this fixed address from the LB IPAM pool;
+# the lab DNS points *.lab.theloomlabs.org here. TLS ends at the Gateway.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: lab
+  namespace: gateway
+spec:
+  gatewayClassName: cilium
+  addresses:
+    - type: IPAddress
+      value: 192.168.1.61
+  listeners:
+    # Plain HTTP only redirects to HTTPS (http-redirect.yaml), so only routes
+    # from this namespace may attach.
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: "*.lab.theloomlabs.org"
+      allowedRoutes:
+        namespaces:
+          from: Same
+    # Apps in any namespace attach here with an HTTPRoute that sets
+    # parentRefs: [{name: lab, namespace: gateway, sectionName: https}].
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.lab.theloomlabs.org"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: lab-wildcard-tls
+      allowedRoutes:
+        namespaces:
+          from: All

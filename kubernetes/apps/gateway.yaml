@@ -1,0 +1,36 @@
+---
+# The shared Gateway for every *.lab.theloomlabs.org service, with its wildcard
+# certificate. Apps attach to it with an HTTPRoute (ADR 0007). The Gateway API
+# CRDs and the `cilium` GatewayClass come from Ansible (role cilium).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gateway
+  namespace: argocd
+  annotations:
+    # After cert-manager (-7). Needs the cilium-lb pool (-5) for its address,
+    # but only once it reconciles, so the order between the two doesn't matter.
+    argocd.argoproj.io/sync-wave: "-6"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+    targetRevision: main
+    path: kubernetes/platform/gateway
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gateway
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # The Certificate CRD comes from the cert-manager app, which may still be
+      # syncing on a fresh cluster.
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
