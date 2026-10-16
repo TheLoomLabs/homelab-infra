@@ -1,0 +1,53 @@
+---
+# Let's Encrypt issuers using DNS-01 through Cloudflare. DNS-01 works for hosts
+# that are not reachable from the internet and is the only way to get wildcard
+# certificates. Use letsencrypt-staging to test (untrusted certs, high rate
+# limits), then switch to letsencrypt-prod.
+#
+# No contact email: Let's Encrypt no longer sends expiry emails, and this repo
+# is public. The Cloudflare token Secret comes from cloudflare-api-token.sops.yaml
+# (ClusterIssuers read Secrets in the cert-manager namespace).
+#
+# Wave 1: applied once the chart (wave 0) is healthy, so the CRDs and the
+# validating webhook are up.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - selector:
+          dnsZones:
+            - theloomlabs.org
+        dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - selector:
+          dnsZones:
+            - theloomlabs.org
+        dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token

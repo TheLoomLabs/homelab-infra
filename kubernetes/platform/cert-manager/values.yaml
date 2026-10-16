@@ -1,0 +1,14 @@
+---
+# Helm values for the cert-manager chart.
+
+# CRDs are part of the release, and stay if the release is ever removed
+# (deleting them would delete every Certificate and Issuer with them).
+crds:
+  enabled: true
+  keep: true
+
+# The DNS-01 self check must ask public resolvers. Once the internal DNS server
+# answers lab.theloomlabs.org on the LAN (split horizon), the cluster's normal
+# resolver would never see the _acme-challenge TXT records in Cloudflare.
+dns01RecursiveNameservers: "1.1.1.1:53,1.0.0.1:53"
+dns01RecursiveNameserversOnly: true

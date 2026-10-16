@@ -1,0 +1,50 @@
+---
+# cert-manager issues the lab's TLS certificates from Let's Encrypt, proving
+# domain ownership with DNS-01 records in Cloudflare (ADR 0007). The same app
+# ships the ClusterIssuers and the encrypted Cloudflare API token.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  annotations:
+    # After sops-secrets-operator (-8), before the Gateway that needs a cert.
+    argocd.argoproj.io/sync-wave: "-7"
+spec:
+  project: default
+  sources:
+    - repoURL: https://charts.jetstack.io
+      chart: cert-manager
+      targetRevision: v1.21.2
+      helm:
+        releaseName: cert-manager
+        valueFiles:
+          - $values/kubernetes/platform/cert-manager/values.yaml
+    - repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+      targetRevision: main
+      ref: values
+    # ClusterIssuers + SopsSecret. values.yaml is Helm input, not a manifest.
+    - repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+      targetRevision: main
+      path: kubernetes/platform/cert-manager
+      directory:
+        exclude: values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      # The ClusterIssuer CRD comes with the chart in this same sync, and the
+      # SopsSecret CRD with another app; don't fail the dry run on a fresh cluster.
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
