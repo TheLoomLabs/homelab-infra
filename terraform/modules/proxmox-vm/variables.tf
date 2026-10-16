@@ -112,3 +112,9 @@ variable "started" {
   type        = bool
   default     = true
 }
+
+variable "startup_order" {
+  description = "Proxmox boot order on host start (lower starts first). null = no order."
+  type        = number
+  default     = null
+}

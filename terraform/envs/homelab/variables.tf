@@ -104,19 +104,24 @@ variable "k8s_api_vip_offset" {
 variable "nodes" {
   description = <<-EOT
     Every VM in the lab. 'group' maps to the Ansible inventory group
-    (k8s_control_plane, k8s_workers, swarm_managers, swarm_workers);
-    'ip_offset' is the host number inside network_cidr.
+    (dns, k8s_control_plane, k8s_workers, swarm_managers, swarm_workers);
+    'ip_offset' is the host number inside network_cidr. 'startup_order' sets
+    the Proxmox boot order (lower starts first; unset = no order).
   EOT
   type = map(object({
-    vm_id     = number
-    group     = string
-    ip_offset = number
-    cores     = number
-    memory_mb = number
-    disk_gb   = number
+    vm_id         = number
+    group         = string
+    ip_offset     = number
+    cores         = number
+    memory_mb     = number
+    disk_gb       = number
+    startup_order = optional(number)
   }))
 
   default = {
+    # DNS boots first: every other VM and the whole house resolve through it.
+    dns-01     = { vm_id = 211, group = "dns", ip_offset = 11, cores = 1, memory_mb = 1024, disk_gb = 16, startup_order = 1 }
+    dns-02     = { vm_id = 212, group = "dns", ip_offset = 12, cores = 1, memory_mb = 1024, disk_gb = 16, startup_order = 1 }
     k8s-cp-01  = { vm_id = 221, group = "k8s_control_plane", ip_offset = 21, cores = 2, memory_mb = 4096, disk_gb = 40 }
     k8s-cp-02  = { vm_id = 222, group = "k8s_control_plane", ip_offset = 22, cores = 2, memory_mb = 4096, disk_gb = 40 }
     k8s-cp-03  = { vm_id = 223, group = "k8s_control_plane", ip_offset = 23, cores = 2, memory_mb = 4096, disk_gb = 40 }
@@ -130,9 +135,9 @@ variable "nodes" {
   validation {
     condition = alltrue([
       for n in values(var.nodes) :
-      contains(["k8s_control_plane", "k8s_workers", "swarm_managers", "swarm_workers"], n.group)
+      contains(["dns", "k8s_control_plane", "k8s_workers", "swarm_managers", "swarm_workers"], n.group)
     ])
-    error_message = "Each node group must be one of: k8s_control_plane, k8s_workers, swarm_managers, swarm_workers."
+    error_message = "Each node group must be one of: dns, k8s_control_plane, k8s_workers, swarm_managers, swarm_workers."
   }
 
   validation {

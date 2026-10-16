@@ -8,6 +8,13 @@ locals {
   groups = distinct([for n in values(var.nodes) : n.group])
 
   k8s_api_vip = cidrhost(var.network_cidr, var.k8s_api_vip_offset)
+
+  # Second Proxmox tag per group: the platform the VM belongs to.
+  platform_tag = {
+    for g in local.groups : g => (
+      startswith(g, "k8s") ? "kubernetes" : startswith(g, "swarm") ? "swarm" : g
+    )
+  }
 }
 
 # One shared Ubuntu cloud image, imported into every VM's disk.
@@ -27,7 +34,9 @@ module "vm" {
   name      = each.key
   vm_id     = each.value.vm_id
   node_name = var.proxmox_node
-  tags      = [replace(each.value.group, "_", "-"), startswith(each.value.group, "k8s") ? "kubernetes" : "swarm"]
+  tags      = [replace(each.value.group, "_", "-"), local.platform_tag[each.value.group]]
+
+  startup_order = each.value.startup_order
 
   cores     = each.value.cores
   memory_mb = each.value.memory_mb
