@@ -30,19 +30,19 @@ sops decrypt kubernetes/platform/longhorn/crypto-key.sops.yaml | grep CRYPTO_KEY
 
 | Schedule | When (UTC) | Keeps | Scope |
 |---|---|---|---|
-| `velero-daily` | 03:00 | 30 days | all namespaces except `longhorn-system` |
+| `velero-daily` | 03:00 | 30 days | all namespaces except `longhorn-system`; without CiliumEndpoints/Identities |
 
 `longhorn-system` is excluded: Longhorn's own objects (volumes, replicas, engines) are restored by Longhorn, never by Velero. Velero deletes expired backups, including the Longhorn backups of their VolumeSnapshots. No lifecycle rules on either bucket.
 
 ## Check
 
-The `velero` CLI isn't needed; kubectl shows everything.
+The `velero` CLI isn't needed; kubectl shows everything. Use the full resource names (`backups.velero.io`, `restores.velero.io`): Longhorn also has a `Backup` kind, and `kubectl get backup` resolves to `backups.longhorn.io`.
 
 ```bash
 kubectl -n velero get backupstoragelocations          # default: PHASE Available
 kubectl -n velero get schedules
-kubectl -n velero get backups --sort-by=.metadata.creationTimestamp
-kubectl -n velero get backup <name> -o jsonpath='{.status.phase} errors={.status.errors} warnings={.status.warnings}{"\n"}'
+kubectl -n velero get backups.velero.io --sort-by=.metadata.creationTimestamp
+kubectl -n velero get backups.velero.io <name> -o jsonpath='{.status.phase} errors={.status.errors} warnings={.status.warnings}{"\n"}'
 kubectl get volumesnapshots -A
 ```
 
@@ -50,6 +50,18 @@ kubectl get volumesnapshots -A
 
 ```bash
 kubectl -n velero logs deploy/velero | grep <backup name>
+```
+
+Known harmless restore warnings: `ConfigMap:kube-root-ca.crt already exists` (Kubernetes creates it in every new namespace) and `No annotations found for …`.
+
+### Velero started before the snapshot CRDs
+
+On a fresh cluster Argo CD may start Velero before `snapshot-controller` has installed the VolumeSnapshot CRDs. Velero then caches an API list without them and every backup ends `PartiallyFailed` with `no matches for snapshot.storage.k8s.io/, Resource=volumesnapshots`, although the Longhorn backup itself completes. Fix: `kubectl -n velero rollout restart deploy/velero`, then delete the orphaned VolumeSnapshots of the failed backup (`kubectl get volumesnapshots -A`).
+
+Velero's `Backup` and `Restore` kinds have no status columns, so `kubectl get … -w` shows only the name. Poll the phase instead:
+
+```bash
+until s=$(kubectl -n velero get backups.velero.io <name> -o jsonpath='{.status.phase}'); [[ "$s" =~ ^(Completed|PartiallyFailed|Failed|FailedValidation)$ ]]; do echo "${s:-New}"; sleep 10; done; echo "$s"
 ```
 
 ## Back up now
@@ -85,7 +97,7 @@ spec:
   includedNamespaces: [<namespace>]
   restorePVs: true
 EOF
-kubectl -n velero get restores -w     # Completed
+kubectl -n velero get restores.velero.io -w     # Completed
 ```
 
 Apps managed by Argo CD come back from Git as well; Velero matters for what Git doesn't have: PVC data, runtime-created Secrets, and the exact state at backup time.
@@ -126,5 +138,5 @@ unset R2_ACCOUNT R2_KEY_ID R2_SECRET SSEC
 ## Disaster recovery (new cluster)
 
 1. Rebuild the VMs and the cluster (docs/bootstrap.md); restore the age key; Argo CD syncs everything from Git, including Longhorn, the backup targets and Velero.
-2. Velero finds the existing backups in R2 by itself (`kubectl -n velero get backups`).
+2. Velero finds the existing backups in R2 by itself (`kubectl -n velero get backups.velero.io`).
 3. Restore the app namespaces one by one, as above.
