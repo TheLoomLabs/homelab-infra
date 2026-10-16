@@ -191,6 +191,110 @@
         }
       }
     },
+    "dig@latest": {
+      "last_modified": "2026-10-14T08:20:44Z",
+      "resolved": "github:NixOS/nixpkgs/319e4cebef10cbb636c6ea392137b52ad105336a#dig",
+      "source": "devbox-search",
+      "version": "9.20.29",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "dnsutils",
+              "path": "/nix/store/248n8ipilwrvvza40cirjnz8nn17ddpd-bind-9.20.29-dnsutils",
+              "default": true
+            },
+            {
+              "name": "out",
+              "path": "/nix/store/rlh282ii0nqgmp6clpyvy9gxfdlpcq2p-bind-9.20.29",
+              "default": true
+            },
+            {
+              "name": "host",
+              "path": "/nix/store/lyfbjiw0s3xlny4zl6j0na7jnqbp91y2-bind-9.20.29-host",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/bkgixnnlsry95yqr41mw1d7pf0jgkzk3-bind-9.20.29-dev"
+            },
+            {
+              "name": "lib",
+              "path": "/nix/store/k0jpzy8yj2rqpr4bjv1n086igxpnxnr8-bind-9.20.29-lib"
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/y7h2bnqkpsm2038rqdqw5ycxzx2sg58d-bind-9.20.29-man"
+            }
+          ],
+          "store_path": "/nix/store/248n8ipilwrvvza40cirjnz8nn17ddpd-bind-9.20.29-dnsutils"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "dnsutils",
+              "path": "/nix/store/0id67w02ap5s8h5kb2qg0m9b9jy9fmij-bind-9.20.29-dnsutils",
+              "default": true
+            },
+            {
+              "name": "out",
+              "path": "/nix/store/nvz5ya08ik6w5d25mv9mzi26njc4zrxh-bind-9.20.29",
+              "default": true
+            },
+            {
+              "name": "host",
+              "path": "/nix/store/4cx0wr6nxnn0761y74m4i0zalcgdn2m8-bind-9.20.29-host",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/4q3jyfqfcx3frs4wjjpx3xycpq4v096r-bind-9.20.29-dev"
+            },
+            {
+              "name": "lib",
+              "path": "/nix/store/2v48hcmzqg2rz1nxvnmamgbvnzyig2cv-bind-9.20.29-lib"
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/1kmsjsawizwkicyndimw3hcl47i6qhaf-bind-9.20.29-man"
+            }
+          ],
+          "store_path": "/nix/store/0id67w02ap5s8h5kb2qg0m9b9jy9fmij-bind-9.20.29-dnsutils"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "dnsutils",
+              "path": "/nix/store/0y30h11k9axnvsyl1sa6r7fbyjh8fq9z-bind-9.20.29-dnsutils",
+              "default": true
+            },
+            {
+              "name": "out",
+              "path": "/nix/store/z0darw3y1f9k1s6hpzadhm7vrw75h4hm-bind-9.20.29",
+              "default": true
+            },
+            {
+              "name": "host",
+              "path": "/nix/store/kgihlqls75lqzpygycb5d9cgrx07qajl-bind-9.20.29-host",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/3qk1hpxnbx44836gsc9ixccwv5ijavni-bind-9.20.29-dev"
+            },
+            {
+              "name": "lib",
+              "path": "/nix/store/76bsx9fkc8siv88i7i9k5czmaiv613cq-bind-9.20.29-lib"
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/n9hb4ijw9hbskm5mlgzcl48s7b32riqk-bind-9.20.29-man"
+            }
+          ],
+          "store_path": "/nix/store/0y30h11k9axnvsyl1sa6r7fbyjh8fq9z-bind-9.20.29-dnsutils"
+        }
+      }
+    },
     "github:NixOS/nixpkgs/nixpkgs-unstable": {
       "last_modified": "2026-10-14T08:20:44Z",
       "resolved": "github:NixOS/nixpkgs/319e4cebef10cbb636c6ea392137b52ad105336a?lastModified=1791966044&narHash=sha256-t1hT8UW97rFCWCJO7%2FpClvu0AhLN5V3uir2M0ic4w%2FQ%3D"

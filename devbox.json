@@ -19,7 +19,8 @@
     "yq-go@latest",
     "shellcheck@latest",
     "gnumake@latest",
-    "gitleaks@latest"
+    "gitleaks@latest",
+    "dig@latest"
   ],
   "env": {
     "KUBECONFIG":        "$PWD/.artifacts/kubeconfig",
