@@ -1,7 +1,8 @@
 ---
 # Default StorageClass: Longhorn volumes encrypted with LUKS (dm-crypt). Their
 # backups are encrypted too, so the off-site copies in Cloudflare R2 are
-# ciphertext. The key is the Secret longhorn-crypto (crypto-key.sops.yaml).
+# ciphertext. New volumes join the recurring job group "encrypted"
+# (recurring-jobs.yaml): local snapshots and backups to R2. The key is the Secret longhorn-crypto (crypto-key.sops.yaml).
 # Losing that key means losing every volume and backup made with it: keep an
 # offline copy, like the age key (docs/storage.md).
 #
@@ -23,6 +24,7 @@ parameters:
   staleReplicaTimeout: "2880" # 48 hours, in minutes
   fsType: ext4
   dataEngine: v1
+  recurringJobSelector: '[{"name":"encrypted","isGroup":true}]'
   encrypted: "true"
   csi.storage.k8s.io/node-publish-secret-name: longhorn-crypto
   csi.storage.k8s.io/node-publish-secret-namespace: longhorn-system

@@ -42,6 +42,16 @@ defaultSettings:
   upgradeChecker: false
   allowCollectingLonghornUsageMetrics: false
 
+# Off-site backups: Cloudflare R2 (S3 API). R2 needs the region "auto" in
+# the URL. The Secret longhorn-r2 (r2-credentials.sops.yaml) holds the
+# bucket-scoped token and the endpoint https://<account-id>.r2.cloudflarestorage.com.
+# Longhorn owns the backup lifecycle: no lifecycle rules on the bucket;
+# retention is set in recurring-jobs.yaml.
+defaultBackupStore:
+  backupTarget: s3://theloomlabs-longhorn@auto/
+  backupTargetCredentialSecret: longhorn-r2
+  pollInterval: 300
+
 # Two eligible nodes; the default of 3 would stack two on one worker.
 longhornGlobalManager:
   replicas: 2

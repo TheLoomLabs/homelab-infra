@@ -1,0 +1,46 @@
+---
+# Snapshots and backups for volumes in the group "encrypted", which every
+# volume of the StorageClass longhorn-encrypted joins. Volumes of the plain
+# "longhorn" class are in no group, so nothing unencrypted reaches R2.
+#
+# Times are UTC (02:00 UTC = 03:00/04:00 in Zagreb). Jobs skip volumes without
+# new data and detached volumes. Retention is counted per volume; Longhorn
+# deletes old backups itself (the bucket has no lifecycle rules, by design).
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: snapshot-hourly
+  namespace: longhorn-system
+spec:
+  task: snapshot
+  cron: "15 * * * *"
+  groups: [encrypted]
+  retentionPolicy: count-based
+  retain: 24
+  concurrency: 2
+---
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: backup-daily
+  namespace: longhorn-system
+spec:
+  task: backup
+  cron: "0 2 * * *"
+  groups: [encrypted]
+  retentionPolicy: count-based
+  retain: 14
+  concurrency: 1
+---
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: backup-weekly
+  namespace: longhorn-system
+spec:
+  task: backup
+  cron: "30 3 * * 0"
+  groups: [encrypted]
+  retentionPolicy: count-based
+  retain: 8
+  concurrency: 1
