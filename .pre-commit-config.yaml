@@ -39,4 +39,4 @@ repos:
         name: SOPS files are encrypted
         entry: bash -c 'rc=0; for f in "$@"; do grep -q "^sops:" "$f" || { echo "$f is not encrypted"; rc=1; }; done; exit $rc' --
         language: system
-        files: ^kubernetes/.*\.sops\.yaml$
+        files: ^(kubernetes|dns)/.*\.sops\.yaml$
