@@ -25,8 +25,12 @@ configs:
 server:
   httproute:
     enabled: true
+    # group and kind spelled out: the API server defaults them, and Argo CD
+    # would otherwise show the route as OutOfSync.
     parentRefs:
-      - name: lab
+      - group: gateway.networking.k8s.io
+        kind: Gateway
+        name: lab
         namespace: gateway
         sectionName: https
     hostnames:
