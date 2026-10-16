@@ -5,6 +5,8 @@ all:
     k8s_api_vip: ${k8s_api_vip}
     lab_network_cidr: ${network_cidr}
     lab_dns_domain: ${dns_domain}
+    lab_dns_servers: ${jsonencode(dns_servers)}
+    upstream_dns_servers: ${jsonencode(upstream_dns)}
   children:
 %{ for group, hosts in groups ~}
     ${group}:

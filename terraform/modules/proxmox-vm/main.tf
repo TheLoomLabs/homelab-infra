@@ -96,6 +96,10 @@ resource "proxmox_virtual_environment_vm" "this" {
 
   lifecycle {
     # A newer cloud image must not recreate running cluster nodes.
-    ignore_changes = [disk[0].import_from]
+    # Cloud-init only sets a VM up on first boot: changing it later would
+    # recreate the VM (new user-data file) or reboot it with a new cloud-init
+    # instance ID. Day-2 changes such as DNS resolvers go through Ansible
+    # (role common), so existing VMs ignore it and new VMs get the new values.
+    ignore_changes = [disk[0].import_from, initialization]
   }
 }

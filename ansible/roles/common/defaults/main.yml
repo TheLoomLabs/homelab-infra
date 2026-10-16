@@ -12,3 +12,11 @@ common_packages:
   - vim
 
 common_journald_max_use: 500M
+
+# Resolvers and search domain of every VM (from the Terraform inventory). The
+# DNS VMs override this with the public resolvers (group_vars/dns.yml). An
+# empty list leaves the resolvers cloud-init set on first boot.
+common_dns_servers: "{{ lab_dns_servers | default([]) }}"
+common_dns_search:
+  - "{{ lab_dns_domain }}"
+common_netplan_file: /etc/netplan/50-cloud-init.yaml

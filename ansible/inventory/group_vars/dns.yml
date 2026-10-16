@@ -1,0 +1,4 @@
+---
+# The DNS VMs resolve through the public resolvers, not through themselves, so
+# a rebuilt dns-01/dns-02 can install packages before BIND runs on it.
+common_dns_servers: "{{ upstream_dns_servers | default(['1.1.1.1', '9.9.9.9']) }}"

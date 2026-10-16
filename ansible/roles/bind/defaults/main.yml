@@ -23,9 +23,7 @@ bind_client_cidrs:
 
 # Upstream resolvers for everything outside the lab zones. "first" falls back
 # to full recursion from the root servers if both forwarders are unreachable.
-bind_forwarders:
-  - 1.1.1.1
-  - 9.9.9.9
+bind_forwarders: "{{ upstream_dns_servers | default(['1.1.1.1', '9.9.9.9']) }}"
 bind_forward_policy: first
 
 # TSIG key for NOTIFY and zone transfers. The secret (bind_tsig_secret) comes

@@ -7,6 +7,8 @@ all:
     k8s_api_vip: 192.168.10.20
     lab_network_cidr: 192.168.10.0/24
     lab_dns_domain: lab.example.internal
+    lab_dns_servers: [192.168.10.11, 192.168.10.12]
+    upstream_dns_servers: [1.1.1.1, 9.9.9.9]
   children:
     dns:
       hosts:

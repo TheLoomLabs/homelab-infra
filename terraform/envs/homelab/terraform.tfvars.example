@@ -6,8 +6,9 @@ file_datastore = "local"
 
 network_cidr = "192.168.10.0/24"
 gateway      = "192.168.10.1"
-dns_servers  = ["192.168.10.1"]
+dns_servers  = ["192.168.10.11", "192.168.10.12"] # dns-01, dns-02
 dns_domain   = "lab.example.internal"
+# upstream_dns_servers = ["1.1.1.1", "9.9.9.9"]       # used by the DNS VMs themselves
 
 admin_user = "ops"
 ssh_public_keys = [

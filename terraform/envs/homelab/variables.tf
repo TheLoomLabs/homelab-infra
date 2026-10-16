@@ -63,9 +63,15 @@ variable "gateway" {
 }
 
 variable "dns_servers" {
-  description = "DNS resolvers."
+  description = "DNS resolvers for the lab VMs (the lab DNS servers dns-01/dns-02)."
   type        = list(string)
-  default     = ["192.168.10.1"]
+  default     = ["192.168.10.11", "192.168.10.12"]
+}
+
+variable "upstream_dns_servers" {
+  description = "Public resolvers. The DNS VMs use them for themselves, so a rebuilt DNS VM never depends on the lab DNS it provides."
+  type        = list(string)
+  default     = ["1.1.1.1", "9.9.9.9"]
 }
 
 variable "dns_domain" {

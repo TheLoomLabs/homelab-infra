@@ -50,7 +50,7 @@ module "vm" {
   vlan_id      = var.vlan_id
   ipv4_cidr    = "${local.node_ips[each.key]}/${local.prefix_length}"
   ipv4_gateway = var.gateway
-  dns_servers  = var.dns_servers
+  dns_servers  = each.value.group == "dns" ? var.upstream_dns_servers : var.dns_servers
   dns_domain   = var.dns_domain
 
   admin_user      = var.admin_user
@@ -72,5 +72,7 @@ resource "local_file" "ansible_inventory" {
     k8s_api_vip  = local.k8s_api_vip
     network_cidr = var.network_cidr
     dns_domain   = var.dns_domain
+    dns_servers  = var.dns_servers
+    upstream_dns = var.upstream_dns_servers
   })
 }

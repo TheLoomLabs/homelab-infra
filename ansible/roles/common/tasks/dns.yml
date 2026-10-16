@@ -1,0 +1,77 @@
+---
+# Cloud-init writes the netplan config once, on first boot. Ansible owns the
+# resolvers after that (Terraform ignores cloud-init changes on existing VMs).
+# The change is applied with resolvectl, not `netplan apply`: re-applying the
+# interface config can drop addresses netplan does not know about, such as the
+# kube-vip VIP on a control-plane node.
+
+- name: DNS | Stop cloud-init from rewriting the network config
+  ansible.builtin.copy:
+    dest: /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+    content: |
+      # Managed by Ansible (role common): network config is set up once by
+      # cloud-init and maintained by Ansible afterwards.
+      network: {config: disabled}
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: DNS | Read the netplan config
+  ansible.builtin.slurp:
+    src: "{{ common_netplan_file }}"
+  register: common_netplan_raw
+
+- name: DNS | Set resolvers and search domain on every ethernet interface
+  ansible.builtin.set_fact:
+    common_netplan: "{{ common_netplan_current | combine(common_netplan_patch, recursive=true) }}"
+  vars:
+    common_netplan_current: "{{ common_netplan_raw.content | b64decode | from_yaml }}"
+    common_netplan_names: "{{ common_netplan_current.network.ethernets.keys() | list }}"
+    common_netplan_ns:
+      nameservers:
+        addresses: "{{ common_dns_servers }}"
+        search: "{{ common_dns_search }}"
+    common_netplan_patch:
+      network:
+        ethernets: "{{ dict(common_netplan_names | zip([common_netplan_ns] * (common_netplan_names | length))) }}"
+
+- name: DNS | Write the netplan config
+  ansible.builtin.copy:
+    dest: "{{ common_netplan_file }}"
+    content: "{{ common_netplan | to_nice_yaml(indent=2) }}"
+    owner: root
+    group: root
+    mode: "0600"
+    backup: true
+
+- name: DNS | Validate the netplan config
+  ansible.builtin.command: netplan generate
+  changed_when: false
+
+- name: DNS | Read the live resolvers
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      resolvectl dns {{ item.value['set-name'] | default(item.key) }} | cut -d: -f2- &&
+      resolvectl domain {{ item.value['set-name'] | default(item.key) }} | cut -d: -f2-
+    executable: /bin/bash
+  loop: "{{ common_netplan.network.ethernets | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: common_dns_live
+  changed_when: false
+
+- name: DNS | Apply the resolvers now (no interface restart)
+  ansible.builtin.shell: >-
+    resolvectl dns {{ item.item.value['set-name'] | default(item.item.key) }} {{ common_dns_servers | join(' ') }} &&
+    resolvectl domain {{ item.item.value['set-name'] | default(item.item.key) }} {{ common_dns_search | join(' ') }}
+  loop: "{{ common_dns_live.results }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+  changed_when: true
+  # IPv6 servers learned from router advertisements (the Starlink router, which
+  # forwards to the lab DNS anyway) may sit next to them and are ignored here.
+  when: >-
+    item.stdout_lines | length < 2 or
+    item.stdout_lines[0].split() | select('match', '^[0-9.]+$') | list != common_dns_servers or
+    item.stdout_lines[1].split() != common_dns_search
