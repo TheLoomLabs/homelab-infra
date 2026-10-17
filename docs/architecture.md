@@ -36,7 +36,7 @@ UFW on each node denies incoming traffic by default. Traffic is accepted from th
 5. **Ansible** `dns.yml` sets up BIND on `dns-01` and `dns-02` (see [DNS](#dns)).
 6. **Ansible** `kubernetes.yml`:
    - installs containerd 2.x with systemd cgroups, then kubeadm/kubelet/kubectl pinned to one minor version
-   - runs `kubeadm init` on the first control-plane node. kube-vip runs as a static pod and holds the API VIP (ARP mode with leader election). kube-proxy is skipped.
+   - runs `kubeadm init` on the first control-plane node. kube-vip runs as a static pod and holds the API VIP (ARP mode with leader election). kube-proxy is skipped. Per-node kubeadm patches serve etcd metrics, kube-scheduler and kube-controller-manager on the node address, so Prometheus can scrape them ([monitoring.md](monitoring.md#control-plane-metrics)).
    - joins the other control-plane nodes one at a time (`serial: 1`) using a fresh token and certificate key
    - joins the workers
    - installs the Gateway API CRDs (pinned version and checksum), then Cilium as the kube-proxy replacement, with Hubble relay, Hubble UI, L2 announcements and the Gateway API controller. When the Helm values change, the role runs `cilium upgrade` (`playbooks/cilium.yml` re-applies only this part)

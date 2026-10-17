@@ -11,6 +11,7 @@ kube-prometheus-stack runs Prometheus, Alertmanager and Grafana in the namespace
 | Grafana on the Gateway | `kubernetes/platform/monitoring/grafana-httproute.yaml` |
 | Longhorn metrics and alerts | `metrics.serviceMonitor` in `kubernetes/platform/longhorn/values.yaml`, `kubernetes/platform/longhorn/prometheusrule.yaml` |
 | Velero metrics and alerts | `metrics.serviceMonitor` in `kubernetes/platform/velero/values.yaml`, `kubernetes/platform/velero/prometheusrule.yaml` |
+| Control-plane metrics (etcd, scheduler, controller manager) | kubeadm patches in `ansible/roles/k8s_control_plane/templates/patches/`, `kubeEtcd`/`kubeScheduler`/`kubeControllerManager` in `values.yaml` |
 | Logs (Loki, Alloy) and their alerts | [logging.md](logging.md) |
 
 ## Alert routing
@@ -114,6 +115,78 @@ kill %1
 
 3. **Backup alerts:** `VeleroNoRecentBackup` and `LonghornBackupFailed` can be checked in the Prometheus UI under *Alerts*; they should be green after the nightly run.
 
+## Control-plane metrics
+
+kubeadm binds etcd's metrics listener, kube-scheduler and kube-controller-manager to 127.0.0.1, where Prometheus can't reach them. Per-node kubeadm patches (JSON patches in `/etc/kubernetes/patches/` on each control-plane node, from role `k8s_control_plane`) move them to the node's own address:
+
+| Component | Listens on | Scraped as |
+|---|---|---|
+| etcd | `http://127.0.0.1:2381` and `http://<node>:2381` (metrics and health only, no data) | job `kube-etcd`, plain http |
+| kube-controller-manager | `https://<node>:10257` | job `kube-controller-manager`, https with the Prometheus service account token |
+| kube-scheduler | `https://<node>:10259` | job `kube-scheduler`, https with the same token |
+
+- The patches add the flag again at the end of the command (the last one wins) and move the scheduler and controller manager probes to the node address. etcd keeps 127.0.0.1 first in the list, so its probes don't change.
+- kubeadm applies the patches on `init` and `join`. On running nodes, the tasks in `tasks/metrics.yml` make the same change in the static pod manifests, one node at a time, and wait for each component on the node address.
+- The firewall needs nothing new: `trusted_cidrs` on the Kubernetes nodes already include the lab network and the pod network.
+- etcd over https (client port 2379) would need an etcd client certificate in the `monitoring` namespace, which is full access to etcd. The metrics-only port avoids that.
+
+**kubeadm upgrades must pass the patches**, or the manifests go back to 127.0.0.1 and `KubeSchedulerDown`, `KubeControllerManagerDown` and `etcdMembersDown` fire:
+
+```bash
+sudo kubeadm upgrade apply v1.X.Y --patches /etc/kubernetes/patches   # first control-plane node
+sudo kubeadm upgrade node --patches /etc/kubernetes/patches            # the other control-plane nodes
+```
+
+### Roll out to a running cluster
+
+Run Ansible **before** pushing the values change: once Argo CD enables the monitors, components still on 127.0.0.1 show as down and alert.
+
+1. Patch the three control-plane nodes (serial, one etcd member at a time):
+
+```bash
+cd ansible && ansible-playbook playbooks/kubernetes.yml \
+  --limit k8s_control_plane --tags cp_metrics && cd ..
+```
+
+2. Check the listeners on the three nodes:
+
+```bash
+cd ansible && ansible k8s_control_plane -b -m ansible.builtin.shell \
+  -a "ss -ltnp | grep -E ':(2381|10257|10259) '" && cd ..
+```
+
+Expected: 2381 on 127.0.0.1 and the node address, 10257 and 10259 on the node address only.
+
+3. Check that the control plane is healthy:
+
+```bash
+kubectl get nodes
+kubectl -n kube-system get pods -l tier=control-plane -o wide
+```
+
+All pods `Running` and `1/1`, restart count up by one at most.
+
+4. Push the commits. Argo CD syncs `kube-prometheus-stack` (refresh the app in the UI to skip the wait).
+
+5. Prometheus targets:
+
+```bash
+kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 19090:9090 &
+# http://localhost:19090/targets → kube-etcd, kube-controller-manager, kube-scheduler: 3/3 UP each
+# http://localhost:19090/rules   → groups etcd, kubernetes-system-controller-manager,
+#                                  kubernetes-system-scheduler, kube-scheduler.rules
+kill $!
+```
+
+6. Grafana: dashboards *etcd*, *Kubernetes / Controller Manager* and *Kubernetes / Scheduler* show data.
+
+### Troubleshooting control-plane metrics
+
+- **Target down with `connection refused`:** the component still listens on 127.0.0.1. Check the flags with `sudo grep -E 'bind-address|listen-metrics' /etc/kubernetes/manifests/*.yaml` and run step 1 again.
+- **Target down with `401`/`403`:** the token Secret `monitoring/kube-prometheus-stack-prometheus-token` is missing or the Prometheus ClusterRole lost `nonResourceURLs: /metrics`.
+- **Scheduler or controller manager restarting:** the probe host and the bind address differ. `kubectl -n kube-system describe pod kube-scheduler-<node>` shows the failing probe.
+- **etcd latency alerts** (`etcdHighFsyncDurations`, `etcdHighCommitDurations`, `etcdGRPCRequestsSlow`): the three members share one Proxmox disk with Longhorn. Check the *etcd* dashboard against Longhorn activity (backups, rebuilds) before tuning a rule.
+
 ## Troubleshooting
 
 - **No ntfy message:** `kubectl -n monitoring logs sts/alertmanager-kube-prometheus-stack-alertmanager -c alertmanager | grep -i -E 'notify|webhook'`. `401`/`403` means the token doesn't match the one in `swarm/alerting.sops.yaml`; a DNS or TLS error means the Swarm stack or its certificate isn't up ([alerting.md](alerting.md)).
@@ -123,5 +196,5 @@ kill %1
 ## Later
 
 - Prometheus scrapes the Swarm nodes and Traefik, so Kubernetes also watches the alerting stack; a second receiver (Matrix or Mattermost) for when ntfy is down.
-- Control-plane metrics: bind etcd (`listen-metrics-urls`), kube-scheduler and kube-controller-manager to the node address in the kubeadm config and the static pod manifests, then enable `kubeEtcd`, `kubeScheduler`, `kubeControllerManager` and their default rules.
+- Tune or override etcd latency alerts after about a week of real data (`defaultRules.disabled` plus an own rule).
 - Dashboards for Longhorn and Velero as ConfigMaps in Git (Grafana sidecar).
