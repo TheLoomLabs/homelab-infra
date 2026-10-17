@@ -4,6 +4,20 @@
   changed_when: false
   failed_when: false
 
+# Cloud-init only sets a VM up on first boot (ADR 0008); Ansible owns it
+# afterwards. If cloud-init runs its once-per-instance modules again, it
+# regenerates the SSH host keys and resets the admin user's password. That
+# happened on swarm-m-01 after a power cut (2026-10-17). This file stops
+# cloud-init on every later boot. Remove it to let cloud-init run again, for
+# example before growing a disk (growpart).
+- name: Keep cloud-init from running after the first boot
+  ansible.builtin.copy:
+    dest: /etc/cloud/cloud-init.disabled
+    content: "Disabled by Ansible (role common): cloud-init only runs on first boot.\n"
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: Install base packages
   ansible.builtin.apt:
     name: "{{ common_packages }}"
