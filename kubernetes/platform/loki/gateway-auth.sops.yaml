@@ -1,0 +1,25 @@
+apiVersion: isindir.github.com/v1alpha3
+kind: SopsSecret
+metadata:
+    name: loki-gateway-auth
+    namespace: monitoring
+spec:
+    secretTemplates:
+        - name: ENC[AES256_GCM,data:9jwHDUNrBAnPPqI+x6Tguu8=,iv:9dI2DID/UfxB6rJDqrpCCv9VFhRx6VjMLy/FqHQuU1U=,tag:1u8aSPQwM3ioKmr7unZ6ag==,type:str]
+          stringData:
+            .htpasswd: ENC[AES256_GCM,data:qtBv0/gcG3F4drAol3YGcvsz2maa0I3XVW4H9slLnNRrt4t1uDlB0921BQ==,iv:q3TiihF4VwTmidG19BGRYBczpg+9MPowdl58KD4WCzQ=,tag:hPzcG+gUDF/RXKH3X9NMQQ==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBYUkJ1eWlMdmIwc2NjK2VX
+            VlRmT3habUpYWVRDUUZYSXVNWnRrVXMrMW00ClQ2K3JRaTI4aVdJU0RzQ2x5VUsw
+            RWVFaFpqdTF4VTZWa0poRjJuOUR6Wk0KLS0tIFR2Q3RUcUtiUnR4MUNSenZyOXJ6
+            REJYTGRGdUFxRHNjZndXYUFsQ1lRUzgKXQgGGPW3UnvdabyNp7DQviFE5eSOBatj
+            wy68LBlyjcu/Vh2/7UG7j2DN5ULLFw/s2LVWkWEJJghSxk0uBM0T6A==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1fjsagzw9yzjhd5p6n4fmjstjvud9ucdp383mwe2gqn0k7rfaffrsa3asek
+    encrypted_suffix: Templates
+    lastmodified: "2026-10-17T16:46:44Z"
+    mac: ENC[AES256_GCM,data:hRFB7bKhguymmPQgIITRLuarjx84WWkyLjZMqMYY8z5VDKjwB3g8RomXdmbEfA2/tOYL1NsgHUnmQmuci8oZNxzrEhkLVwjLzKztEs3ilLIobZkmmG0NzSRFWvedQQpWzSotZIRYNP7fOyS13UXTqg5TaoJUmc7CAKmFVEHVHnc=,iv:K8nCPvtAXj4+vo9JbvnX/NbPJMLX+6kQsQ95I2mOvMU=,tag:p6nxBuZAo01+JGBinNRV9A==,type:str]
+    version: 3.13.3

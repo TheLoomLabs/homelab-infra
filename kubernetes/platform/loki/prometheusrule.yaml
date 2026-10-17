@@ -1,0 +1,58 @@
+---
+# Alerts for Loki (ADR 0012). Metrics come from the chart's ServiceMonitor
+# (monitoring.serviceMonitor in values.yaml); its job label is
+# "monitoring/loki". A full volume is covered by the default
+# KubePersistentVolumeFillingUp alerts.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: loki
+  namespace: monitoring
+spec:
+  groups:
+    - name: loki
+      rules:
+        - alert: LokiDown
+          expr: absent(up{job="monitoring/loki"} == 1)
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Loki is down"
+            description: >-
+              Prometheus can't scrape Loki. New logs are not stored; Alloy retries for a while, and every node's
+              journal keeps its own copy. See docs/logging.md.
+        - alert: LokiRequestErrors
+          expr: |
+            sum by (route) (rate(loki_request_duration_seconds_count{job="monitoring/loki", status_code=~"5.."}[5m]))
+              /
+            sum by (route) (rate(loki_request_duration_seconds_count{job="monitoring/loki"}[5m]))
+              > 0.05
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Loki answers {{ $value | humanizePercentage }} of {{ $labels.route }} requests with 5xx"
+            description: "Check the Loki log: kubectl -n monitoring logs sts/loki -c loki"
+        - alert: LokiDiscardingLogs
+          # Usually rate limits after an outage, or lines older than
+          # reject_old_samples_max_age (7 days).
+          expr: sum by (reason) (rate(loki_discarded_samples_total{job="monitoring/loki"}[15m])) > 0
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Loki is rejecting log lines (reason: {{ $labels.reason }})"
+            description: "See docs/logging.md, Troubleshooting."
+        - alert: LokiCompactionNotRunning
+          # The compactor also applies retention; without it the volume fills
+          # up. The timestamp is updated even when there is nothing to do.
+          expr: |
+            time() - max(loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{job="monitoring/loki"} > 0)
+              > 3 * 3600
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Loki's compactor has not run for over 3 hours"
+            description: "Retention is not applied while the compactor fails. Check the Loki log for compactor errors."

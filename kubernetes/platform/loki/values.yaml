@@ -1,0 +1,118 @@
+---
+# Helm values for Loki (grafana-community/loki chart), ADR 0012.
+#
+# One Loki process (single binary) with its index and chunks on a Longhorn
+# volume. No object storage: logs are disposable, like metrics, and one
+# replica is enough for a homelab.
+
+deploymentMode: Monolithic
+
+loki:
+  # One tenant ("fake"); access is controlled by the gateway's basic auth for
+  # clients outside the cluster.
+  auth_enabled: false
+
+  commonConfig:
+    replication_factor: 1
+
+  storage:
+    type: filesystem
+
+  # Starts before the first log line. A new schema later gets a new entry
+  # with a future "from" date; never edit this one.
+  schemaConfig:
+    configs:
+      - from: "2026-10-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+
+  ingester:
+    chunk_encoding: snappy
+
+  # Merged with the chart's limits_config.
+  limits_config:
+    # 15 days, same as Prometheus. The compactor deletes older chunks.
+    retention_period: 360h
+    # After an outage every node's Alloy catches up on its journal at once;
+    # the default 4 MB/s would reject part of that.
+    ingestion_rate_mb: 10
+    ingestion_burst_size_mb: 20
+
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+
+  # No usage reports to Grafana Labs.
+  analytics:
+    reporting_enabled: false
+
+singleBinary:
+  replicas: 1
+  # The rules sidecar is for the ruler (log-based alerts), which comes later.
+  sidecar: false
+  # Plain longhorn class (two replicas, no encryption, no backups), like
+  # Prometheus. Retention is by time only, so the default
+  # KubePersistentVolumeFillingUp alerts are the guard against a full volume.
+  persistence:
+    enabled: true
+    storageClass: longhorn
+    size: 20Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+
+# nginx in front of Loki, only for clients outside the cluster (Alloy on the
+# DNS and Swarm VMs) through the HTTPRoute loki.lab.theloomlabs.org. Inside
+# the cluster, Alloy and Grafana talk to the loki service on port 3100.
+gateway:
+  enabled: true
+  replicas: 1
+  # Every push would otherwise be logged, and shipped to Loki again.
+  verboseLogging: false
+  basicAuth:
+    enabled: true
+    # gateway-auth.sops.yaml: .htpasswd with the user Alloy pushes as.
+    existingSecret: loki-gateway-auth
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+
+# Off: the ruler and its sidecar (log-based alerts come later), the memcached
+# caches (the chunk cache alone asks for 8 GiB), the canary and its Helm test.
+ruler:
+  enabled: false
+sidecar:
+  rules:
+    enabled: false
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+lokiCanary:
+  enabled: false
+test:
+  enabled: false
+
+# The chart defaults to three replicas each for the simple-scalable targets;
+# a monolithic install must zero them.
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0

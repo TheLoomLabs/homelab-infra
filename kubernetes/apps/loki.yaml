@@ -1,0 +1,55 @@
+---
+# Logs: Loki in single-binary mode, filesystem storage on a Longhorn volume,
+# 15 days of retention (ADR 0012). Alloy (app alloy) ships the logs. The same
+# app ships the push endpoint's basic-auth secret (SopsSecret), the HTTPRoute
+# for the VMs outside the cluster, and Loki's alerts.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: loki
+  namespace: argocd
+  annotations:
+    # After kube-prometheus-stack (-2): the ServiceMonitor and PrometheusRule
+    # are picked up by Prometheus, the datasource by Grafana.
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  sources:
+    # The OSS Loki chart moved from grafana/helm-charts to grafana-community
+    # in March 2026; grafana/loki 7.x is the Enterprise (GEL) chart.
+    - repoURL: https://grafana-community.github.io/helm-charts
+      chart: loki
+      targetRevision: 18.17.0
+      helm:
+        releaseName: loki
+        valueFiles:
+          - $values/kubernetes/platform/loki/values.yaml
+    - repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+      targetRevision: main
+      ref: values
+    # SopsSecret, HTTPRoute, PrometheusRule. values.yaml is Helm input, not a
+    # manifest.
+    - repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+      targetRevision: main
+      path: kubernetes/platform/loki
+      directory:
+        exclude: values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      # Logs are disposable, like metrics; everything else is in Git.
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      # The SopsSecret CRD comes from another app.
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
