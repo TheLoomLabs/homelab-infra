@@ -11,7 +11,7 @@ Alertmanager in Kubernetes sends every alert to **ntfy**, and the ntfy Android a
 
 | Service | URL | Login |
 |---|---|---|
-| ntfy | https://ntfy.lab.theloomlabs.org | user `igor` (admin) |
+| ntfy | https://ntfy.lab.theloomlabs.org | your admin user (`alerting_ntfy_admin_user` in `swarm/alerting.sops.yaml`) |
 | healthchecks | https://hc.lab.theloomlabs.org | the superuser created below |
 
 The services keep their state in local Docker volumes (`alerting_ntfy-data`, `alerting_healthchecks-data`, `alerting_traefik-acme`), so the whole stack runs on one node: `alerting_node`, the first Swarm manager by default, labelled `homelab.alerting=true`. If that node is down, alerting is down; the ntfy app then shows the connection as lost.
@@ -41,7 +41,7 @@ Traefik gets its own token (not cert-manager's), so each can be rotated alone.
 
 ### 2. ntfy password hashes
 
-ntfy stores bcrypt hashes in its config. Create one for your login and one for the `publisher` user that Alertmanager and healthchecks use (its password is never used; type anything long):
+ntfy stores bcrypt hashes in its config. Usernames and hashes stay in the encrypted secrets file, not in Git or the docs. Create one hash for your login and one for the `publisher` user that Alertmanager and healthchecks use (its password is never used; type anything long):
 
 ```bash
 ssh -t ops@swarm-m-01.lab.theloomlabs.org docker run --rm -it binwiederhier/ntfy:v2.31.1 user hash   # your phone password
@@ -58,19 +58,21 @@ Pipe everything straight into sops. The ntfy tokens (`tk_` + 29 characters) and 
 f=swarm/alerting.sops.yaml
 mkdir -p swarm
 read -rsp 'Cloudflare API token (Traefik): ' CF_TOKEN; echo
-read -rp 'ntfy hash for igor: ' NTFY_ADMIN_HASH
+read -rp 'ntfy admin username: ' NTFY_ADMIN_USER
+read -rp 'ntfy hash for that user: ' NTFY_ADMIN_HASH
 read -rp 'ntfy hash for publisher: ' NTFY_PUB_HASH
 TK_AM=tk_$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom | head -c 29)
 TK_HC=tk_$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom | head -c 29)
 sops encrypt --filename-override "$f" --input-type yaml --output-type yaml /dev/stdin > "$f" <<YAML
 alerting_cloudflare_api_token: "${CF_TOKEN}"
+alerting_ntfy_admin_user: "${NTFY_ADMIN_USER}"
 alerting_ntfy_admin_hash: '${NTFY_ADMIN_HASH}'
 alerting_ntfy_publisher_hash: '${NTFY_PUB_HASH}'
 alerting_ntfy_token_alertmanager: "${TK_AM}"
 alerting_ntfy_token_healthchecks: "${TK_HC}"
 alerting_healthchecks_secret_key: "$(openssl rand -base64 48)"
 YAML
-unset CF_TOKEN NTFY_ADMIN_HASH NTFY_PUB_HASH TK_AM TK_HC
+unset CF_TOKEN NTFY_ADMIN_USER NTFY_ADMIN_HASH NTFY_PUB_HASH TK_AM TK_HC
 make sops-check
 ```
 
@@ -114,7 +116,7 @@ Then on https://hc.lab.theloomlabs.org, signed in:
 ### 6. The phone
 
 1. Install **ntfy** from F-Droid or Google Play.
-2. Settings → **Manage users** → **Add user**: Service URL `https://ntfy.lab.theloomlabs.org`, user `igor`, your password.
+2. Settings → **Manage users** → **Add user**: Service URL `https://ntfy.lab.theloomlabs.org`, your admin user and password.
 3. **+** (subscribe) → topic `alerts` → **Use another server** → `https://ntfy.lab.theloomlabs.org` → keep **Instant delivery** on → **Subscribe**.
 4. Allow the app to run unrestricted in the background (Android battery settings), or it misses messages while the phone sleeps.
 

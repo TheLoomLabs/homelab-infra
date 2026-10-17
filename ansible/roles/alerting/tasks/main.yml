@@ -3,6 +3,8 @@
   ansible.builtin.assert:
     that:
       - alerting_cloudflare_api_token is defined
+      - alerting_ntfy_admin_user is defined
+      - alerting_ntfy_admin_user != 'publisher'
       - alerting_ntfy_admin_hash is defined
       - alerting_ntfy_publisher_hash is defined
       - alerting_ntfy_token_alertmanager is match('^tk_[a-z0-9]{29}$')

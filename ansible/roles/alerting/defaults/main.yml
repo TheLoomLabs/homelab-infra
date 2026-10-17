@@ -31,10 +31,9 @@ alerting_stack_dir: /opt/stacks/alerting
 # that were offline.
 alerting_ntfy_topic: alerts
 alerting_ntfy_cache_duration: 72h
-# The account the phone logs in with (admin: reads every topic).
-alerting_ntfy_admin_user: igor
 
 # From swarm/alerting.sops.yaml (playbooks/alerting.yml loads it):
-# alerting_cloudflare_api_token, alerting_ntfy_admin_hash, alerting_ntfy_publisher_hash,
+# alerting_cloudflare_api_token, alerting_ntfy_admin_user (the account the
+# phone logs in with; admin, reads every topic), alerting_ntfy_admin_hash, alerting_ntfy_publisher_hash,
 # alerting_ntfy_token_alertmanager, alerting_ntfy_token_healthchecks,
 # alerting_healthchecks_secret_key

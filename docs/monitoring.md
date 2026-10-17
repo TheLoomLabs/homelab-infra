@@ -47,6 +47,7 @@ YAML
 unset NTFY_TOKEN HC_URL
 
 f=kubernetes/platform/monitoring/grafana-admin.sops.yaml
+read -rp 'Grafana admin username: ' GRAFANA_USER
 sops encrypt --filename-override "$f" --input-type yaml --output-type yaml /dev/stdin > "$f" <<YAML
 apiVersion: isindir.github.com/v1alpha3
 kind: SopsSecret
@@ -57,14 +58,15 @@ spec:
   secretTemplates:
     - name: grafana-admin
       stringData:
-        admin-user: admin
+        admin-user: "${GRAFANA_USER}"
         admin-password: "$(openssl rand -base64 24)"
 YAML
+unset GRAFANA_USER
 
 make sops-check
 ```
 
-Read the Grafana password later with `sops decrypt kubernetes/platform/monitoring/grafana-admin.sops.yaml | grep admin-password`, and keep it in the password manager.
+Read the Grafana login later with `sops decrypt kubernetes/platform/monitoring/grafana-admin.sops.yaml | grep admin-`, and keep it in the password manager.
 
 ## Check
 
@@ -83,7 +85,7 @@ kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090 &
 kill %1
 ```
 
-Grafana: https://grafana.lab.theloomlabs.org, user `admin`.
+Grafana: https://grafana.lab.theloomlabs.org, with the user from `grafana-admin.sops.yaml`.
 
 ## Test the alert path
 
@@ -105,7 +107,7 @@ kubectl -n monitoring port-forward svc/kube-prometheus-stack-alertmanager 9093 &
 curl -s -XPOST localhost:9093/api/v2/silences -H 'Content-Type: application/json' -d "{
 \"matchers\": [{\"name\": \"alertname\", \"value\": \"Watchdog\", \"isRegex\": false}],
 \"startsAt\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\", \"endsAt\": \"$(date -u -d '+10 minutes' +%Y-%m-%dT%H:%M:%SZ)\",
-\"createdBy\": \"igor\", \"comment\": \"dead man's switch test\"}"
+\"createdBy\": \"docs\", \"comment\": \"dead man's switch test\"}"
 kill %1
 ```
 
