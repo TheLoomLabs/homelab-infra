@@ -35,7 +35,13 @@ services:
     secrets:
       - cloudflare_api_token
     networks:
-      - {{ alerting_edge_network }}
+      {{ alerting_edge_network }}:
+        # Containers on the edge network reach the lab names through Traefik
+        # directly. Via DNS they would get this node's LAN address, and a
+        # container can't reach its own node's published ports (hairpin).
+        aliases:
+          - {{ alerting_ntfy_host }}
+          - {{ alerting_healthchecks_host }}
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--ping"]
       interval: 30s
