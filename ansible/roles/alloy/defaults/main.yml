@@ -14,6 +14,12 @@ alloy_version: 1.20.1
 alloy_loki_push_url: https://loki.lab.theloomlabs.org/loki/api/v1/push
 alloy_loki_username: alloy
 
+# Hosts that don't resolve through the lab DNS (the DNS VMs use the public
+# resolvers, group_vars/dns.yml) get the Loki name in /etc/hosts, pointing at
+# this address (the Gateway). Empty: resolve normally. playbooks/logs.yml sets
+# it for the DNS VMs from dns/records.yml.
+alloy_loki_static_address: ""
+
 # Ship container logs through the Docker socket on hosts that run Docker.
 alloy_docker_logs: "{{ 'swarm' in group_names }}"
 

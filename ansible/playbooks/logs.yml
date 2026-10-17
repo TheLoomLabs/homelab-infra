@@ -5,10 +5,22 @@
 - name: Logs | Alloy on the DNS and Swarm VMs
   hosts: dns:swarm
   become: true
+  vars:
+    # The DNS VMs resolve through the public resolvers, which don't know the
+    # lab zone. They get the Loki name in /etc/hosts instead, pointing at the
+    # address of the wildcard record (the Gateway).
+    alloy_loki_static_address: >-
+      {{ (lab_zone.bind_records | selectattr('name', 'equalto', '*') | map(attribute='value') | first)
+         if 'dns' in group_names else '' }}
   pre_tasks:
     - name: Load the Loki push password (logging/alloy.sops.yaml, decrypted with the age key)
       community.sops.load_vars:
         file: "{{ playbook_dir }}/../../logging/alloy.sops.yaml"
       no_log: true
+
+    - name: Load the lab zone records (dns/records.yml)
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../dns/records.yml"
+        name: lab_zone
   roles:
     - alloy

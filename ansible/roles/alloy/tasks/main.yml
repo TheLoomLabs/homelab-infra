@@ -8,6 +8,19 @@
     quiet: true
   no_log: true
 
+# cloud-init is disabled after the first boot (role common), so it doesn't
+# rewrite /etc/hosts.
+- name: Resolve the Loki name without the lab DNS
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '\s{{ alloy_loki_push_url | urlsplit("hostname") | regex_escape }}$'
+    line: "{{ alloy_loki_static_address }} {{ alloy_loki_push_url | urlsplit('hostname') }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: alloy_loki_static_address | length > 0
+  notify: Restart alloy
+
 - name: Download the Alloy package
   ansible.builtin.get_url:
     url: "https://github.com/grafana/alloy/releases/download/v{{ alloy_version }}/alloy-{{ alloy_version }}-1.amd64.deb"
