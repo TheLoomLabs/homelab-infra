@@ -8,11 +8,11 @@ A single Proxmox VE node with 64 GB+ RAM. Every VM uses the same Ubuntu 24.04 LT
 |---|---|---|---|---|---|
 | dns-01, dns-02 | Lab and house DNS (BIND primary, secondary) | 1 | 1 GB | 16 GB | .11–.12 |
 | k8s-cp-01..03 | Kubernetes control plane + etcd | 2 | 4 GB | 40 GB | .21–.23 |
-| k8s-wk-01..02 | Kubernetes workers | 4 | 8 GB | 80 GB | .31–.32 |
+| k8s-wk-01..02 | Kubernetes workers, Longhorn storage | 4 | 8 GB | 80 GB + 100 GB data disk | .31–.32 |
 | swarm-m-01..03 | Swarm managers (also run workloads) | 2 | 4 GB | 40 GB | .41–.43 |
 | — | Kubernetes API VIP (kube-vip) | | | | .20 |
 
-That adds up to about 42 GB of RAM. The rest stays free for the Proxmox host and for later additions such as Longhorn replicas or more workers. Each node is one entry in the `nodes` map in `terraform/envs/homelab/variables.tf`.
+That adds up to about 42 GB of RAM. The rest stays free for the Proxmox host and for later additions such as more workers. Each node is one entry in the `nodes` map in `terraform/envs/homelab/variables.tf`.
 
 ## Network
 
@@ -41,6 +41,7 @@ UFW on each node denies incoming traffic by default. Traffic is accepted from th
    - joins the workers
    - installs the Gateway API CRDs (pinned version and checksum), then Cilium as the kube-proxy replacement, with Hubble relay, Hubble UI, L2 announcements and the Gateway API controller. When the Helm values change, the role runs `cilium upgrade` (`playbooks/cilium.yml` re-applies only this part)
    - fetches the admin kubeconfig to `.artifacts/kubeconfig` (git-ignored), where devbox points `KUBECONFIG`
+   - prepares the workers for Longhorn (`playbooks/longhorn.yml`, role `longhorn_node`): iSCSI and LUKS tools, the data disk at `/var/lib/longhorn`, the node label (see [Storage](#storage))
 7. **Ansible** `swarm.yml` installs Docker CE, creates the swarm on the first manager and joins the rest.
 8. **Ansible** `argocd.yml` bootstraps GitOps:
    - installs Helm on the first control-plane node and installs the `argo-cd` chart, using the version from `kubernetes/apps/argocd.yaml` and the values from `kubernetes/platform/argocd/values.yaml`
@@ -101,6 +102,47 @@ Secrets are stored in Git, encrypted with SOPS and age (ADR 0006):
 - Pre-commit, `make sops-check` and CI reject a `*.sops.yaml` file that is not encrypted.
 
 How to add, edit and rotate secrets: [secrets.md](secrets.md).
+
+## Storage
+
+Longhorn provides replicated block volumes on the two workers (ADR 0009). It is an Argo CD Application; Ansible only prepares the nodes.
+
+- Each worker has a dedicated 100 GB data disk (`data_disk_gb` in the Terraform node map), mounted at `/var/lib/longhorn`. Control-plane nodes hold no storage.
+- Every volume has two replicas, one per worker.
+- The default StorageClass `longhorn-encrypted` encrypts volumes with LUKS, using one key from a SopsSecret (`longhorn-crypto`). Reclaim policy `Retain`. The plain `longhorn` class is for disposable data such as metrics.
+- Encrypted volumes get hourly snapshots and daily and weekly backups to the Cloudflare R2 bucket `theloomlabs-longhorn` (RecurringJobs, group `encrypted`). The backups are ciphertext; R2 never sees plaintext.
+- The Longhorn UI has no authentication and is not exposed; use `kubectl port-forward`.
+
+Runbook: [storage.md](storage.md).
+
+## Backups
+
+Velero backs up the cluster every night at 03:00 UTC, after Longhorn's own daily backup at 02:00 (ADR 0010).
+
+- Kubernetes objects go to the R2 bucket `theloomlabs-velero`, encrypted with SSE-C (a key only we hold). Each bucket has its own R2 token, scoped to that bucket. The R2 account ID only appears inside SOPS-encrypted Secrets.
+- Volumes are not copied by Velero. Velero creates CSI VolumeSnapshots of class `longhorn-backup`, and each one becomes a Longhorn backup in `theloomlabs-longhorn`. The external-snapshotter CRDs and controller are their own Argo CD Application (`snapshot-controller`).
+- The schedule keeps 30 days and skips `longhorn-system` (Longhorn restores its own volumes) and Cilium's runtime objects.
+- One Velero restore brings back a namespace with its PVCs and data. This was tested by deleting and restoring a namespace with an encrypted volume.
+
+| Lost | Comes back from |
+|---|---|
+| A pod, a node, one replica | Longhorn's second replica |
+| An app's data or namespace | Velero restore (objects + volumes), or a single Longhorn backup |
+| The whole cluster or the Proxmox host | Git (Terraform, Ansible, Argo CD), then Velero and Longhorn restores from R2 |
+
+What must survive outside the lab: the age key, the Longhorn key and the SSE-C key. Runbook: [backup.md](backup.md).
+
+## Monitoring and alerting
+
+kube-prometheus-stack runs in the namespace `monitoring` (ADR 0011). The receivers of its alerts run on Docker Swarm, so they keep working when Kubernetes doesn't.
+
+- **Prometheus** scrapes nodes, workloads and every ServiceMonitor in the cluster. Components ship their own ServiceMonitors and PrometheusRules next to their manifests: Longhorn (failed backups, unreachable backup target, degraded or faulted volumes, disk usage) and Velero (failed or missing nightly backup, unreachable R2). Metrics are kept 15 days on the plain `longhorn` class; Velero skips the namespace.
+- **Grafana** is at `https://grafana.lab.theloomlabs.org`. Prometheus and Alertmanager have no authentication and are reached with `kubectl port-forward` until SSO exists.
+- **Alertmanager** posts warnings and critical alerts to **ntfy** (`ntfy.lab.theloomlabs.org`); the phone subscribes with the ntfy app. The always-firing `Watchdog` alert pings **healthchecks** (`hc.lab.theloomlabs.org`) every minute; when the pings stop, healthchecks alerts through ntfy. That is the dead man's switch for the cluster.
+- ntfy, healthchecks and **Traefik** (TLS, wildcard certificate via Cloudflare DNS-01) are the Swarm stack `alerting`, deployed by Ansible (role `alerting`). Their state is in local volumes on one Swarm node.
+- Not covered: the whole Proxmox host, power or the Starlink link going down. Nothing on the host can report that; the stack moves to a second machine later.
+
+Runbooks: [monitoring.md](monitoring.md), [alerting.md](alerting.md).
 
 ## Why two orchestrators?
 

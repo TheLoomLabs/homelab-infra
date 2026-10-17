@@ -5,7 +5,7 @@
 This repo builds my homelab from code: a highly available **Kubernetes** cluster and a **Docker Swarm** cluster on **Proxmox VE**. Terraform provisions the VMs and Ansible configures them. Everything runs from a reproducible **Devbox** toolchain, so nothing needs to be installed on the workstation.
 
 ```
-Proxmox VE ──Terraform──▶ 10 Ubuntu VMs ──Ansible──▶ hardened OS ──▶ Kubernetes (kubeadm, HA)
+Proxmox VE ──Terraform──▶ 10 Ubuntu VMs ──Ansible──▶ hardened OS ──▶ Kubernetes (kubeadm, HA) ──Argo CD──▶ platform apps
                                                                   ├─▶ Docker Swarm (3 managers)
                                                                   └─▶ BIND DNS (primary + secondary)
 ```
@@ -22,7 +22,11 @@ Proxmox VE ──Terraform──▶ 10 Ubuntu VMs ──Ansible──▶ hardene
 | DNS | Ansible role `bind`, BIND 9 | **Primary + secondary on dedicated VMs**, zone from Git with automatic records and serial, **TSIG-signed zone transfers**, DNSSEC-validating resolver for the whole house |
 | Ingress & TLS | Cilium Gateway API, cert-manager | One shared **Gateway** on a fixed LAN IP; **Let's Encrypt wildcard cert via Cloudflare DNS-01**, so nothing has to be public |
 | Secrets | SOPS + age, sops-secrets-operator, role `sops_age`, `community.sops` | Secrets committed **encrypted**, decrypted in the cluster (Argo CD never sees plaintext) or by Ansible on the workstation |
-| Swarm | Ansible roles `docker`, `swarm` | Docker CE, 3-manager Raft quorum, node labels |
+| Storage | Longhorn, role `longhorn_node` | Replicated block volumes on a dedicated data disk per worker, **LUKS-encrypted default StorageClass**, hourly snapshots and daily/weekly **backups to Cloudflare R2** |
+| Backups | Velero + CSI snapshots | Nightly cluster backups to R2 (objects **SSE-C encrypted**), volumes backed up by Longhorn through CSI VolumeSnapshots; restore tested end to end |
+| Monitoring | kube-prometheus-stack (Argo CD) | Prometheus, Alertmanager, Grafana; components ship their own ServiceMonitors and rules, **alerts on failed or missing backups**, degraded volumes and the usual cluster health |
+| Alerting | Swarm stack: Traefik, ntfy, healthchecks (role `alerting`) | **Self-hosted, no SaaS:** push to the phone via ntfy, **dead man's switch** on healthchecks outside Kubernetes, so a dead cluster is still reported |
+| Swarm | Ansible roles `docker`, `swarm`, `alerting` | Docker CE, 3-manager Raft quorum, node labels; Traefik with a wildcard cert for Swarm stacks |
 | Quality | GitHub Actions, pre-commit | `terraform fmt/validate`, tflint, yamllint, ansible-lint (production profile), gitleaks, SOPS encryption check |
 
 ## Architecture
@@ -49,6 +53,7 @@ flowchart LR
       M1[swarm-m-01]
       M2[swarm-m-02]
       M3[swarm-m-03]
+      AL[alerting stack<br/>Traefik · ntfy · healthchecks]
     end
   end
 
@@ -57,9 +62,21 @@ flowchart LR
   DB -- Ansible SSH --> SW
   DB -- kubectl --> VIP
   RT[Starlink router<br/>Custom DNS] -- DNS --> DNS
+  K8S -- alerts + Watchdog --> AL
+  AL -- push --> PH[Phone<br/>ntfy app]
 ```
 
-More detail is in [docs/architecture.md](docs/architecture.md). The design decisions are recorded as ADRs in [docs/adr](docs/adr).
+More detail is in [docs/architecture.md](docs/architecture.md). The design decisions are recorded as ADRs in [docs/adr](docs/adr), the plan in [docs/roadmap.md](docs/roadmap.md).
+
+| Runbook | Covers |
+|---|---|
+| [bootstrap.md](docs/bootstrap.md) | One-time Proxmox preparation |
+| [dns.md](docs/dns.md) | Lab DNS: records, checks, TSIG rotation |
+| [secrets.md](docs/secrets.md) | Adding, editing and rotating SOPS secrets |
+| [storage.md](docs/storage.md) | Longhorn: volumes, encryption key, R2 backups and restores |
+| [backup.md](docs/backup.md) | Velero: schedule, restores, disaster recovery |
+| [monitoring.md](docs/monitoring.md) | Prometheus, Alertmanager, Grafana: alert routing, checks, testing the alert path |
+| [alerting.md](docs/alerting.md) | Swarm alerting stack: ntfy, healthchecks, Traefik; phone setup, rebuild |
 
 ## Quick start
 
@@ -79,7 +96,7 @@ make tf-plan && make tf-apply     # also writes ansible/inventory/hosts.yml
 # 4. Configuration
 make ping
 age-keygen -o .artifacts/age.key  # once, then back it up (docs/secrets.md)
-make site                         # base + DNS + Kubernetes + age key + Argo CD + Swarm
+make site                         # base + DNS + Kubernetes + Longhorn node prep + age key + Argo CD + Swarm + alerting stack
 
 # 5. Use it
 kubectl get nodes -o wide         # KUBECONFIG is set by devbox
@@ -105,15 +122,18 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 │   ├── modules/proxmox-vm/     # one VM: disk import, cloud-init snippet, network
 │   └── envs/homelab/           # the lab: node map → VMs → Ansible inventory
 ├── ansible/
-│   ├── playbooks/              # site, base, dns, kubernetes, cilium, sops, argocd, swarm
+│   ├── playbooks/              # site, base, dns, kubernetes, cilium, longhorn, sops, argocd, swarm, alerting
 │   ├── roles/                  # common, hardening, bind, docker, swarm, k8s_prereqs,
-│   │                           # k8s_control_plane, k8s_worker, cilium, sops_age, argocd
+│   │                           # k8s_control_plane, k8s_worker, cilium, longhorn_node,
+│   │                           # sops_age, argocd, alerting
 │   └── inventory/group_vars/   # versions and CIDRs
 ├── dns/                        # lab zone records + SOPS-encrypted TSIG key
+├── swarm/                      # SOPS-encrypted secrets of the Swarm stacks
 ├── kubernetes/
 │   ├── apps/                   # Argo CD Applications (app of apps, synced from main)
 │   └── platform/               # Helm values, manifests and *.sops.yaml secrets per component
-└── docs/                       # architecture, bootstrap, ADRs, roadmap
+└── docs/                       # architecture, bootstrap, runbooks (dns, secrets, storage,
+                                # backup, monitoring, alerting), ADRs, roadmap
 ```
 
 ## Security notes
