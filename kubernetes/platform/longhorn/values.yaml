@@ -66,3 +66,17 @@ longhornUI:
 metrics:
   serviceMonitor:
     enabled: true
+
+# Longhorn 1.13 ships NetworkPolicies for its internal traffic
+# (restrictInternalTraffic, on by default; the ingress policies of
+# networkPolicies.enabled stay off). They only let Longhorn's own pods reach
+# longhorn-manager on 9500, which also serves the REST API, so the scraper is
+# allowed in narrowly: Prometheus pods in the monitoring namespace.
+networkPolicies:
+  metricsScrapeSources:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: prometheus
