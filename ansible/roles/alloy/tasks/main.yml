@@ -1,0 +1,70 @@
+---
+- name: Check that the secret is loaded
+  ansible.builtin.assert:
+    that:
+      - alloy_loki_password is defined
+      - alloy_loki_password | length >= 24
+    fail_msg: alloy_loki_password must come from logging/alloy.sops.yaml (see docs/logging.md).
+    quiet: true
+  no_log: true
+
+- name: Download the Alloy package
+  ansible.builtin.get_url:
+    url: "https://github.com/grafana/alloy/releases/download/v{{ alloy_version }}/alloy-{{ alloy_version }}-1.amd64.deb"
+    checksum: "sha256:https://github.com/grafana/alloy/releases/download/v{{ alloy_version }}/SHA256SUMS"
+    dest: "/tmp/alloy-{{ alloy_version }}-1.amd64.deb"
+    mode: "0644"
+
+# The package creates the alloy user and adds it to adm and systemd-journal
+# (journal access). Config files are written after it, so they are never
+# overwritten by the package defaults.
+- name: Install Alloy
+  ansible.builtin.apt:
+    deb: "/tmp/alloy-{{ alloy_version }}-1.amd64.deb"
+  notify: Restart alloy
+
+# Read access to the Docker API, which is root-equivalent on that host: the
+# alloy user could start containers. Alloy only reads container logs.
+- name: Let Alloy read container logs through the Docker socket
+  ansible.builtin.user:
+    name: alloy
+    groups: docker
+    append: true
+  when: alloy_docker_logs | bool
+  notify: Restart alloy
+
+- name: Write the Loki password
+  ansible.builtin.copy:
+    dest: /etc/alloy/loki-password
+    content: "{{ alloy_loki_password }}"
+    owner: root
+    group: alloy
+    mode: "0640"
+  no_log: true
+  notify: Restart alloy
+
+- name: Write the Alloy service settings
+  ansible.builtin.template:
+    src: alloy.default.j2
+    dest: /etc/default/alloy
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart alloy
+
+- name: Write the Alloy pipeline
+  ansible.builtin.template:
+    src: config.alloy.j2
+    dest: /etc/alloy/config.alloy
+    owner: root
+    group: alloy
+    mode: "0640"
+    # Syntax check before the file is replaced.
+    validate: /usr/bin/alloy fmt %s
+  notify: Restart alloy
+
+- name: Enable Alloy
+  ansible.builtin.systemd_service:
+    name: alloy
+    enabled: true
+    state: started

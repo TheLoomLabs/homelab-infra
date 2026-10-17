@@ -22,3 +22,6 @@
 
 - name: Alerting stack on Swarm
   ansible.builtin.import_playbook: alerting.yml
+
+- name: Log shipping from the VMs
+  ansible.builtin.import_playbook: logs.yml

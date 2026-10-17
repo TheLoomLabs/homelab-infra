@@ -1,0 +1,16 @@
+alloy_loki_password: ENC[AES256_GCM,data:kU3n4ItisPa/uQ+VFOg5Kj3WA5xV39W7Cxm5bPT/nZg=,iv:2Bt8fTdYnQ8d63OaYaK65f9j1GGhPu0KxPg06ifZJhA=,tag:hyHF/HczqHs6FglqyufAOg==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBlRFhCbE0vSGMrTTg4TDFz
+            bUZTTEs1eTNUaTBSRXMwclUyR1U5aDlXZ0dzCkNiTUhneDlaSlVwK0Q5NTJIa0Q4
+            Y1BhYVliOU93SkIrZUZjNlZmR3NOQXMKLS0tIDNVZHBZcmhsb2d2UERodDhlbzZG
+            VWRUcGNia29QVUkvTHlkeEtZaEhpYmMKZXKy9P/geSh+o9l6PjfnVMGhwBKB8Hdh
+            Bh51pJM6n/SmklLEXQH6KpGs0qk0o9K/M+QlFRNjRySjPDeFztuWHQ==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1fjsagzw9yzjhd5p6n4fmjstjvud9ucdp383mwe2gqn0k7rfaffrsa3asek
+    lastmodified: "2026-10-17T16:46:44Z"
+    mac: ENC[AES256_GCM,data:mhkflcMBMRzqe5Y7Htn57HwYVx7pCoSyfh16TzsoGjqIh7BC/WK6L6DbpJYRxR+QVNz7e3v9lEHBK4Dfx/BBgyPaivCdUefrkDnZPmH3KVzEC5ff/NXrg+iuQ09V5dubBlXYS1P+4xBlYl59F+ZJyhpXKoOpWsp/WM5PKqfCgJk=,iv:6W+E0rX+LYOiolrLXTanX6Jp7K1vH2Mu26/c9P6jYpY=,tag:6ohDU6xtFhpCKDtUo0njsg==,type:str]
+    unencrypted_suffix: _unencrypted
+    version: 3.13.3

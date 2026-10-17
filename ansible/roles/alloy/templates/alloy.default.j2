@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+# Settings for the alloy service (role alloy). Read by
+# /usr/lib/alloy/alloy-wrapper, which adds --storage.path=/var/lib/alloy/data.
+
+CONFIG_FILE="/etc/alloy/config.alloy"
+
+# UI and metrics on localhost only; no usage reports to Grafana Labs.
+CUSTOM_ARGS="--server.http.listen-addr={{ alloy_listen_address }} --disable-reporting"
+
+RESTART_ON_UPGRADE=true

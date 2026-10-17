@@ -1,0 +1,82 @@
+// {{ ansible_managed }}
+// Ships this VM's logs to Loki (role alloy, ADR 0012, docs/logging.md).
+// Labels match the Kubernetes side: source (journal | docker) and host.
+
+loki.write "loki" {
+  endpoint {
+    url = "{{ alloy_loki_push_url }}"
+
+    basic_auth {
+      username      = "{{ alloy_loki_username }}"
+      password_file = "/etc/alloy/loki-password"
+    }
+  }
+
+  external_labels = {
+    host = "{{ inventory_hostname }}",
+  }
+}
+
+// The systemd journal (persistent, see common_journald_max_use). Positions
+// are kept under /var/lib/alloy/data, so after Loki or the network comes
+// back, Alloy continues where it stopped.
+loki.relabel "journal" {
+  forward_to = []
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+  rule {
+    source_labels = ["__journal__transport"]
+    regex         = "kernel"
+    target_label  = "unit"
+    replacement   = "kernel"
+  }
+  rule {
+    source_labels = ["__journal_priority_keyword"]
+    target_label  = "level"
+  }
+}
+
+loki.source.journal "system" {
+  max_age       = "{{ alloy_journal_max_age }}"
+  relabel_rules = loki.relabel.journal.rules
+  labels        = { source = "journal" }
+  forward_to    = [loki.write.loki.receiver]
+}
+{% if alloy_docker_logs | bool %}
+
+// Containers on this Docker host. Swarm tasks are labelled with their stack
+// and service; other containers with their name as service.
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "service"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_swarm_service_name"]
+    regex         = "(.+)"
+    target_label  = "service"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_stack_namespace"]
+    target_label  = "stack"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  relabel_rules = discovery.relabel.containers.rules
+  labels        = { source = "docker" }
+  forward_to    = [loki.write.loki.receiver]
+}
+{% endif %}

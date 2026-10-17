@@ -1,0 +1,14 @@
+---
+# Alloy on the VMs outside Kubernetes: journal on every DNS and Swarm VM,
+# container logs on the Swarm nodes (ADR 0012). Loki and its push endpoint
+# must be up first (Argo CD apps loki and alloy, docs/logging.md).
+- name: Logs | Alloy on the DNS and Swarm VMs
+  hosts: dns:swarm
+  become: true
+  pre_tasks:
+    - name: Load the Loki push password (logging/alloy.sops.yaml, decrypted with the age key)
+      community.sops.load_vars:
+        file: "{{ playbook_dir }}/../../logging/alloy.sops.yaml"
+      no_log: true
+  roles:
+    - alloy

@@ -1,0 +1,28 @@
+---
+# Grafana Alloy on the VMs outside Kubernetes (DNS, Swarm): ships the systemd
+# journal and, on Docker hosts, the container logs to Loki. ADR 0012,
+# docs/logging.md. The Kubernetes nodes run Alloy as a DaemonSet instead.
+
+# Installed from the GitHub release .deb, checked against the release's
+# SHA256SUMS. Keep it at the version of the Alloy Helm chart's appVersion
+# (kubernetes/apps/alloy.yaml).
+alloy_version: 1.20.1
+
+# Loki's push endpoint: the chart's nginx gateway behind the shared Gateway
+# (kubernetes/platform/loki/httproute.yaml). Basic auth with the user from
+# kubernetes/platform/loki/gateway-auth.sops.yaml.
+alloy_loki_push_url: https://loki.lab.theloomlabs.org/loki/api/v1/push
+alloy_loki_username: alloy
+
+# Ship container logs through the Docker socket on hosts that run Docker.
+alloy_docker_logs: "{{ 'swarm' in group_names }}"
+
+# On first start, and after a long outage, read the journal at most this far
+# back. The journal itself keeps more (common_journald_max_use).
+alloy_journal_max_age: 12h
+
+# Alloy's UI and metrics stay on the VM until Prometheus scrapes the VMs.
+alloy_listen_address: 127.0.0.1:12345
+
+# From logging/alloy.sops.yaml (playbooks/logs.yml loads it):
+# alloy_loki_password
