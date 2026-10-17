@@ -2,6 +2,13 @@
 # Helm values for Cilium. This file is the full source of truth: the role runs
 # `cilium upgrade --reset-values` with it whenever it changes.
 kubeProxyReplacement: true
+
+# Spelled out so an upgrade can't change it: the cilium CLI derives the name
+# from the kubeconfig on a first install, `--reset-values` falls back to
+# "default". The agents run as "default"; changing it would give every pod a
+# new security identity. Not the kubeadm clusterName ({{ cluster_name }}).
+cluster:
+  name: default
 k8sServiceHost: {{ k8s_api_vip }}
 k8sServicePort: 6443
 
@@ -40,3 +47,12 @@ hubble:
     enabled: true
   ui:
     enabled: true
+  # mTLS between the Hubble servers in the agents and Hubble Relay. The
+  # chart's default "helm" method creates the certificates once and reuses
+  # them on every upgrade, so they expire after a year. A CronJob (certgen)
+  # issues them at install time and renews them every four months. Not
+  # cert-manager: it is installed later, by Argo CD.
+  tls:
+    auto:
+      method: cronJob
+      schedule: "0 0 1 */4 *"
