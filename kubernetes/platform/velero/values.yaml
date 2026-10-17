@@ -68,8 +68,20 @@ schedules:
       # restored by Velero; Longhorn restores volumes from its backups.
       excludedNamespaces:
         - longhorn-system
+        # Everything in monitoring comes from Git and its volumes hold only
+        # metrics (plain longhorn class, no backup).
+        - monitoring
       # Cilium recreates these for every pod; restoring old copies only
       # produces stale objects.
       excludedResources:
         - ciliumendpoints.cilium.io
         - ciliumidentities.cilium.io
+
+# Prometheus scrapes Velero (kube-prometheus-stack, ADR 0011). Alerts are in
+# prometheusrule.yaml. autodetect off: the CRD comes from the
+# prometheus-operator-crds app, and autodetection would silently skip the
+# ServiceMonitor if Argo CD rendered the chart before the CRD existed.
+metrics:
+  serviceMonitor:
+    enabled: true
+    autodetect: false

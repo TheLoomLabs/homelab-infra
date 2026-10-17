@@ -1,0 +1,48 @@
+---
+# Alerts for the Velero cluster backups (ADR 0011). Velero's metrics are
+# labelled with the schedule name; ad-hoc backups have schedule="".
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: velero
+  namespace: velero
+spec:
+  groups:
+    - name: velero
+      rules:
+        - alert: VeleroBackupFailed
+          # 1 = the last backup of this schedule completed; partially failed
+          # and failed backups both set 0.
+          expr: velero_backup_last_status{schedule!=""} != 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Velero backup of schedule {{ $labels.schedule }} failed"
+            description: >-
+              The last backup did not complete. Check .status of the newest backups.velero.io and the Velero log
+              (docs/backup.md).
+        - alert: VeleroNoRecentBackup
+          # Also fires when the schedule has never completed a backup.
+          # Velero recomputes the timestamp from the Backup objects, so it
+          # survives restarts.
+          expr: |
+            (time() - velero_backup_last_successful_timestamp{schedule!=""}) > 26 * 3600
+            or
+            absent(velero_backup_last_successful_timestamp{schedule="velero-daily"})
+          for: 1h
+          labels:
+            severity: critical
+          annotations:
+            summary: "No successful Velero backup in over 26 hours"
+            description: "The nightly backup (03:00 UTC) has not completed. Volumes are backed up through it, too. See docs/backup.md."
+        - alert: VeleroBackupStorageLocationUnavailable
+          expr: velero_backup_location_status_gauge == 0
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Velero can't reach backup location {{ $labels.backup_location_name }}"
+            description: >-
+              Velero can't read or write the R2 bucket. Check the token and the credentials file (docs/backup.md,
+              Rotate the R2 token).

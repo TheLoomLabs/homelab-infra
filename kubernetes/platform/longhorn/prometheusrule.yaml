@@ -1,0 +1,65 @@
+---
+# Alerts for Longhorn storage and its R2 backups (ADR 0011). Metrics come from
+# longhorn-manager (metrics.serviceMonitor in values.yaml).
+#
+# There is no "no recent backup" alert here: the RecurringJobs skip volumes
+# without new data and detached volumes, so an old last backup is normal.
+# Freshness is checked through Velero (velero-daily backs up every volume
+# through Longhorn, every night).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: longhorn
+  namespace: longhorn-system
+spec:
+  groups:
+    - name: longhorn-backup
+      rules:
+        - alert: LonghornBackupFailed
+          # longhorn_backup_state: 3 Completed, 4 Error.
+          expr: longhorn_backup_state == 4
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Longhorn backup {{ $labels.backup }} of {{ $labels.volume }} failed"
+            description: >-
+              The backup is in state Error. Check its status message (kubectl -n longhorn-system get
+              backups.longhorn.io {{ $labels.backup }} -o yaml), then delete it; the alert stays until it is gone.
+        - alert: LonghornBackupTargetUnavailable
+          expr: longhorn_backup_target_status{condition="unavailable"} == 1
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Longhorn can't reach the backup target {{ $labels.backup_target }}"
+            description: "No volume backups reach R2. Reason: {{ $labels.condition_reason }}. See docs/storage.md (R2 credentials)."
+    - name: longhorn-volumes
+      rules:
+        - alert: LonghornVolumeDegraded
+          expr: longhorn_volume_robustness{state="degraded"} == 1
+          # A node reboot degrades every volume for a few minutes.
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Longhorn volume {{ $labels.volume }} ({{ $labels.pvc_namespace }}/{{ $labels.pvc }}) is degraded"
+            description: "The volume runs on fewer replicas than configured. Check the replicas and both workers."
+        - alert: LonghornVolumeFaulted
+          expr: longhorn_volume_robustness{state="faulted"} == 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Longhorn volume {{ $labels.volume }} ({{ $labels.pvc_namespace }}/{{ $labels.pvc }}) is faulted"
+            description: >-
+              No healthy replica is left. The app using it is down; restore from a backup if the replicas can't be
+              salvaged (docs/storage.md).
+        - alert: LonghornNodeStorageAlmostFull
+          expr: longhorn_node_storage_usage_bytes / longhorn_node_storage_capacity_bytes > 0.8
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Longhorn storage on {{ $labels.node }} is {{ $value | humanizePercentage }} full"
+            description: "Grow the data disk (data_disk_gb) or remove old snapshots and volumes."

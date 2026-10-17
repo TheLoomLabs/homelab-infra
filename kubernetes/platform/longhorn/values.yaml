@@ -60,3 +60,9 @@ longhornGlobalManager:
 # exists; use kubectl port-forward (docs/storage.md).
 longhornUI:
   replicas: 1
+
+# Prometheus scrapes longhorn-manager (kube-prometheus-stack, ADR 0011).
+# Alerts are in prometheusrule.yaml.
+metrics:
+  serviceMonitor:
+    enabled: true
