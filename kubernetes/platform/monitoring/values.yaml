@@ -173,6 +173,15 @@ grafana:
   # export it to Git (docs/monitoring.md).
   persistence:
     enabled: false
+  # Logs from Loki (app loki, ADR 0012), queried inside the cluster.
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      access: proxy
+      url: http://loki.monitoring.svc.cluster.local:3100
+      jsonData:
+        maxLines: 1000
   grafana.ini:
     server:
       root_url: https://grafana.lab.theloomlabs.org
