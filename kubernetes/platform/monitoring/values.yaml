@@ -8,25 +8,27 @@ cleanPrometheusOperatorObjectNames: true
 crds:
   enabled: false
 
-# Control-plane components bind their metrics to 127.0.0.1 (kubeadm default)
-# and kube-proxy is replaced by Cilium. Scraping etcd, the scheduler and the
-# controller manager is a later step (docs/monitoring.md); until then their
-# monitors and rules stay off, or they would alert as down.
+# Control-plane components (docs/monitoring.md). kubeadm patches in role
+# k8s_control_plane serve them on each node's address; the chart defaults then
+# fit: kube-controller-manager (10257) and kube-scheduler (10259) over https
+# with the Prometheus service account token, etcd over plain http on its
+# metrics-only listener (2381; the client port 2379 would need an etcd client
+# certificate, which is full etcd access). The Services select the static pods
+# by their component label. kube-proxy is replaced by Cilium.
 kubeEtcd:
-  enabled: false
+  enabled: true
 kubeControllerManager:
-  enabled: false
+  enabled: true
 kubeScheduler:
-  enabled: false
+  enabled: true
 kubeProxy:
   enabled: false
 
+# etcd, kubeControllerManager and kubeScheduler* rules are on (chart default).
+# The three etcd members share one Proxmox disk with Longhorn: tune the etcd
+# latency alerts with real data rather than up front.
 defaultRules:
   rules:
-    etcd: false
-    kubeControllerManager: false
-    kubeSchedulerAlerting: false
-    kubeSchedulerRecording: false
     kubeProxy: false
     windows: false
 
