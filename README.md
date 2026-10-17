@@ -25,6 +25,7 @@ Proxmox VE ──Terraform──▶ 10 Ubuntu VMs ──Ansible──▶ hardene
 | Storage | Longhorn, role `longhorn_node` | Replicated block volumes on a dedicated data disk per worker, **LUKS-encrypted default StorageClass**, hourly snapshots and daily/weekly **backups to Cloudflare R2** |
 | Backups | Velero + CSI snapshots | Nightly cluster backups to R2 (objects **SSE-C encrypted**), volumes backed up by Longhorn through CSI VolumeSnapshots; restore tested end to end |
 | Monitoring | kube-prometheus-stack (Argo CD) | Prometheus, Alertmanager, Grafana; components ship their own ServiceMonitors and rules, **alerts on failed or missing backups**, degraded volumes and the usual cluster health |
+| Logs | Loki + Grafana Alloy (Argo CD), role `alloy` | Pod logs, node journals and Kubernetes events from the cluster, **journal and Swarm container logs from the VMs**; 15 days in Loki, queried in Grafana |
 | Alerting | Swarm stack: Traefik, ntfy, healthchecks (role `alerting`) | **Self-hosted, no SaaS:** push to the phone via ntfy, **dead man's switch** on healthchecks outside Kubernetes, so a dead cluster is still reported |
 | Swarm | Ansible roles `docker`, `swarm`, `alerting` | Docker CE, 3-manager Raft quorum, node labels; Traefik with a wildcard cert for Swarm stacks |
 | Quality | GitHub Actions, pre-commit | `terraform fmt/validate`, tflint, yamllint, ansible-lint (production profile), gitleaks, SOPS encryption check |
@@ -55,6 +56,7 @@ flowchart LR
       M3[swarm-m-03]
       AL[alerting stack<br/>Traefik · ntfy · healthchecks]
     end
+    LK[(Loki<br/>in Kubernetes)]
   end
 
   DB -- Terraform API --> PVE
@@ -63,6 +65,9 @@ flowchart LR
   DB -- kubectl --> VIP
   RT[Starlink router<br/>Custom DNS] -- DNS --> DNS
   K8S -- alerts + Watchdog --> AL
+  K8S -. logs .-> LK
+  SW -. logs .-> LK
+  DNS -. logs .-> LK
   AL -- push --> PH[Phone<br/>ntfy app]
 ```
 
@@ -77,6 +82,7 @@ More detail is in [docs/architecture.md](docs/architecture.md). The design decis
 | [backup.md](docs/backup.md) | Velero: schedule, restores, disaster recovery |
 | [monitoring.md](docs/monitoring.md) | Prometheus, Alertmanager, Grafana: alert routing, checks, testing the alert path |
 | [alerting.md](docs/alerting.md) | Swarm alerting stack: ntfy, healthchecks, Traefik; phone setup, rebuild |
+| [logging.md](docs/logging.md) | Loki and Alloy: labels, push secret, checks, example queries |
 
 ## Quick start
 
@@ -96,7 +102,7 @@ make tf-plan && make tf-apply     # also writes ansible/inventory/hosts.yml
 # 4. Configuration
 make ping
 age-keygen -o .artifacts/age.key  # once, then back it up (docs/secrets.md)
-make site                         # base + DNS + Kubernetes + Longhorn node prep + age key + Argo CD + Swarm + alerting stack
+make site                         # base + DNS + Kubernetes + Longhorn node prep + age key + Argo CD + Swarm + alerting stack + log shipping
 
 # 5. Use it
 kubectl get nodes -o wide         # KUBECONFIG is set by devbox
@@ -122,18 +128,19 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 │   ├── modules/proxmox-vm/     # one VM: disk import, cloud-init snippet, network
 │   └── envs/homelab/           # the lab: node map → VMs → Ansible inventory
 ├── ansible/
-│   ├── playbooks/              # site, base, dns, kubernetes, cilium, longhorn, sops, argocd, swarm, alerting
+│   ├── playbooks/              # site, base, dns, kubernetes, cilium, longhorn, sops, argocd, swarm, alerting, logs
 │   ├── roles/                  # common, hardening, bind, docker, swarm, k8s_prereqs,
 │   │                           # k8s_control_plane, k8s_worker, cilium, longhorn_node,
-│   │                           # sops_age, argocd, alerting
+│   │                           # sops_age, argocd, alerting, alloy
 │   └── inventory/group_vars/   # versions and CIDRs
 ├── dns/                        # lab zone records + SOPS-encrypted TSIG key
 ├── swarm/                      # SOPS-encrypted secrets of the Swarm stacks
+├── logging/                    # SOPS-encrypted push password for Alloy on the VMs
 ├── kubernetes/
 │   ├── apps/                   # Argo CD Applications (app of apps, synced from main)
 │   └── platform/               # Helm values, manifests and *.sops.yaml secrets per component
 └── docs/                       # architecture, bootstrap, runbooks (dns, secrets, storage,
-                                # backup, monitoring, alerting), ADRs, roadmap
+                                # backup, monitoring, alerting, logging), ADRs, roadmap
 ```
 
 ## Security notes

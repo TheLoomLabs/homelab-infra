@@ -11,6 +11,7 @@ kube-prometheus-stack runs Prometheus, Alertmanager and Grafana in the namespace
 | Grafana on the Gateway | `kubernetes/platform/monitoring/grafana-httproute.yaml` |
 | Longhorn metrics and alerts | `metrics.serviceMonitor` in `kubernetes/platform/longhorn/values.yaml`, `kubernetes/platform/longhorn/prometheusrule.yaml` |
 | Velero metrics and alerts | `metrics.serviceMonitor` in `kubernetes/platform/velero/values.yaml`, `kubernetes/platform/velero/prometheusrule.yaml` |
+| Logs (Loki, Alloy) and their alerts | [logging.md](logging.md) |
 
 ## Alert routing
 
@@ -121,7 +122,6 @@ kill %1
 
 ## Later
 
-- Logs: Loki and Grafana Alloy (second part of step 7).
 - Prometheus scrapes the Swarm nodes and Traefik, so Kubernetes also watches the alerting stack; a second receiver (Matrix or Mattermost) for when ntfy is down.
 - Control-plane metrics: bind etcd (`listen-metrics-urls`), kube-scheduler and kube-controller-manager to the node address in the kubeadm config and the static pod manifests, then enable `kubeEtcd`, `kubeScheduler`, `kubeControllerManager` and their default rules.
 - Dashboards for Longhorn and Velero as ConfigMaps in Git (Grafana sidecar).

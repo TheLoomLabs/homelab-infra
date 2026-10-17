@@ -144,6 +144,18 @@ kube-prometheus-stack runs in the namespace `monitoring` (ADR 0011). The receive
 
 Runbooks: [monitoring.md](monitoring.md), [alerting.md](alerting.md).
 
+## Logs
+
+Loki stores the logs of every node, VM and pod for 15 days; Grafana queries it next to the metrics (ADR 0012).
+
+- **Loki** runs as one process (single binary) in `monitoring`, with its index and chunks on a 20 GiB volume of the plain `longhorn` class. No object storage: logs are disposable, like metrics, and Velero skips the namespace.
+- **Grafana Alloy** ships the logs. In Kubernetes, a DaemonSet reads the pod log files and each node's journal, and a single replica ships Kubernetes events (the API server keeps them for an hour only). On the DNS and Swarm VMs, Alloy runs as a systemd service (role `alloy`) and ships the journal and the Swarm containers' logs.
+- The VMs push through the shared Gateway (`loki.lab.theloomlabs.org`) to Loki's nginx gateway, which requires basic auth. Inside the cluster, Alloy and Grafana talk to Loki directly.
+- When Kubernetes is down, the VMs can't push; every VM's journal still has the logs, and Alloy catches up from its saved position.
+- Loki and Alloy alert through Prometheus like everything else (Loki down, rejected lines, compaction not running, Alloy dropping lines). Alerts on log content (Loki's ruler) come later.
+
+Runbook: [logging.md](logging.md).
+
 ## Why two orchestrators?
 
 Many companies still run Docker Swarm or plain Docker hosts and are moving to Kubernetes. Running both lets me practise that move end to end: run a service on Swarm, then migrate it to Kubernetes with a written plan, data migration, cutover and rollback.
