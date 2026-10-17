@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+# kubeadm patch (JSON patch) for the kube-scheduler static pod: serve it on
+# this node's address instead of 127.0.0.1, so Prometheus can scrape /metrics
+# (https, Prometheus service account token; docs/monitoring.md). kubeadm
+# already passes --bind-address=127.0.0.1; the flag added last wins. The
+# probes follow the address, or kubelet would keep restarting the pod.
+- op: add
+  path: /spec/containers/0/command/-
+  value: --bind-address={{ ansible_host }}
+- op: replace
+  path: /spec/containers/0/livenessProbe/httpGet/host
+  value: "{{ ansible_host }}"
+- op: replace
+  path: /spec/containers/0/readinessProbe/httpGet/host
+  value: "{{ ansible_host }}"
+- op: replace
+  path: /spec/containers/0/startupProbe/httpGet/host
+  value: "{{ ansible_host }}"

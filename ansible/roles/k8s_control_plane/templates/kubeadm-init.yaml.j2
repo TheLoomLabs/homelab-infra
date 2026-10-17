@@ -10,6 +10,10 @@ nodeRegistration:
   kubeletExtraArgs:
     - name: node-ip
       value: {{ ansible_host }}
+# Per-node patches for the static pods (control-plane metrics on the node
+# address, docs/monitoring.md). Upgrades need --patches with the same path.
+patches:
+  directory: {{ k8s_control_plane_patches_dir }}
 # Cilium replaces kube-proxy entirely.
 skipPhases:
   - addon/kube-proxy

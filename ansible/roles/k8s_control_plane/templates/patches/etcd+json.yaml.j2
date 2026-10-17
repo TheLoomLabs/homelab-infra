@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+# kubeadm patch (JSON patch) for the etcd static pod: serve the metrics-only
+# listener (/metrics, /health, no data) on this node's address too, so
+# Prometheus can scrape it (docs/monitoring.md). kubeadm already passes
+# --listen-metrics-urls=http://127.0.0.1:2381; the flag added last wins.
+# 127.0.0.1 stays first in the list, so the kubeadm probes keep working.
+- op: add
+  path: /spec/containers/0/command/-
+  value: --listen-metrics-urls=http://127.0.0.1:2381,http://{{ ansible_host }}:2381

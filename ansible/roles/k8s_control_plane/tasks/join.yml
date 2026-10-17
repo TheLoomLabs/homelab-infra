@@ -28,5 +28,6 @@
     --certificate-key {{ k8s_control_plane_upload_certs.stdout_lines | last }}
     --apiserver-advertise-address {{ ansible_host }}
     --node-name {{ inventory_hostname }}
+    --patches {{ k8s_control_plane_patches_dir }}
   changed_when: true
   no_log: true

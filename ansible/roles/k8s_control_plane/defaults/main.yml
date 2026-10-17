@@ -1,3 +1,7 @@
 ---
 k8s_control_plane_first_node: "{{ groups['k8s_control_plane'] | first }}"
 k8s_control_plane_kube_vip_kubeconfig: /etc/kubernetes/admin.conf
+# Per-node kubeadm patches (templates/patches/): etcd metrics, kube-scheduler
+# and kube-controller-manager on the node address. kubeadm applies them on
+# init and join, and on upgrades only when called with --patches.
+k8s_control_plane_patches_dir: /etc/kubernetes/patches
