@@ -1,0 +1,13 @@
+---
+# Swarm stack "alerting": Traefik, ntfy, healthchecks (ADR 0011). Runs on the
+# first Swarm manager, which deploys the stack for the whole swarm.
+- name: Docker Swarm | Alerting stack
+  hosts: swarm_managers[0]
+  become: true
+  pre_tasks:
+    - name: Load the alerting secrets (swarm/alerting.sops.yaml, decrypted with the age key)
+      community.sops.load_vars:
+        file: "{{ playbook_dir }}/../../swarm/alerting.sops.yaml"
+      no_log: true
+  roles:
+    - alerting

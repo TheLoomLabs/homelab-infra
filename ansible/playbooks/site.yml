@@ -19,3 +19,6 @@
 
 - name: Docker Swarm
   ansible.builtin.import_playbook: swarm.yml
+
+- name: Alerting stack on Swarm
+  ansible.builtin.import_playbook: alerting.yml

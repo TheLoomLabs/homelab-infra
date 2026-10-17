@@ -1,0 +1,100 @@
+---
+- name: Check that the secrets are loaded
+  ansible.builtin.assert:
+    that:
+      - alerting_cloudflare_api_token is defined
+      - alerting_ntfy_admin_hash is defined
+      - alerting_ntfy_publisher_hash is defined
+      - alerting_ntfy_token_alertmanager is match('^tk_[a-z0-9]{29}$')
+      - alerting_ntfy_token_healthchecks is match('^tk_[a-z0-9]{29}$')
+      - alerting_healthchecks_secret_key is defined
+    quiet: true
+  no_log: true
+
+- name: Install the Python libraries for docker_stack
+  ansible.builtin.apt:
+    name: [python3-jsondiff, python3-yaml]
+    state: present
+
+- name: Pin the stack to its node
+  community.docker.docker_node:
+    hostname: "{{ alerting_node }}"
+    labels:
+      homelab.alerting: "true"
+    labels_state: merge
+
+- name: Create the edge overlay network
+  community.docker.docker_network:
+    name: "{{ alerting_edge_network }}"
+    driver: overlay
+    attachable: true
+
+- name: Render the ntfy server config
+  ansible.builtin.set_fact:
+    alerting_ntfy_config: "{{ lookup('ansible.builtin.template', 'ntfy-server.yml.j2') }}"
+  no_log: true
+
+# Swarm secrets are immutable. The name carries a hash of the content, so a
+# changed value becomes a new secret and the stack update rolls the service.
+- name: Name the Swarm secrets after their content
+  ansible.builtin.set_fact:
+    alerting_secrets:
+      cloudflare_api_token:
+        name: "alerting_cf_token_{{ (alerting_cloudflare_api_token | hash('sha256'))[:10] }}"
+        data: "{{ alerting_cloudflare_api_token }}"
+      ntfy_server:
+        name: "alerting_ntfy_server_{{ (alerting_ntfy_config | hash('sha256'))[:10] }}"
+        data: "{{ alerting_ntfy_config }}"
+      healthchecks_secret_key:
+        name: "alerting_hc_secret_key_{{ (alerting_healthchecks_secret_key | hash('sha256'))[:10] }}"
+        data: "{{ alerting_healthchecks_secret_key }}"
+  no_log: true
+
+- name: Create the Swarm secrets
+  community.docker.docker_secret:
+    name: "{{ item.value.name }}"
+    data: "{{ item.value.data }}"
+    state: present
+  loop: "{{ alerting_secrets | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  no_log: true
+
+- name: Create the stack directory
+  ansible.builtin.file:
+    path: "{{ alerting_stack_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Render the stack file
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ alerting_stack_dir }}/compose.yml"
+    owner: root
+    group: root
+    mode: "0640"
+
+- name: Deploy the stack
+  community.docker.docker_stack:
+    name: "{{ alerting_stack_name }}"
+    compose:
+      - "{{ alerting_stack_dir }}/compose.yml"
+    prune: true
+    state: present
+
+# Old secrets stay behind after a rotation; remove the ones no service uses.
+- name: List the stack's Swarm secrets
+  ansible.builtin.command: docker secret ls --filter name=alerting_ --format '{{ "{{" }} .Name {{ "}}" }}'
+  register: alerting_secret_list
+  changed_when: false
+
+- name: Remove unused Swarm secrets of the stack
+  community.docker.docker_secret:
+    name: "{{ item }}"
+    state: absent
+  loop: "{{ alerting_secret_list.stdout_lines | difference(alerting_secrets.values() | map(attribute='name') | list) }}"
+  # A secret still attached to a running task can't be removed yet; the next
+  # run cleans it up.
+  failed_when: false

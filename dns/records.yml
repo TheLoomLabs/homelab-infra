@@ -10,6 +10,11 @@ bind_records:
   # below or in the inventory, e.g. argocd.lab.theloomlabs.org.
   - {name: "*", type: A, value: 192.168.1.61}
 
+  # Swarm stack "alerting" (ansible/roles/alerting). Its services run on one
+  # node (alerting_node, default the first Swarm manager); keep this in step.
+  - {name: ntfy, type: CNAME, value: swarm-m-01}
+  - {name: hc, type: CNAME, value: swarm-m-01}
+
   # Infrastructure outside the inventory.
   - {name: pve, type: A, value: 192.168.1.200}
   - {name: k8s-api, type: A, value: 192.168.1.20}

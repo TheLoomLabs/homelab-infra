@@ -1,0 +1,27 @@
+# {{ ansible_managed }}
+# ntfy server config (docs: https://docs.ntfy.sh/config/). Mounted as a Swarm
+# secret: it holds password hashes and access tokens.
+base-url: "https://{{ alerting_ntfy_host }}"
+listen-http: ":80"
+behind-proxy: true
+
+cache-file: /var/lib/ntfy/cache.db
+cache-duration: "{{ alerting_ntfy_cache_duration }}"
+attachment-cache-dir: /var/lib/ntfy/attachments
+
+# Nobody reads or writes without an account.
+auth-file: /var/lib/ntfy/user.db
+auth-default-access: deny-all
+enable-login: true
+enable-signup: false
+
+# Users, ACLs and tokens are created from this list at every start; entries
+# removed here are deleted.
+auth-users:
+  - "{{ alerting_ntfy_admin_user }}:{{ alerting_ntfy_admin_hash }}:admin"
+  - "publisher:{{ alerting_ntfy_publisher_hash }}:user"
+auth-access:
+  - "publisher:{{ alerting_ntfy_topic }}:wo"
+auth-tokens:
+  - "publisher:{{ alerting_ntfy_token_alertmanager }}:Alertmanager"
+  - "publisher:{{ alerting_ntfy_token_healthchecks }}:healthchecks"

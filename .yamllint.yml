@@ -12,6 +12,7 @@ ignore: |
   # Written by sops (no document start marker, long encrypted lines)
   kubernetes/**/*.sops.yaml
   dns/*.sops.yaml
+  swarm/*.sops.yaml
 
 rules:
   line-length:
