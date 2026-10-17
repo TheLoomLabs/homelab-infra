@@ -1,0 +1,57 @@
+---
+# Log shipping with Grafana Alloy (ADR 0012), two releases of the same chart:
+#   alloy         DaemonSet on every node: pod logs and the node's journal
+#   alloy-events  one replica: Kubernetes events (a DaemonSet would ship each
+#                 event once per node)
+# Both push to Loki (app loki) inside the cluster. The same app ships the
+# Alloy alerts.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: alloy
+  namespace: argocd
+  annotations:
+    # With loki (-1); Alloy retries until Loki is ready.
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: alloy
+      targetRevision: 1.13.1
+      helm:
+        releaseName: alloy
+        valueFiles:
+          - $values/kubernetes/platform/alloy/values.yaml
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: alloy
+      targetRevision: 1.13.1
+      helm:
+        releaseName: alloy-events
+        valueFiles:
+          - $values/kubernetes/platform/alloy/values-events.yaml
+    - repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+      targetRevision: main
+      ref: values
+    # PrometheusRule. The values files are Helm input, not manifests.
+    - repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+      targetRevision: main
+      path: kubernetes/platform/alloy
+      directory:
+        exclude: "{values.yaml,values-events.yaml}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

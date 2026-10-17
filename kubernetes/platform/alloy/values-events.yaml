@@ -1,0 +1,49 @@
+---
+# Helm values for the Alloy that ships Kubernetes events (release
+# "alloy-events"), ADR 0012.
+#
+# The API server keeps events for one hour only. In Loki they stay 15 days,
+# so "why was this pod OOMKilled / evicted / not scheduled yesterday?" has an
+# answer. One replica: every Alloy would otherwise ship every event.
+
+crds:
+  create: false
+
+alloy:
+  enableReporting: false
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+  configMap:
+    content: |
+      // Events from every namespace. The last seen event is kept under the
+      // storage path; after a pod restart, events of the last hour may be
+      // sent again (Loki drops exact duplicates).
+      loki.source.kubernetes_events "cluster" {
+        log_format = "logfmt"
+        forward_to = [loki.process.events.receiver]
+      }
+
+      loki.process "events" {
+        stage.static_labels {
+          values = { source = "events" }
+        }
+
+        forward_to = [loki.write.loki.receiver]
+      }
+
+      loki.write "loki" {
+        endpoint {
+          url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
+        }
+      }
+
+controller:
+  type: deployment
+  replicas: 1
+
+serviceMonitor:
+  enabled: true

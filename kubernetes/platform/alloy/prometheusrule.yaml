@@ -1,0 +1,37 @@
+---
+# Alerts for the Alloy log shippers in the cluster (ADR 0012). Metrics come
+# from the charts' ServiceMonitors (jobs alloy and alloy-events). Pods that
+# don't run are covered by the default KubeDaemonSet*/KubeDeployment* alerts.
+# The Alloys on the VMs listen on localhost only and are not scraped yet
+# (docs/logging.md, Later).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: alloy
+  namespace: monitoring
+spec:
+  groups:
+    - name: alloy
+      rules:
+        - alert: AlloyDroppingLogs
+          # loki.write gives up on a batch after its retries (Loki down for
+          # minutes, or rejecting the lines).
+          expr: sum by (job, pod) (rate(loki_write_dropped_entries_total{job=~"alloy|alloy-events"}[10m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.pod }} is dropping log lines"
+            description: "It can't deliver them to Loki. Check the LokiDown and LokiDiscardingLogs alerts and docs/logging.md."
+        - alert: AlloyComponentUnhealthy
+          # A component that failed to start or evaluate, e.g. after a config
+          # change; the rest of the pipeline keeps running.
+          expr: sum by (job, pod) (alloy_component_controller_running_components{job=~"alloy|alloy-events", health_type!="healthy"}) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.pod }} has unhealthy components"
+            description: >-
+              See the pod log, or the Alloy UI: kubectl -n monitoring port-forward {{ $labels.pod }} 12345, then
+              http://localhost:12345
