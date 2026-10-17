@@ -34,7 +34,7 @@ tf-destroy: ## Destroy all lab VMs
 
 ## --- Ansible -----------------------------------------------------------------
 
-.PHONY: ping base dns k8s cilium longhorn sops-key argocd swarm site
+.PHONY: ping base dns k8s cilium longhorn sops-key argocd swarm alerting site
 ping: ## Check SSH to every node
 	cd $(ANSIBLE_DIR) && ansible all -m ansible.builtin.ping
 
@@ -62,6 +62,9 @@ argocd: ## Bootstrap Argo CD and the root app (push kubernetes/ first)
 swarm: ## Build the Docker Swarm cluster
 	$(PLAYBOOK) playbooks/swarm.yml
 
+alerting: ## Deploy the Swarm alerting stack (Traefik, ntfy, healthchecks)
+	$(PLAYBOOK) playbooks/alerting.yml
+
 site: ## Everything: base + Kubernetes + Swarm
 	$(PLAYBOOK) playbooks/site.yml
 
@@ -72,7 +75,7 @@ fmt: ## Format Terraform code
 	terraform fmt -recursive terraform
 
 sops-check: ## Fail if a *.sops.yaml manifest is not encrypted
-	@rc=0; for f in $$(git ls-files --cached --others --exclude-standard 'kubernetes/*.sops.yaml' 'dns/*.sops.yaml'); do \
+	@rc=0; for f in $$(git ls-files --cached --others --exclude-standard 'kubernetes/*.sops.yaml' 'dns/*.sops.yaml' 'swarm/*.sops.yaml'); do \
 		grep -q '^sops:' "$$f" || { echo "not encrypted: $$f"; rc=1; }; \
 	done; exit $$rc
 
