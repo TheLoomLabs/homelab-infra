@@ -75,7 +75,7 @@ fmt: ## Format Terraform code
 	terraform fmt -recursive terraform
 
 sops-check: ## Fail if a *.sops.yaml manifest is not encrypted
-	@rc=0; for f in $$(git ls-files --cached --others --exclude-standard 'kubernetes/*.sops.yaml' 'dns/*.sops.yaml' 'swarm/*.sops.yaml'); do \
+	@rc=0; for f in $$(git ls-files --cached --others --exclude-standard 'kubernetes/*.sops.yaml' 'dns/*.sops.yaml' 'swarm/*.sops.yaml' 'logging/*.sops.yaml'); do \
 		grep -q '^sops:' "$$f" || { echo "not encrypted: $$f"; rc=1; }; \
 	done; exit $$rc
 

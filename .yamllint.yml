@@ -13,6 +13,7 @@ ignore: |
   kubernetes/**/*.sops.yaml
   dns/*.sops.yaml
   swarm/*.sops.yaml
+  logging/*.sops.yaml
 
 rules:
   line-length:
