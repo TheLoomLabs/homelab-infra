@@ -1,0 +1,206 @@
+---
+# Helm values for kube-prometheus-stack (ADR 0011).
+
+# Shorter object names (no repeated "kube-prometheus-stack").
+cleanPrometheusOperatorObjectNames: true
+
+# CRDs come from the prometheus-operator-crds app (sync wave -9).
+crds:
+  enabled: false
+
+# Control-plane components bind their metrics to 127.0.0.1 (kubeadm default)
+# and kube-proxy is replaced by Cilium. Scraping etcd, the scheduler and the
+# controller manager is a later step (docs/monitoring.md); until then their
+# monitors and rules stay off, or they would alert as down.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeProxy: false
+    windows: false
+
+prometheusOperator:
+  # The admission webhook certificate comes from cert-manager instead of the
+  # chart's patch jobs (Helm hooks that Argo CD runs on every sync).
+  admissionWebhooks:
+    certManager:
+      enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+prometheus:
+  prometheusSpec:
+    # Pick up ServiceMonitors, PodMonitors and PrometheusRules from every
+    # namespace and release (Longhorn, Velero, later the apps), not only the
+    # ones labelled for this Helm release.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+    retention: 15d
+    # Below the volume size, so Prometheus deletes old blocks before the
+    # volume fills up.
+    retentionSize: 17GB
+    # Metrics are disposable: plain longhorn class (no encryption, no backup,
+    # Delete), still two replicas.
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: longhorn
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        memory: 3Gi
+
+alertmanager:
+  alertmanagerSpec:
+    # Secret alertmanager-notify (notify.sops.yaml) is mounted at
+    # /etc/alertmanager/secrets/alertmanager-notify/. Alertmanager reads the
+    # ntfy access token and the healthchecks ping URL from those files, so
+    # neither appears in the config or in Git.
+    secrets:
+      - alertmanager-notify
+    # Keeps silences and the notification log across restarts.
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: longhorn
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        memory: 128Mi
+  # Both receivers run on Docker Swarm (stack "alerting", ADR 0011), outside
+  # Kubernetes, so a dead cluster can still be reported.
+  config:
+    global:
+      resolve_timeout: 5m
+    inhibit_rules:
+      - source_matchers: ['severity = critical']
+        target_matchers: ['severity =~ warning|info']
+        equal: ['namespace', 'alertname']
+      - source_matchers: ['severity = warning']
+        target_matchers: ['severity = info']
+        equal: ['namespace', 'alertname']
+      - source_matchers: ['alertname = InfoInhibitor']
+        target_matchers: ['severity = info']
+        equal: ['namespace']
+      - target_matchers: ['alertname = InfoInhibitor']
+    route:
+      receiver: ntfy
+      group_by: ['namespace', 'alertname']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      routes:
+        # Dead man's switch: Watchdog always fires. Every minute it pings the
+        # self-hosted healthchecks on Swarm; when the pings stop (cluster,
+        # Prometheus or Alertmanager down), healthchecks alerts through ntfy.
+        - receiver: healthchecks
+          matchers: ['alertname = Watchdog']
+          group_wait: 0s
+          group_interval: 1m
+          repeat_interval: 1m
+        - receiver: 'null'
+          matchers: ['alertname = InfoInhibitor']
+        # Info alerts only show in Alertmanager and Grafana.
+        - receiver: 'null'
+          matchers: ['severity = info']
+        - receiver: ntfy-critical
+          matchers: ['severity = critical']
+    receivers:
+      - name: 'null'
+      # ntfy formats Alertmanager's webhook itself (built-in template).
+      # Priority 3 is a normal notification, 5 overrides Do Not Disturb.
+      - name: ntfy
+        webhook_configs:
+          - url: https://ntfy.lab.theloomlabs.org/alerts?template=alertmanager&priority=3
+            send_resolved: true
+            http_config:
+              authorization:
+                type: Bearer
+                credentials_file: /etc/alertmanager/secrets/alertmanager-notify/ntfy-token
+      - name: ntfy-critical
+        webhook_configs:
+          - url: https://ntfy.lab.theloomlabs.org/alerts?template=alertmanager&priority=5
+            send_resolved: true
+            http_config:
+              authorization:
+                type: Bearer
+                credentials_file: /etc/alertmanager/secrets/alertmanager-notify/ntfy-token
+      - name: healthchecks
+        webhook_configs:
+          - url_file: /etc/alertmanager/secrets/alertmanager-notify/healthchecks-url
+            send_resolved: false
+    templates:
+      - '/etc/alertmanager/config/*.tmpl'
+
+grafana:
+  # Admin user and password from grafana-admin.sops.yaml.
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  # Dashboards and datasources come from Git (sidecar), so Grafana keeps no
+  # state worth a volume. A dashboard built in the UI is lost on restart:
+  # export it to Git (docs/monitoring.md).
+  persistence:
+    enabled: false
+  grafana.ini:
+    server:
+      root_url: https://grafana.lab.theloomlabs.org
+    analytics:
+      check_for_updates: false
+      check_for_plugin_updates: false
+      reporting_enabled: false
+    users:
+      allow_sign_up: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      memory: 64Mi

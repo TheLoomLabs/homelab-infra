@@ -1,0 +1,24 @@
+---
+# Grafana through the shared Gateway (ADR 0007), LAN and Tailscale only.
+# Prometheus and Alertmanager have no authentication and are not exposed
+# until SSO exists; use kubectl port-forward (docs/monitoring.md).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  parentRefs:
+    # group and kind spelled out: the API server defaults them, and Argo CD
+    # would otherwise show the route as OutOfSync.
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: lab
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - grafana.lab.theloomlabs.org
+  rules:
+    - backendRefs:
+        - name: kube-prometheus-stack-grafana
+          port: 80

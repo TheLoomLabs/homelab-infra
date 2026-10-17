@@ -1,0 +1,26 @@
+apiVersion: isindir.github.com/v1alpha3
+kind: SopsSecret
+metadata:
+    name: alertmanager-notify
+    namespace: monitoring
+spec:
+    secretTemplates:
+        - name: ENC[AES256_GCM,data:6Fc0eB51W/Xb2XeDTcxb3hBNWw==,iv:DNgUc/hhzfLES8dD2NTcXd3FZjaoO1HoJrx3RtQAQtQ=,tag:RBXRDZXzSfFRwFbz+c8FjA==,type:str]
+          stringData:
+            ntfy-token: ENC[AES256_GCM,data:by7WPfUIDW7BuPZxCPuPR9s16T3t22ljU5hoeIczvbo=,iv:HJVuP732YmLdztP1vmWPmIaYyn4YgkKvTqZwIaLEw5w=,tag:WtySO9HOR1H5saxm8ezgPg==,type:str]
+            healthchecks-url: ENC[AES256_GCM,data:oDJbWExZhLU19i8Ksl7guhF+r0MGmSqFGlbqse3eN3/WwxheT6BVnN7qr6YC2ClE+eZqj1qxJAU7EfJkkJvSssuBxfoX+qcW,iv:zzhrj7qdBIN85HWsA+sJXR8ZKpGNsCgCoxp2Lo49NNY=,tag:dovmxt2GQEpgWjt5AT4o2w==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBjTEdRWDV0Qm5LckV3K0p0
+            RFhCQkhpSTdqcUEweERvcldWL3M5bVArNlU0CkkzTXRzV1ZNYW9QRHZkRkFGeC9L
+            anhOMGEvT2kxNmZBbTR2TytTMk8vM2cKLS0tIDhhWitwN3AwejFwZ0c5cXUrMUZN
+            Ti9oYkdVU1JhU1Y1Rm9yakVaOEtzVVEKiJBtenmRI/PBFeXhCoBynUZIAVsQ/0Vv
+            ZpULeUCxjNwgqN/UmLuiG1upSCVq08Ly/16MtLUrJ2DFIKmVfo7UCg==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1fjsagzw9yzjhd5p6n4fmjstjvud9ucdp383mwe2gqn0k7rfaffrsa3asek
+    encrypted_suffix: Templates
+    lastmodified: "2026-10-17T14:07:19Z"
+    mac: ENC[AES256_GCM,data:KDZJjkBf4Oju164XY+Vn5QBY60sVg9ECs9GdWAUbE8Xgma9q2tJug+F1BNsAoMgqz/GhLPlzhNNYiYDq2YkGog+h6tAkfyqK/mW09QobTbOPyGoNGFvb0mTmaSuS5ctVDaSgecDiZrpgEltHHcT1wqoESM4g04D35SoT8Qzf4hM=,iv:H6wQOjg6OcjKPX4VU3lJAbY9AHqZ8mSOXaglmMFuY6o=,tag:Zgy1tP9fl8XqI6L4VilofQ==,type:str]
+    version: 3.13.3

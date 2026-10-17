@@ -1,0 +1,52 @@
+---
+# Metrics and alerting: Prometheus Operator, Prometheus, Alertmanager, Grafana,
+# node-exporter, kube-state-metrics (ADR 0011). The CRDs come from the
+# prometheus-operator-crds app. The same app ships the Grafana HTTPRoute and
+# the encrypted Grafana admin and notification secrets (SopsSecrets).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  annotations:
+    # After longhorn (-4): Prometheus and Alertmanager need volumes.
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: default
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 92.10.1
+      helm:
+        releaseName: kube-prometheus-stack
+        valueFiles:
+          - $values/kubernetes/platform/monitoring/values.yaml
+    - repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+      targetRevision: main
+      ref: values
+    # HTTPRoute + SopsSecrets. values.yaml is Helm input, not a manifest.
+    - repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+      targetRevision: main
+      path: kubernetes/platform/monitoring
+      directory:
+        exclude: values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      # Everything here is rebuilt from Git; metrics are disposable.
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # Large dashboard ConfigMaps exceed the client-side apply annotation.
+      - ServerSideApply=true
+      # The SopsSecret CRD comes from another app.
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

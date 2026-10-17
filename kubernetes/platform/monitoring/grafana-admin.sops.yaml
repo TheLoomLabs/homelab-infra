@@ -1,0 +1,26 @@
+apiVersion: isindir.github.com/v1alpha3
+kind: SopsSecret
+metadata:
+    name: grafana-admin
+    namespace: monitoring
+spec:
+    secretTemplates:
+        - name: ENC[AES256_GCM,data:S/Ol1Bud0NrTUte8ew==,iv:ZoB8mWuUfaxE28uiJ72rFfNms83Ch4ezvbgGz1thU3s=,tag:cEkBw/VzpctwkLP0gtD0Xg==,type:str]
+          stringData:
+            admin-user: ENC[AES256_GCM,data:eSc6Ux0=,iv:6Wr4lj+K56ALHErZln4yGoGDQpi8JIof3lRDAWv1o3M=,tag:mfcXLWM8LZgxE8xN6I+PvA==,type:str]
+            admin-password: ENC[AES256_GCM,data:K+JPpwMUggojd39f9ADOjuuETd0QXfxHBZ4DRSzJwyw=,iv:xz/EEx7U0hH7wddgz+3PR3Q0dSksFYPDGeG3hPkP1BU=,tag:VOTf7Dd2OiubzpZnyNNf2g==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSAxTEQvNWVFbExqcm9RZDJQ
+            enZUU21uRVdBV2dJbWV4ZHZtb254TEN3dlRrCjI5enRwMnBlQjhLb29UcnNZUlVK
+            ZndUdi8vT1JORzR6SXVGb3RHNEpDK1EKLS0tIHplL1ZaTnNNK3BtdXMvOFZFQ2Fh
+            cDByQTRxNUJ1MzB1TGRqdmtzZlpob1EK4+nPaZBkV1a0vXeeog3rkh4j7augEeYA
+            /uuUnSyFHBtY9ybbm6okok8Sj2eNF1Z++h+BWBr5PHOIMDEWuf4u3g==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1fjsagzw9yzjhd5p6n4fmjstjvud9ucdp383mwe2gqn0k7rfaffrsa3asek
+    encrypted_suffix: Templates
+    lastmodified: "2026-10-17T14:07:19Z"
+    mac: ENC[AES256_GCM,data:zHZZQmchxMMOg651snKKx2SYnsfKKXOLh9PUyfvncWjq6pNm+KGjvXAmX+hbD5Hj8cvLWRO9S12dkqqShj78VVmKcaXQjJXPhFVkn5Py09ohu0zuFceKphX1LV507zWN+2JRhBhqG8k1Z3PWF1iaRrKyevGr1ZtWQTXPGJhTMbI=,iv:g81PQEIwD4he/LG9p//svsOhY9ZK553xcrMY2uGsXl0=,tag:m6acMBcwxcNynfJmPoTNrg==,type:str]
+    version: 3.13.3
