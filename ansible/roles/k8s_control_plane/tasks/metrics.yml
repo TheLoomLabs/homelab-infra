@@ -1,0 +1,47 @@
+---
+# Control-plane metrics on nodes that are already running: the same changes
+# as the kubeadm patches (templates/patches/), made in the static pod
+# manifests. kubeadm applies the patches only when it writes the manifests
+# (init, join, upgrade --patches); on a fresh node these tasks change nothing.
+# kubelet restarts a static pod when its manifest changes. The play runs with
+# serial: 1, so only one etcd member restarts at a time and quorum holds.
+# No backup copies: kubelet would start a backup file in the manifests
+# directory as another static pod.
+
+- name: Control-plane metrics | etcd metrics also on the node address
+  ansible.builtin.replace:
+    path: /etc/kubernetes/manifests/etcd.yaml
+    regexp: '^(\s+- --listen-metrics-urls=http://127\.0\.0\.1:2381)$'
+    replace: '\g<1>,http://{{ ansible_host }}:2381'
+
+- name: Control-plane metrics | Wait for etcd on the node address
+  ansible.builtin.uri:
+    url: "http://{{ ansible_host }}:2381/health"
+    status_code: 200
+  register: k8s_control_plane_etcd_health
+  retries: 36
+  delay: 5
+  until: k8s_control_plane_etcd_health.status == 200
+
+# Flag and probe hosts in one write, so the pod restarts once.
+- name: Control-plane metrics | kube-controller-manager and kube-scheduler on the node address
+  ansible.builtin.replace:
+    path: "/etc/kubernetes/manifests/{{ item }}.yaml"
+    regexp: '^(\s+(?:- --bind-address=|host: ))127\.0\.0\.1$'
+    replace: '\g<1>{{ ansible_host }}'
+  loop:
+    - kube-controller-manager
+    - kube-scheduler
+
+- name: Control-plane metrics | Wait for both on the node address
+  ansible.builtin.uri:
+    url: "https://{{ ansible_host }}:{{ item }}"
+    validate_certs: false
+    status_code: 200
+  register: k8s_control_plane_component_health
+  retries: 36
+  delay: 5
+  until: k8s_control_plane_component_health.status == 200
+  loop:
+    - 10257/healthz # kube-controller-manager
+    - 10259/livez # kube-scheduler

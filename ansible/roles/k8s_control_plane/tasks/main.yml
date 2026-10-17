@@ -4,6 +4,28 @@
     path: /etc/kubernetes/kubelet.conf
   register: k8s_control_plane_kubelet_conf
 
+- name: Create the kubeadm patches directory
+  ansible.builtin.file:
+    path: "{{ k8s_control_plane_patches_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  tags: cp_metrics
+
+- name: Place the kubeadm patches for this node
+  ansible.builtin.template:
+    src: "patches/{{ item }}+json.yaml.j2"
+    dest: "{{ k8s_control_plane_patches_dir }}/{{ item }}+json.yaml"
+    owner: root
+    group: root
+    mode: "0600"
+  loop:
+    - etcd
+    - kube-controller-manager
+    - kube-scheduler
+  tags: cp_metrics
+
 - name: Bootstrap the first control-plane node
   ansible.builtin.include_tasks: init.yml
   when: inventory_hostname == k8s_control_plane_first_node
@@ -13,6 +35,10 @@
   when:
     - inventory_hostname != k8s_control_plane_first_node
     - not k8s_control_plane_kubelet_conf.stat.exists
+
+- name: Control-plane metrics on running nodes
+  ansible.builtin.import_tasks: metrics.yml
+  tags: cp_metrics
 
 - name: Create kubeconfig directory for the admin user
   ansible.builtin.file:
