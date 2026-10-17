@@ -1,0 +1,34 @@
+---
+# Loki's push endpoint for the VMs outside the cluster (Alloy on the DNS and
+# Swarm VMs, role alloy), through the shared Gateway (ADR 0007, ADR 0012).
+# LAN and Tailscale only, TLS with the wildcard certificate. The backend is
+# the chart's nginx gateway, which requires basic auth (gateway-auth.sops.yaml)
+# for every path. Grafana doesn't use this route.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: loki
+  namespace: monitoring
+spec:
+  parentRefs:
+    # group and kind spelled out: the API server defaults them, and Argo CD
+    # would otherwise show the route as OutOfSync.
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: lab
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - loki.lab.theloomlabs.org
+  # Defaults spelled out (match, group, kind, weight), same reason.
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: loki-gateway
+          port: 80
+          weight: 1
