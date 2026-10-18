@@ -77,3 +77,34 @@ jobs:
 
       - name: SOPS files are encrypted
         run: make sops-check
+
+  manifests:
+    runs-on: ubuntu-latest
+    env:
+      HELM_VERSION: v4.2.3
+      KUBECONFORM_VERSION: v0.8.0
+      KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
+      # Same version as the Prometheus that kube-prometheus-stack deploys
+      PROMETHEUS_VERSION: 3.15.0
+      PROMETHEUS_SHA256: 2a542df32eac02ee17b9d844fb2aa1de00dafa5476579ba8a3ba862e9d572ea0
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: azure/setup-helm@v5
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Install kubeconform and promtool
+        run: |
+          base="https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}"
+          curl -sSfLo /tmp/kubeconform.tar.gz "${base}/kubeconform-linux-amd64.tar.gz"
+          echo "${KUBECONFORM_SHA256}  /tmp/kubeconform.tar.gz" | sha256sum -c -
+          sudo tar -xzf /tmp/kubeconform.tar.gz -C /usr/local/bin kubeconform
+          p="prometheus-${PROMETHEUS_VERSION}.linux-amd64"
+          base="https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}"
+          curl -sSfLo /tmp/prometheus.tar.gz "${base}/${p}.tar.gz"
+          echo "${PROMETHEUS_SHA256}  /tmp/prometheus.tar.gz" | sha256sum -c -
+          sudo tar -xzf /tmp/prometheus.tar.gz -C /usr/local/bin --strip-components=1 "${p}/promtool"
+
+      - name: Render and validate the Argo CD apps
+        run: make manifests
