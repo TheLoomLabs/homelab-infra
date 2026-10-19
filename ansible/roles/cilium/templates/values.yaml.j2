@@ -42,6 +42,11 @@ gatewayAPI:
   gatewayClass:
     create: true
 
+# Network policies (docs/network-policy.md). Audit mode logs would-be drops
+# as verdict AUDIT and lets the traffic through: the rollout switch for new
+# policies, set by cilium_policy_audit_mode.
+policyAuditMode: {{ cilium_policy_audit_mode | bool | lower }}
+
 hubble:
   relay:
     enabled: true
@@ -56,3 +61,15 @@ hubble:
     auto:
       method: cronJob
       schedule: "0 0 1 */4 *"
+  # Every flow a network policy would drop (AUDIT, in audit mode) or drops,
+  # written to a rotated file on each node. Hubble Relay only keeps the last
+  # few thousand flows per node, which isn't enough to review days of audit
+  # mode (docs/network-policy.md).
+  export:
+    static:
+      enabled: true
+      filePath: /var/run/cilium/hubble/policy-verdicts.log
+      allowList:
+        - '{"verdict":["AUDIT","DROPPED"]}'
+      fileMaxSizeMb: 10
+      fileMaxBackups: 5

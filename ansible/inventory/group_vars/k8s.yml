@@ -11,6 +11,10 @@ kube_vip_version: v1.2.4
 cilium_version: 1.20.3
 # renovate: datasource=github-releases depName=cilium/cilium-cli
 cilium_cli_version: v0.20.1
+# Network policies only log what they would drop (verdict AUDIT in Hubble)
+# instead of dropping it. On while new policies are rolled out
+# (docs/network-policy.md); `make cilium` applies a change.
+cilium_policy_audit_mode: true
 # renovate: datasource=github-releases depName=helm/helm
 helm_version: v4.2.3 # installed on the first control-plane node for the Argo CD bootstrap
 
