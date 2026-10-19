@@ -7,18 +7,22 @@ are skipped, so each line is one direction a policy has to allow. Endpoints are
 named namespace/app (app from the usual labels, else the pod name without its
 hash); everything outside the pods by its Cilium identity (host, remote-node,
 kube-apiserver, ingress, world), with the IP and, when the DNS proxy saw it,
-the name. Used to draft the CiliumNetworkPolicies and to review AUDIT verdicts
-before enforcing them.
+the name. Drops carry their reason (DROPPED:POLICY_DENIED); LAST is when the
+connection was last seen (UTC), so leftovers from a rollout stand out. Used to
+draft the CiliumNetworkPolicies and to review AUDIT verdicts before enforcing
+them.
 
     hubble observe --follow -o json --namespace monitoring > flows.json
     scripts/hubble-flows.py flows.json
     scripts/hubble-flows.py --verdict AUDIT flows.json
+    scripts/hubble-flows.py --since 24h policy-verdicts.log
 """
 
 from __future__ import annotations
 
 import argparse
 import collections
+import datetime as dt
 import json
 import re
 import sys
@@ -67,14 +71,38 @@ def port_of(flow: dict) -> str:
     return "-"
 
 
+def flow_time(flow: dict) -> dt.datetime | None:
+    """Hubble's RFC 3339 time with nanoseconds, as an aware datetime."""
+    raw = flow.get("time")
+    if not raw:
+        return None
+    m = re.match(r"^(.*T\d\d:\d\d:\d\d)(\.\d+)?(Z|[+-]\d\d:\d\d)$", raw)
+    if not m:
+        return None
+    frac = (m.group(2) or ".0")[:7]
+    tz = "+00:00" if m.group(3) == "Z" else m.group(3)
+    return dt.datetime.fromisoformat(m.group(1) + frac + tz)
+
+
+def duration(text: str) -> dt.timedelta:
+    m = re.fullmatch(r"(\d+)([mhd])", text)
+    if not m:
+        raise argparse.ArgumentTypeError("use <number>m, <number>h or <number>d")
+    unit = {"m": "minutes", "h": "hours", "d": "days"}[m.group(2)]
+    return dt.timedelta(**{unit: int(m.group(1))})
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("file", nargs="?", help="hubble observe -o json output (default: stdin)")
     ap.add_argument("--verdict", help="only this verdict (FORWARDED, DROPPED, AUDIT, ...)")
+    ap.add_argument("--since", type=duration, help="only flows newer than this (30m, 6h, 2d)")
     args = ap.parse_args()
 
     fh = open(args.file) if args.file else sys.stdin
     seen: collections.Counter[tuple[str, str, str, str]] = collections.Counter()
+    last: dict[tuple[str, str, str, str], dt.datetime] = {}
+    cutoff = dt.datetime.now(dt.timezone.utc) - args.since if args.since else None
     for line in fh:
         line = line.strip()
         if not line:
@@ -88,6 +116,11 @@ def main() -> int:
         verdict = flow.get("verdict", "?")
         if args.verdict and verdict != args.verdict:
             continue
+        when = flow_time(flow)
+        if cutoff and (when is None or when < cutoff):
+            continue
+        if verdict == "DROPPED" and flow.get("drop_reason_desc"):
+            verdict = f"DROPPED:{flow['drop_reason_desc']}"
         # Only the first packet of a TCP connection; everything for UDP/ICMP.
         tcp = (flow.get("l4") or {}).get("TCP")
         if tcp and not (tcp.get("flags") or {}).get("SYN"):
@@ -96,14 +129,21 @@ def main() -> int:
         src = name_of(flow.get("source") or {}, ip.get("source", "?"), flow.get("source_names") or [])
         dst = name_of(flow.get("destination") or {}, ip.get("destination", "?"),
                       flow.get("destination_names") or [])
-        seen[(src, dst, port_of(flow), verdict)] += 1
+        key = (src, dst, port_of(flow), verdict)
+        seen[key] += 1
+        if when and (key not in last or when > last[key]):
+            last[key] = when
 
     rows = sorted(seen.items(), key=lambda kv: kv[0])
     width_src = max([len(k[0]) for k, _ in rows] + [6])
     width_dst = max([len(k[1]) for k, _ in rows] + [11])
-    print(f"{'SOURCE':<{width_src}}  {'DESTINATION':<{width_dst}}  {'PORT':<10} {'VERDICT':<10} COUNT")
-    for (src, dst, port, verdict), n in rows:
-        print(f"{src:<{width_src}}  {dst:<{width_dst}}  {port:<10} {verdict:<10} {n}")
+    width_v = max([len(k[3]) for k, _ in rows] + [7])
+    print(f"{'SOURCE':<{width_src}}  {'DESTINATION':<{width_dst}}  {'PORT':<10} {'VERDICT':<{width_v}}  "
+          f"{'COUNT':>6}  LAST")
+    for key, n in rows:
+        src, dst, port, verdict = key
+        seen_at = last[key].strftime("%Y-%m-%d %H:%M") if key in last else "-"
+        print(f"{src:<{width_src}}  {dst:<{width_dst}}  {port:<10} {verdict:<{width_v}}  {n:>6}  {seen_at}")
     return 0
 
 

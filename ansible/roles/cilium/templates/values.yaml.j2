@@ -70,6 +70,9 @@ hubble:
       enabled: true
       filePath: /var/run/cilium/hubble/policy-verdicts.log
       allowList:
-        - '{"verdict":["AUDIT","DROPPED"]}'
+        - '{"verdict":["AUDIT"]}'
+        # Only drops by policy: the others (IPv6 neighbour discovery while
+        # the cluster has IPv6 off, ...) existed before and aren't ours.
+        - '{"verdict":["DROPPED"],"drop_reason_desc":["POLICY_DENIED","POLICY_DENY"]}'
       fileMaxSizeMb: 10
       fileMaxBackups: 5
