@@ -107,10 +107,10 @@ On a VM:
 
 ```bash
 ssh ops@swarm-m-01.lab.theloomlabs.org 'systemctl is-active alloy; sudo journalctl -u alloy -n 20 --no-pager'
-ssh ops@swarm-m-01.lab.theloomlabs.org 'curl -s localhost:12345/-/ready'
+curl -s http://swarm-m-01.lab.theloomlabs.org:12345/-/ready; echo   # Alloy listens on the VM address (LAN only)
 ```
 
-In Prometheus (*Status → Targets*): `monitoring/loki`, `alloy` and `alloy-events` are up; *Alerts* shows the groups `loki` and `alloy`.
+In Prometheus (*Status → Targets*): `monitoring/loki`, `alloy`, `alloy-events` and the VMs' `alloy-vm` are up; *Alerts* shows the groups `loki`, `alloy` and `vms` (AlloyVMDroppingLogs, AlloyVMComponentUnhealthy).
 
 ## Query in Grafana
 
@@ -146,6 +146,5 @@ https://grafana.lab.theloomlabs.org → **Explore** (compass icon in the left me
 
 ## Later
 
-- Prometheus scrapes the Alloys on the VMs (they listen on `127.0.0.1:12345` today), together with the Swarm nodes.
 - Alloy on the Proxmox host itself.
 - Loki's mixin dashboards (the chart's `monitoring.dashboards`), once they suit a single-binary install.

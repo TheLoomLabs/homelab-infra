@@ -12,6 +12,7 @@ kube-prometheus-stack runs Prometheus, Alertmanager and Grafana in the namespace
 | Longhorn metrics and alerts | `metrics.serviceMonitor` in `kubernetes/platform/longhorn/values.yaml`, `kubernetes/platform/longhorn/prometheusrule.yaml` |
 | Velero metrics and alerts | `metrics.serviceMonitor` in `kubernetes/platform/velero/values.yaml`, `kubernetes/platform/velero/prometheusrule.yaml` |
 | Control-plane metrics (etcd, scheduler, controller manager) | kubeadm patches in `ansible/roles/k8s_control_plane/templates/patches/`, `kubeEtcd`/`kubeScheduler`/`kubeControllerManager` in `values.yaml` |
+| DNS and Swarm VMs: targets, alerts, dashboard | `kubernetes/platform/monitoring/scrapeconfig-vms.yaml`, `vms-prometheusrule.yaml`, `swarm-dashboard.yaml`; on the VMs roles `alloy`, `docker`, `alerting` ([below](#vms-outside-kubernetes-dns-and-swarm)) |
 | Logs (Loki, Alloy) and their alerts | [logging.md](logging.md) |
 
 ## Alert routing
@@ -187,6 +188,109 @@ kill $!
 - **Scheduler or controller manager restarting:** the probe host and the bind address differ. `kubectl -n kube-system describe pod kube-scheduler-<node>` shows the failing probe.
 - **etcd latency alerts** (`etcdHighFsyncDurations`, `etcdHighCommitDurations`, `etcdGRPCRequestsSlow`): the three members share one Proxmox disk with Longhorn. Check the *etcd* dashboard against Longhorn activity (backups, rebuilds) before tuning a rule.
 
+## VMs outside Kubernetes (DNS and Swarm)
+
+Prometheus on Kubernetes also scrapes the five VMs outside the cluster (dns-01, dns-02, swarm-m-01..03). Nothing new runs on them except one systemd timer: Alloy, which already ships their logs, serves the metrics too.
+
+| Job | Hosts | Source | Port, path |
+|---|---|---|---|
+| `node-exporter` | all five | Alloy's built-in node_exporter (`prometheus.exporter.unix`), plus textfiles | 12345, `/api/v0/component/prometheus.exporter.unix.node/metrics` |
+| `alloy-vm` | all five | Alloy itself | 12345, `/metrics` |
+| `docker-cadvisor` | Swarm | Alloy's built-in cAdvisor (`prometheus.exporter.cadvisor`), Docker containers only | 12345, `/api/v0/component/prometheus.exporter.cadvisor.containers/metrics` |
+| `docker-engine` | Swarm | dockerd (`metrics-addr` in daemon.json, role `docker`): engine, and on managers the Swarm (`swarm_manager_*`, Raft) | 9323, `/metrics` |
+| `traefik` | alerting node | Traefik of the alerting stack, own entrypoint, host-mode port | 8082, `/metrics` |
+
+- **Targets are static** (`scrapeconfig-vms.yaml`, ScrapeConfig CRD): the VMs' LAN addresses, with the labels `host` (VM name, also used as `instance`) and `group` (`dns`, `swarm`). A new or re-addressed VM means changing that file and the `prometheus` network policy (egress `toCIDR` per address and port).
+- **Host metrics use job `node-exporter`**, like the cluster nodes. kube-prometheus-stack's node alerts (disk filling up, memory, clock, network errors), its recording rules and the *Node Exporter / Nodes* and *USE Method* dashboards cover the VMs without new rules. Pick the VM as instance there.
+- **Replicas per Swarm service:** the Swarm has no exporter for desired versus running tasks. A systemd timer on every manager (`swarm-services-metrics.timer`, every 30 s, as user `alloy`) runs `docker service ls` and writes `swarm_service_replicas_desired` and `swarm_service_replicas_running` (labels `stack`, `service`, `mode`) into `/var/lib/alloy/textfile/`, which the node exporter serves. All three managers write the same numbers; the rules take the max.
+- **Network:** UFW on these VMs already trusts the whole lab network, and pod traffic leaves the cluster with the node's address, so the firewall needs nothing new. Alloy's HTTP server (metrics and a read-only UI) now listens on the VM address instead of 127.0.0.1, without authentication: reachable from the LAN only. Traefik's port is published by Docker, which bypasses UFW; also LAN-only.
+- **Dashboard:** *Docker Swarm* (`swarm-dashboard.yaml`): managers, leader, nodes and tasks by state, services with desired and running tasks, Raft latency, CPU/memory/disk/network per VM, CPU/memory/network per Swarm service, Traefik requests, latency and certificate days left.
+
+Alerts (`vms-prometheusrule.yaml`):
+
+| Alert | Severity | Fires when |
+|---|---|---|
+| VMHostDown | warning | Alloy on a VM can't be scraped for 3 minutes. Inhibits the chart's TargetDown for the VM jobs |
+| AlloyVMDroppingLogs, AlloyVMComponentUnhealthy | warning | Same as the cluster's Alloy alerts, per VM |
+| SwarmQuorumLost | critical | Fewer than two managers' Docker engines reachable |
+| SwarmNoLeader | critical | No manager reports itself as Raft leader |
+| SwarmNodeNotReady | warning | A Swarm node is `down`, `unknown` or `disconnected` for 5 minutes |
+| SwarmServiceReplicasMismatch | warning | A service (not a job) runs fewer tasks than desired for 5 minutes |
+| SwarmServiceMetricsStale | warning | A manager's replica file is older than 5 minutes, or no manager writes one |
+| DockerContainerOOMKilled | warning | A container hit its memory limit |
+| TraefikCertificateExpiringSoon | warning | The wildcard certificate has under 14 days left (Traefik renews at 30) |
+
+### Roll out
+
+1. Docker engine metrics, and the containerd socket for the docker group (cAdvisor). `playbooks/swarm.yml` now runs one VM at a time: the daemon.json change restarts dockerd, which stops that node's containers (the alerting stack on swarm-m-01 is down for about a minute), and waits until the node is back in the Swarm with a leader before the next one.
+
+```bash
+make swarm
+```
+
+2. Traefik's metrics entrypoint (redeploys the alerting stack):
+
+```bash
+make alerting
+```
+
+3. Alloy on the VMs: listens on the VM address, host and container metrics, replica timer on the managers.
+
+```bash
+make logs
+```
+
+4. Check on the VMs (from the workstation):
+
+```bash
+for h in dns-01 dns-02 swarm-m-01 swarm-m-02 swarm-m-03; do \
+  printf '%s ' $h; \
+  curl -s -o /dev/null -w '%{http_code}\n' \
+  http://$h.lab.theloomlabs.org:12345/api/v0/component/prometheus.exporter.unix.node/metrics; \
+done
+curl -s http://swarm-m-01.lab.theloomlabs.org:9323/metrics | grep -E '^swarm_manager_(leader|nodes)'
+curl -s http://swarm-m-01.lab.theloomlabs.org:8082/metrics | grep -c '^traefik_'
+curl -s http://swarm-m-01.lab.theloomlabs.org:12345/api/v0/component/prometheus.exporter.unix.node/metrics \
+  | grep '^swarm_service_replicas'
+```
+
+Expected: `200` five times; one manager with `swarm_manager_leader 1`, `swarm_manager_nodes{state="ready"} 3`; a positive count of Traefik metrics; desired and running replicas for the alerting services.
+
+5. Push the commits. Argo CD syncs `kube-prometheus-stack` (ScrapeConfigs, rules, dashboard, network policy, inhibit rule).
+
+6. Prometheus targets and rules:
+
+```bash
+kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 19090:9090 &
+# http://localhost:19090/targets → scrapeConfig/monitoring/vm-node 5/5, vm-alloy 5/5,
+#                                  docker-cadvisor 3/3, docker-engine 3/3, traefik 1/1 UP
+# http://localhost:19090/rules   → groups vms, swarm, traefik
+kill $!
+```
+
+7. Grafana: dashboard *Docker Swarm* shows data; *Node Exporter / Nodes* lists the VMs as instances.
+
+8. Test an alert with a service that can't be scheduled (on a manager):
+
+```bash
+docker service create --detach --name replicas-test \
+  --constraint node.labels.replicas-test==true alpine:3 sleep 1d
+```
+
+After about 5 minutes ntfy shows `SwarmServiceReplicasMismatch` for `replicas-test`. Then remove it; the resolved message follows:
+
+```bash
+docker service rm replicas-test
+```
+
+### Troubleshooting VM metrics
+
+- **Target down, `connection refused`:** Alloy still listens on 127.0.0.1 (`sudo grep listen /etc/default/alloy` on the VM, then `make logs`), or dockerd has no `metrics-addr` (`cat /etc/docker/daemon.json`, then `make swarm`).
+- **Target down, `context deadline exceeded`:** the `prometheus` network policy doesn't allow that address and port (Hubble: `hubble observe --namespace monitoring --verdict DROPPED`), or the VM is down.
+- **No container metrics** (only `id="/"` in the cAdvisor output): `journalctl -u alloy | grep 'container factory'`. cAdvisor needs the Docker socket and, since Docker 29 (images and containers in containerd), the containerd socket: the alloy user is in the docker group (`id alloy`), and the role `docker` gives that group the containerd socket (`[grpc] gid` in `/etc/containerd/config.toml`, `ls -l /run/containerd/containerd.sock` shows group `docker`). Restart Alloy after the socket changes; cAdvisor registers its factories only at start.
+- **`SwarmServiceMetricsStale`:** `systemctl status swarm-services-metrics.service` and `journalctl -u swarm-services-metrics` on the manager; `sudo -u alloy docker service ls` must work there.
+- **Alloy upgrades:** the exporter paths (`/api/v0/component/...`) are Alloy's HTTP API. Check them after an Alloy upgrade (step 4).
+
 ## Troubleshooting
 
 - **No ntfy message:** `kubectl -n monitoring logs sts/alertmanager-kube-prometheus-stack-alertmanager -c alertmanager | grep -i -E 'notify|webhook'`. `401`/`403` means the token doesn't match the one in `swarm/alerting.sops.yaml`; a DNS or TLS error means the Swarm stack or its certificate isn't up ([alerting.md](alerting.md)).
@@ -195,6 +299,7 @@ kill $!
 
 ## Later
 
-- Prometheus scrapes the Swarm nodes and Traefik, so Kubernetes also watches the alerting stack; a second receiver (Matrix or Mattermost) for when ntfy is down.
+- A second receiver (Matrix or Mattermost) for when ntfy is down.
+- Metrics from the Proxmox host itself (node metrics, VM states).
 - Tune or override etcd latency alerts after about a week of real data (`defaultRules.disabled` plus an own rule).
 - Dashboards for Longhorn and Velero as ConfigMaps in Git (Grafana sidecar).

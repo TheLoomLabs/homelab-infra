@@ -41,7 +41,7 @@ Everything else is one policy per component, named for what it allows:
 | cert-manager controller | 1.1.1.1, 1.0.0.1 (DNS-01 propagation checks) | 53 |
 | sops-secrets-operator | API server | 6443 |
 | Velero | API server; `*.r2.cloudflarestorage.com` | 6443; 443 |
-| Prometheus | the whole cluster (`cluster` entity: pods, nodes, API server) | any |
+| Prometheus | the whole cluster (`cluster` entity: pods, nodes, API server); the DNS and Swarm VMs (`toCIDR`, their LAN addresses) | any; VMs: 12345 (Alloy), 9323 (Docker), 8082 (Traefik) |
 | Grafana | Prometheus, Alertmanager, Loki; API server (sidecars) | 9090, 9093, 3100; 6443 |
 | Gateway | Grafana; loki-gateway | 3000; 8080 |
 | Alertmanager | ntfy.lab / hc.lab.theloomlabs.org (Swarm) | 443 |
