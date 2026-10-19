@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+# Input for `kubeadm init phase control-plane apiserver` on a running node
+# (tasks/encryption.yml): this node's endpoint plus the cluster's current
+# ClusterConfiguration from the kubeadm-config ConfigMap, so the regenerated
+# manifest only differs by the encryption flag and volume.
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: {{ ansible_host }}
+  bindPort: 6443
+nodeRegistration:
+  name: {{ inventory_hostname }}
+  criSocket: unix:///run/containerd/containerd.sock
+patches:
+  directory: {{ k8s_control_plane_patches_dir }}
+---
+{{ k8s_control_plane_cluster_config_new | to_nice_yaml(indent=2) }}

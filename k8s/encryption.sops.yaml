@@ -1,0 +1,18 @@
+k8s_control_plane_encryption_keys:
+    - name: ENC[AES256_GCM,data:Y7/Rfg==,iv:7WdEKjyYbeu1cVW7NgtDPFHLFADIOkWfkUoyOV/zoU4=,tag:SWBgfmNQ5vne5GYEU/hILA==,type:str]
+      secret: ENC[AES256_GCM,data:e1sQBqBfM2Vcss/mNZm5YehTWui/17FzJgY0/YUaQy1nmMWNG6t+ob9RiYQ=,iv:O1k828f7R8xh+nZvb4RrW41DoXMB81EASMwVhY027Xg=,tag:qE83+lFbct6J0wYtfm02Eg==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBiT3JtcEdMK3k1SXU5ZEI4
+            NW9TaXdnMVVXVnRhdUE5Sms1aDBFTWxsRlRnCk5SZzNHZ2hIQmhrRk1ZQWFxeTIx
+            ZHRWTUUzY2dCbjRmMHNVcUFWUGRrbzAKLS0tIHlUYlhITk9rQittVElmendLTkhO
+            RVFRZXNFWnE2K3U1M3VnK1lWcVZtcXcKxx/abiuQ0AjTwn8jHwp6wnj/pxIiyXuW
+            NRXQu+xnLetm8H1y2p2vHXKC6+XAf3kqMLJfT+XgphWCA0mgATrqdw==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1fjsagzw9yzjhd5p6n4fmjstjvud9ucdp383mwe2gqn0k7rfaffrsa3asek
+    lastmodified: "2026-10-19T12:54:30Z"
+    mac: ENC[AES256_GCM,data:2/qYOXp1iaT6CVMLDDl9FyuNN8uzU3B6mpNPeY/PJ71NSR6Zo+Rmftr0d0evA4iS+JimZAEbtEUZmZSfqSJqzSHCmobRqYy7wysZ0N1tNtYb7fV+hxTpo/3Qul2ddM59WGQoQCSBqC7PRFdUFqJjrZs8w8lDoFiEVqdQXnZQX7o=,iv:M2nC7Ixn/6jMbMzgN1bml0F+LIv1L14G1mjgDUD5f5M=,tag:8SDCGMf/5ysz0yjotodiTw==,type:str]
+    unencrypted_suffix: _unencrypted
+    version: 3.13.3

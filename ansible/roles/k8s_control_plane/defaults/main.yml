@@ -5,3 +5,16 @@ k8s_control_plane_kube_vip_kubeconfig: /etc/kubernetes/admin.conf
 # and kube-controller-manager on the node address. kubeadm applies them on
 # init and join, and on upgrades only when called with --patches.
 k8s_control_plane_patches_dir: /etc/kubernetes/patches
+
+# Encryption at rest for Secrets and ConfigMaps (docs/encryption.md). The keys
+# come from k8s/encryption.sops.yaml (k8s_control_plane_encryption_keys: list of name +
+# 32-byte base64 secret; the first entry encrypts, all of them decrypt).
+k8s_control_plane_encryption_dir: /etc/kubernetes/encryption
+k8s_control_plane_encryption_config: "{{ k8s_control_plane_encryption_dir }}/config.yaml"
+k8s_control_plane_encryption_resources:
+  - secrets
+  - configmaps
+# true only for the first pass on a running cluster, and for the first step
+# of removing encryption again: every API server must be able to read the
+# key before any of them writes with it.
+k8s_control_plane_encryption_identity_first: false

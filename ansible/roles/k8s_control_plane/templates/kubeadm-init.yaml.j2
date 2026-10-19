@@ -34,6 +34,17 @@ apiServer:
     - {{ hostvars[host].ansible_host }}
     - {{ host }}
 {% endfor %}
+  # Encryption at rest (docs/encryption.md). Joining control-plane nodes read
+  # this from the kubeadm-config ConfigMap; the role places the file first.
+  extraArgs:
+    - name: encryption-provider-config
+      value: {{ k8s_control_plane_encryption_config }}
+  extraVolumes:
+    - name: encryption-config
+      hostPath: {{ k8s_control_plane_encryption_dir }}
+      mountPath: {{ k8s_control_plane_encryption_dir }}
+      readOnly: true
+      pathType: DirectoryOrCreate
 ---
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration

@@ -26,6 +26,12 @@
     - kube-scheduler
   tags: cp_metrics
 
+# Before init/join: the API server needs the encryption config at its first
+# start. On running nodes this also rolls out config changes.
+- name: Encryption at rest for Secrets and ConfigMaps
+  ansible.builtin.import_tasks: encryption.yml
+  tags: etcd_encryption
+
 - name: Bootstrap the first control-plane node
   ansible.builtin.include_tasks: init.yml
   when: inventory_hostname == k8s_control_plane_first_node

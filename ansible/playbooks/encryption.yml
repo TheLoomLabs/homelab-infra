@@ -1,0 +1,116 @@
+---
+# Encryption at rest for Secrets and ConfigMaps on the running cluster
+# (docs/encryption.md). New clusters get it from `make k8s` already.
+#
+#   make encryption ARGS="-e k8s_control_plane_encryption_identity_first=true"  # pass 1: every API server can read the key
+#   make encryption                                                             # pass 2: encrypt new writes, rewrite, verify
+#
+# The same two passes roll out a key rotation (docs/encryption.md).
+
+- name: Encryption | Control-plane nodes, one at a time
+  hosts: k8s_control_plane
+  become: true
+  serial: 1
+  pre_tasks:
+    - name: Load the encryption-at-rest keys (k8s/encryption.sops.yaml, decrypted with the age key)
+      community.sops.load_vars:
+        file: "{{ playbook_dir }}/../../k8s/encryption.sops.yaml"
+      no_log: true
+  tasks:
+    - name: Roll out the encryption config
+      ansible.builtin.include_role:
+        name: k8s_control_plane
+        tasks_from: encryption.yml
+
+- name: Encryption | Rewrite and verify
+  hosts: k8s_control_plane[0]
+  become: true
+  pre_tasks:
+    - name: Load the encryption-at-rest keys (k8s/encryption.sops.yaml, decrypted with the age key)
+      community.sops.load_vars:
+        file: "{{ playbook_dir }}/../../k8s/encryption.sops.yaml"
+      no_log: true
+  vars:
+    encryption_identity_first: "{{ k8s_control_plane_encryption_identity_first | default(false) | bool }}"
+    encryption_resources:
+      - secrets
+      - configmaps
+    # What every value in etcd must start with once rewritten: provider,
+    # version and the name of the first (active) key.
+    encryption_prefix: "k8s:enc:secretbox:v1:{{ k8s_control_plane_encryption_keys[0].name }}:"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  tasks:
+    - name: Pass 1 only spreads the key
+      ansible.builtin.debug:
+        msg: >-
+          Every API server can now read the key, new writes are still
+          plaintext. Run again without -e k8s_control_plane_encryption_identity_first=true.
+      when: encryption_identity_first
+
+    - name: Rewrite and verify
+      when: not encryption_identity_first
+      block:
+        # Reading and writing back every object stores it with the first
+        # provider. A conflict (object changed meanwhile) fails the run;
+        # the retry rewrites everything again.
+        - name: Rewrite every object with the active key
+          ansible.builtin.shell: >-
+            set -o pipefail &&
+            kubectl get {{ item }} --all-namespaces --output json
+            | kubectl replace --filename - >/dev/null
+          args:
+            executable: /bin/bash
+          loop: "{{ encryption_resources }}"
+          register: encryption_rewrite
+          retries: 3
+          delay: 10
+          until: encryption_rewrite.rc == 0
+          changed_when: true
+
+        # etcdctl inside the etcd static pod (the image has no shell). Values
+        # are base64 in the JSON output; they are encrypted, but the output is
+        # still kept out of the log.
+        - name: Read the stored values from etcd
+          ansible.builtin.command:
+            argv:
+              - kubectl
+              - --namespace=kube-system
+              - exec
+              - "etcd-{{ inventory_hostname }}"
+              - --
+              - etcdctl
+              - --endpoints=https://127.0.0.1:2379
+              - --cacert=/etc/kubernetes/pki/etcd/ca.crt
+              - --cert=/etc/kubernetes/pki/etcd/server.crt
+              - --key=/etc/kubernetes/pki/etcd/server.key
+              - get
+              - --prefix
+              - "/registry/{{ item }}/"
+              - --write-out=json
+          loop: "{{ encryption_resources }}"
+          register: encryption_etcd
+          changed_when: false
+          no_log: true
+
+        - name: Find values not encrypted with the active key
+          ansible.builtin.set_fact:
+            encryption_values: "{{ _stored | length }}"
+            encryption_not_encrypted: >-
+              {{ _stored | dict2items
+                 | rejectattr('value', 'match', encryption_prefix | regex_escape)
+                 | map(attribute='key') | list }}
+          vars:
+            _kvs: >-
+              {{ encryption_etcd.results | map(attribute='stdout') | map('from_json')
+                 | selectattr('kvs', 'defined') | map(attribute='kvs') | flatten(levels=1) }}
+            # etcd key -> stored bytes (latin-1 maps every byte to one character)
+            _stored: >-
+              {{ dict(_kvs | map(attribute='key') | map('b64decode')
+                 | zip(_kvs | map(attribute='value') | map('b64decode', encoding='latin-1'))) }}
+
+        - name: Every Secret and ConfigMap is encrypted
+          ansible.builtin.assert:
+            that: encryption_not_encrypted | length == 0
+            fail_msg: "Not encrypted with {{ encryption_prefix }}: {{ encryption_not_encrypted }}"
+            success_msg: "All {{ encryption_values }} values in etcd start with {{ encryption_prefix }}"

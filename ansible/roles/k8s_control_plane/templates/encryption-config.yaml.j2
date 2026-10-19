@@ -1,0 +1,24 @@
+# {{ ansible_managed }}
+# Encryption at rest for the API server (docs/encryption.md). The first
+# provider encrypts new writes; every provider in the list can decrypt.
+# identity reads (or, when first, writes) plaintext.
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
+resources:
+  - resources:
+{% for resource in k8s_control_plane_encryption_resources %}
+      - {{ resource }}
+{% endfor %}
+    providers:
+{% if k8s_control_plane_encryption_identity_first | bool %}
+      - identity: {}
+{% endif %}
+      - secretbox:
+          keys:
+{% for key in k8s_control_plane_encryption_keys %}
+            - name: {{ key.name }}
+              secret: "{{ key.secret }}"
+{% endfor %}
+{% if not k8s_control_plane_encryption_identity_first | bool %}
+      - identity: {}
+{% endif %}

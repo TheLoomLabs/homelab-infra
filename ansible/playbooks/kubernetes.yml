@@ -9,6 +9,12 @@
   hosts: k8s_control_plane
   become: true
   serial: 1 # control-plane nodes join etcd one at a time
+  pre_tasks:
+    - name: Load the encryption-at-rest keys (k8s/encryption.sops.yaml, decrypted with the age key)
+      community.sops.load_vars:
+        file: "{{ playbook_dir }}/../../k8s/encryption.sops.yaml"
+      no_log: true
+      tags: etcd_encryption
   roles:
     - k8s_control_plane
 

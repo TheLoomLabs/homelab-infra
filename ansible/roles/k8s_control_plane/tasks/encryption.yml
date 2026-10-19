@@ -1,0 +1,155 @@
+---
+# Encryption at rest for Secrets and ConfigMaps (docs/encryption.md).
+#
+# Fresh node: only the config file is placed here; kubeadm init/join then
+# starts the API server with it (kubeadm-init.yaml.j2, kubeadm-config
+# ConfigMap).
+#
+# Running node: the kubeadm-config ConfigMap gets the flag and the volume
+# (so joins and `kubeadm upgrade` keep them), then the API server manifest is
+# regenerated with `kubeadm init phase control-plane apiserver`. When only the
+# config file changes (second pass, key rotation), the API server container
+# is restarted, because it reads the file only at start. The play runs with
+# serial: 1, so the other two API servers keep serving meanwhile.
+
+- name: Encryption | Check whether this node is already part of a cluster
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: k8s_control_plane_encryption_kubelet_conf
+
+- name: Encryption | Check the API server manifest for the flag
+  ansible.builtin.command: >-
+    grep -q -- '--encryption-provider-config=' /etc/kubernetes/manifests/kube-apiserver.yaml
+  register: k8s_control_plane_encryption_flag
+  changed_when: false
+  failed_when: k8s_control_plane_encryption_flag.rc not in [0, 1, 2]
+
+- name: Encryption | Refuse to write encrypted data before every API server can read it
+  ansible.builtin.assert:
+    that: k8s_control_plane_encryption_identity_first | bool
+    fail_msg: >-
+      This running API server has no encryption config yet. Roll out the first
+      pass (identity first) to every control-plane node, then run again without
+      it: make encryption ARGS="-e k8s_control_plane_encryption_identity_first=true"
+      (docs/encryption.md).
+    quiet: true
+  when:
+    - k8s_control_plane_encryption_kubelet_conf.stat.exists
+    - k8s_control_plane_encryption_flag.rc != 0
+
+- name: Encryption | Create the config directory
+  ansible.builtin.file:
+    path: "{{ k8s_control_plane_encryption_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Encryption | Place the encryption config
+  ansible.builtin.template:
+    src: encryption-config.yaml.j2
+    dest: "{{ k8s_control_plane_encryption_config }}"
+    owner: root
+    group: root
+    mode: "0600"
+  register: k8s_control_plane_encryption_file
+  diff: false
+  no_log: true
+
+- name: Encryption | Reconfigure the running API server
+  when: k8s_control_plane_encryption_kubelet_conf.stat.exists
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  block:
+    - name: Encryption | Read the cluster configuration (kubeadm-config ConfigMap)
+      ansible.builtin.command: >-
+        kubectl --namespace kube-system get configmap kubeadm-config
+        --output jsonpath={.data.ClusterConfiguration}
+      register: k8s_control_plane_cluster_config_raw
+      changed_when: false
+
+    - name: Encryption | Add the flag and the volume to the cluster configuration
+      ansible.builtin.set_fact:
+        k8s_control_plane_cluster_config_new: "{{ _config | combine({'apiServer': _api_server}) }}"
+      vars:
+        _config: "{{ k8s_control_plane_cluster_config_raw.stdout | from_yaml }}"
+        _old: "{{ _config.apiServer | default({}) }}"
+        _api_server: >-
+          {{ _old | combine({
+               'extraArgs': (_old.extraArgs | default([]) | rejectattr('name', 'equalto', 'encryption-provider-config') | list)
+                 + [{'name': 'encryption-provider-config', 'value': k8s_control_plane_encryption_config}],
+               'extraVolumes': (_old.extraVolumes | default([]) | rejectattr('name', 'equalto', 'encryption-config') | list)
+                 + [{'name': 'encryption-config',
+                     'hostPath': k8s_control_plane_encryption_dir,
+                     'mountPath': k8s_control_plane_encryption_dir,
+                     'readOnly': true,
+                     'pathType': 'DirectoryOrCreate'}]
+             }) }}
+
+    - name: Encryption | Update the kubeadm-config ConfigMap
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --namespace=kube-system
+          - patch
+          - configmap
+          - kubeadm-config
+          - --type=merge
+          - --patch
+          - "{{ {'data': {'ClusterConfiguration': k8s_control_plane_cluster_config_new | to_nice_yaml(indent=2)}} | to_json }}"
+      when: k8s_control_plane_cluster_config_new != (k8s_control_plane_cluster_config_raw.stdout | from_yaml)
+      changed_when: true
+
+    - name: Encryption | Note the running API server container
+      ansible.builtin.command: crictl ps --name '^kube-apiserver$' --state running --quiet
+      register: k8s_control_plane_apiserver_before
+      changed_when: false
+
+    - name: Encryption | Regenerate the API server manifest with the flag
+      when: k8s_control_plane_encryption_flag.rc != 0
+      block:
+        - name: Encryption | Render the kubeadm reconfigure input
+          ansible.builtin.template:
+            src: kubeadm-reconfigure.yaml.j2
+            dest: /etc/kubernetes/kubeadm-reconfigure.yaml
+            owner: root
+            group: root
+            mode: "0600"
+
+        # kubelet restarts the static pod when its manifest changes.
+        - name: Encryption | kubeadm init phase control-plane apiserver
+          ansible.builtin.command: >-
+            kubeadm init phase control-plane apiserver
+            --config /etc/kubernetes/kubeadm-reconfigure.yaml
+          changed_when: true
+
+    # Flag already there, but the file changed: the API server reads it only
+    # at start. kubelet starts a new container right away.
+    - name: Encryption | Restart the API server to load the changed config
+      ansible.builtin.command: crictl stop {{ k8s_control_plane_apiserver_before.stdout_lines | first }}
+      when:
+        - k8s_control_plane_encryption_flag.rc == 0
+        - k8s_control_plane_encryption_file is changed
+      changed_when: true
+
+    - name: Encryption | Wait for a new API server container
+      ansible.builtin.command: crictl ps --name '^kube-apiserver$' --state running --quiet
+      register: k8s_control_plane_apiserver_after
+      changed_when: false
+      retries: 60
+      delay: 5
+      until:
+        - k8s_control_plane_apiserver_after.stdout | length > 0
+        - k8s_control_plane_apiserver_after.stdout != k8s_control_plane_apiserver_before.stdout
+      when: k8s_control_plane_encryption_flag.rc != 0 or k8s_control_plane_encryption_file is changed
+
+    - name: Encryption | Wait until this API server is ready
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}:6443/readyz"
+        validate_certs: false
+        status_code: 200
+      register: k8s_control_plane_apiserver_ready
+      retries: 60
+      delay: 5
+      until: k8s_control_plane_apiserver_ready.status == 200
+      when: k8s_control_plane_encryption_flag.rc != 0 or k8s_control_plane_encryption_file is changed

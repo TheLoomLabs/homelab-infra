@@ -34,7 +34,7 @@ tf-destroy: ## Destroy all lab VMs
 
 ## --- Ansible -----------------------------------------------------------------
 
-.PHONY: ping base dns k8s cilium longhorn sops-key argocd swarm alerting logs reboot site
+.PHONY: ping base dns k8s encryption cilium longhorn sops-key argocd swarm alerting logs reboot site
 ping: ## Check SSH to every node
 	cd $(ANSIBLE_DIR) && ansible all -m ansible.builtin.ping
 
@@ -46,6 +46,9 @@ dns: ## Deploy BIND on dns-01/dns-02 (zone data: dns/records.yml)
 
 k8s: ## Build the Kubernetes cluster (kubeadm, kube-vip, Cilium)
 	$(PLAYBOOK) playbooks/kubernetes.yml
+
+encryption: ## Encryption at rest on the running cluster (pass 1: ARGS="-e k8s_control_plane_encryption_identity_first=true")
+	$(PLAYBOOK) playbooks/encryption.yml $(ARGS)
 
 cilium: ## Re-apply Cilium Helm values (cilium upgrade if they changed)
 	$(PLAYBOOK) playbooks/cilium.yml
@@ -81,7 +84,7 @@ fmt: ## Format Terraform code
 	terraform fmt -recursive terraform
 
 sops-check: ## Fail if a *.sops.yaml manifest is not encrypted
-	@rc=0; for f in $$(git ls-files --cached --others --exclude-standard 'kubernetes/*.sops.yaml' 'dns/*.sops.yaml' 'swarm/*.sops.yaml' 'logging/*.sops.yaml'); do \
+	@rc=0; for f in $$(git ls-files --cached --others --exclude-standard 'kubernetes/*.sops.yaml' 'dns/*.sops.yaml' 'swarm/*.sops.yaml' 'logging/*.sops.yaml' 'k8s/*.sops.yaml'); do \
 		grep -q '^sops:' "$$f" || { echo "not encrypted: $$f"; rc=1; }; \
 	done; exit $$rc
 

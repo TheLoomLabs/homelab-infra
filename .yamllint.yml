@@ -14,6 +14,7 @@ ignore: |
   dns/*.sops.yaml
   swarm/*.sops.yaml
   logging/*.sops.yaml
+  k8s/*.sops.yaml
 
 rules:
   line-length:
