@@ -99,6 +99,14 @@
     selection: hold
   loop: "{{ k8s_prereqs_packages }}"
 
+# crictl (Kubernetes CRI tools, same repository). Not pinned or held: it is
+# versioned on its own and only used for debugging and by the encryption
+# rollout (role k8s_control_plane) to restart the API server container.
+- name: Install crictl
+  ansible.builtin.apt:
+    name: cri-tools
+    state: present
+
 - name: Pin kubelet to the node address
   ansible.builtin.copy:
     dest: /etc/default/kubelet
