@@ -35,7 +35,7 @@
     group: root
     mode: "0700"
 
-- name: Copy Argo CD values and root Application
+- name: Copy Argo CD values, AppProjects and root Application
   ansible.builtin.copy:
     src: "{{ item.src }}"
     dest: "{{ argocd_remote_dir }}/{{ item.dest }}"
@@ -44,6 +44,7 @@
     mode: "0600"
   loop:
     - {src: "{{ argocd_values_file }}", dest: values.yaml}
+    - {src: "{{ argocd_projects_manifest }}", dest: projects.yaml}
     - {src: "{{ argocd_root_app_manifest }}", dest: root.yaml}
   loop_control:
     label: "{{ item.dest }}"
@@ -70,6 +71,15 @@
     KUBECONFIG: /etc/kubernetes/admin.conf
   when: argocd_release.rc != 0
   changed_when: true
+
+# The root app names the platform project; Argo CD won't sync it until the
+# project exists. After the bootstrap the root app keeps them in sync.
+- name: Apply the AppProjects
+  ansible.builtin.command: kubectl apply -f {{ argocd_remote_dir }}/projects.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: argocd_projects_apply
+  changed_when: "'configured' in argocd_projects_apply.stdout or 'created' in argocd_projects_apply.stdout"
 
 - name: Apply the root Application (app of apps)
   ansible.builtin.command: kubectl apply -f {{ argocd_remote_dir }}/root.yaml

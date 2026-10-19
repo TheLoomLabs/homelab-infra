@@ -12,7 +12,7 @@ metadata:
     # but only once it reconciles, so the order between the two doesn't matter.
     argocd.argoproj.io/sync-wave: "-6"
 spec:
-  project: default
+  project: platform
   source:
     repoURL: https://github.com/TheLoomLabs/homelab-infra.git
     targetRevision: main

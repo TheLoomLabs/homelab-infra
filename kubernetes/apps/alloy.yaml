@@ -14,7 +14,7 @@ metadata:
     # With loki (-1); Alloy retries until Loki is ready.
     argocd.argoproj.io/sync-wave: "-1"
 spec:
-  project: default
+  project: platform
   sources:
     - repoURL: https://grafana.github.io/helm-charts
       chart: alloy

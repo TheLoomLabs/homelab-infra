@@ -1,0 +1,64 @@
+---
+# Argo CD projects. Every Application names one of these instead of the
+# built-in `default` project, which allows any repo, any namespace and any
+# cluster-wide resource. The root app syncs this file before the Applications
+# (sync wave), and Ansible applies it before the root app on a fresh
+# bootstrap. `make manifests` checks every app against its project.
+#
+#   platform  cluster components (everything in kubernetes/apps today). They
+#             install CRDs, webhooks and cluster RBAC, so cluster-scoped kinds
+#             are allowed; sources and namespaces are an explicit list.
+#   apps      daily-use apps (Phase 3): namespaced resources only, plus their
+#             Namespace. Each app adds its namespace (and chart repo) here.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  description: Cluster platform components
+  sourceRepos:
+    - https://github.com/TheLoomLabs/homelab-infra.git
+    - https://github.com/kubernetes-csi/external-snapshotter.git
+    - https://argoproj.github.io/argo-helm
+    - https://charts.jetstack.io
+    - https://charts.longhorn.io
+    - https://grafana-community.github.io/helm-charts
+    - https://grafana.github.io/helm-charts
+    - https://isindir.github.io/sops-secrets-operator/
+    - https://prometheus-community.github.io/helm-charts
+    - https://vmware-tanzu.github.io/helm-charts
+  destinations:
+    - {server: https://kubernetes.default.svc, namespace: argocd}
+    - {server: https://kubernetes.default.svc, namespace: cert-manager}
+    - {server: https://kubernetes.default.svc, namespace: gateway}
+    - {server: https://kubernetes.default.svc, namespace: kube-system}
+    - {server: https://kubernetes.default.svc, namespace: longhorn-system}
+    - {server: https://kubernetes.default.svc, namespace: monitoring}
+    - {server: https://kubernetes.default.svc, namespace: sops}
+    - {server: https://kubernetes.default.svc, namespace: velero}
+  clusterResourceWhitelist:
+    - {group: "*", kind: "*"}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: apps
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  description: Daily-use apps (namespaced only)
+  sourceRepos:
+    - https://github.com/TheLoomLabs/homelab-infra.git
+  # One entry per app namespace, added with the app. Never the platform
+  # namespaces above.
+  destinations: []
+  clusterResourceWhitelist:
+    - {group: "", kind: Namespace}
+  # Quotas and limits are set by the platform, not by the app.
+  namespaceResourceBlacklist:
+    - {group: "", kind: ResourceQuota}
+    - {group: "", kind: LimitRange}

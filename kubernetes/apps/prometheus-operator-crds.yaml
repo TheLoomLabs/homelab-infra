@@ -12,7 +12,7 @@ metadata:
     # Before longhorn (-4) and velero (-3), whose charts create ServiceMonitors.
     argocd.argoproj.io/sync-wave: "-9"
 spec:
-  project: default
+  project: platform
   source:
     repoURL: https://prometheus-community.github.io/helm-charts
     chart: prometheus-operator-crds

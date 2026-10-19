@@ -11,7 +11,7 @@ metadata:
     # After longhorn (-4): volume backups need the backup target.
     argocd.argoproj.io/sync-wave: "-3"
 spec:
-  project: default
+  project: platform
   sources:
     - repoURL: https://vmware-tanzu.github.io/helm-charts
       chart: velero

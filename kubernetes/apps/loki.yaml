@@ -13,7 +13,7 @@ metadata:
     # are picked up by Prometheus, the datasource by Grafana.
     argocd.argoproj.io/sync-wave: "-1"
 spec:
-  project: default
+  project: platform
   sources:
     # The OSS Loki chart moved from grafana/helm-charts to grafana-community
     # in March 2026; grafana/loki 7.x is the Enterprise (GEL) chart.

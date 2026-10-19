@@ -13,7 +13,7 @@ metadata:
     # Before longhorn (-4), whose VolumeSnapshotClass needs the CRDs.
     argocd.argoproj.io/sync-wave: "-5"
 spec:
-  project: default
+  project: platform
   sources:
     - repoURL: https://github.com/kubernetes-csi/external-snapshotter.git
       targetRevision: v8.6.0

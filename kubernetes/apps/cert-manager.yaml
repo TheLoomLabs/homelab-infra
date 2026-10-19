@@ -11,7 +11,7 @@ metadata:
     # After sops-secrets-operator (-8), before the Gateway that needs a cert.
     argocd.argoproj.io/sync-wave: "-7"
 spec:
-  project: default
+  project: platform
   sources:
     - repoURL: https://charts.jetstack.io
       chart: cert-manager

@@ -12,7 +12,7 @@ metadata:
     # After longhorn (-4): Prometheus and Alertmanager need volumes.
     argocd.argoproj.io/sync-wave: "-2"
 spec:
-  project: default
+  project: platform
   sources:
     - repoURL: https://prometheus-community.github.io/helm-charts
       chart: kube-prometheus-stack

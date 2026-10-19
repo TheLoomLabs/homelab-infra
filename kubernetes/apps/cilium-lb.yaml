@@ -11,13 +11,16 @@ metadata:
     # Before anything that creates a LoadBalancer service.
     argocd.argoproj.io/sync-wave: "-5"
 spec:
-  project: default
+  project: platform
   source:
     repoURL: https://github.com/TheLoomLabs/homelab-infra.git
     targetRevision: main
     path: kubernetes/platform/cilium-lb
   destination:
     server: https://kubernetes.default.svc
+    # The pool and the policy are cluster-scoped; the namespace only has to be
+    # one the platform project permits.
+    namespace: kube-system
   syncPolicy:
     automated:
       prune: true
