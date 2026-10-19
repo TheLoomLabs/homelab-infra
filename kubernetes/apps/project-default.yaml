@@ -1,0 +1,16 @@
+---
+# Argo CD creates the `default` project with no limits at all (any repo, any
+# namespace, any cluster-wide resource). Nothing uses it (projects.yaml), so
+# it is locked: an Application that still names it can't sync anything.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: default
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  description: Locked. Use the platform or apps project.
+  sourceRepos: []
+  destinations: []
+  clusterResourceWhitelist: []
