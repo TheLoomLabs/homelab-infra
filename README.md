@@ -28,7 +28,7 @@ Proxmox VE ──Terraform──▶ 10 Ubuntu VMs ──Ansible──▶ hardene
 | Logs | Loki + Grafana Alloy (Argo CD), role `alloy` | Pod logs, node journals and Kubernetes events from the cluster, **journal and Swarm container logs from the VMs**; 15 days in Loki, queried in Grafana |
 | Alerting | Swarm stack: Traefik, ntfy, healthchecks (role `alerting`) | **Self-hosted, no SaaS:** push to the phone via ntfy, **dead man's switch** on healthchecks outside Kubernetes, so a dead cluster is still reported |
 | Swarm | Ansible roles `docker`, `swarm`, `alerting` | Docker CE, 3-manager Raft quorum, node labels; Traefik with a wildcard cert for Swarm stacks |
-| Quality | GitHub Actions, pre-commit | `terraform fmt/validate`, tflint, yamllint, ansible-lint (production profile), gitleaks, SOPS encryption check; **every Argo CD app rendered and validated** with kubeconform against schemas generated from the pinned CRDs, plus `promtool check rules` ([docs/ci.md](docs/ci.md)) |
+| Quality | GitHub Actions, pre-commit | `terraform fmt/validate`, tflint, yamllint, ansible-lint (production profile), gitleaks, SOPS encryption check; **every Argo CD app rendered and validated** with kubeconform against schemas generated from the pinned CRDs, plus `promtool check rules` and AppProject limits; actions pinned to commit SHAs, self-hosted Renovate, weekly Trivy image scan to code scanning ([docs/ci.md](docs/ci.md)) |
 
 ## Architecture
 
@@ -124,6 +124,7 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 ├── devbox.json                 # pinned toolchain + env (KUBECONFIG, ANSIBLE_CONFIG, SOPS_AGE_KEY_FILE)
 ├── .sops.yaml                  # which files sops encrypts, and for which age key
 ├── Makefile                    # entry point: make help
+├── renovate.json               # dependency updates (self-hosted Renovate, docs/ci.md)
 ├── terraform/
 │   ├── modules/proxmox-vm/     # one VM: disk import, cloud-init snippet, network
 │   └── envs/homelab/           # the lab: node map → VMs → Ansible inventory
@@ -137,9 +138,9 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 ├── swarm/                      # SOPS-encrypted secrets of the Swarm stacks
 ├── logging/                    # SOPS-encrypted push password for Alloy on the VMs
 ├── kubernetes/
-│   ├── apps/                   # Argo CD Applications (app of apps, synced from main)
+│   ├── apps/                   # Argo CD Applications + AppProjects (app of apps, synced from main)
 │   └── platform/               # Helm values, manifests and *.sops.yaml secrets per component
-├── scripts/                    # check-manifests.py: render + validate the Argo CD apps (make manifests)
+├── scripts/                    # check-manifests.py (make manifests), scan-images.py (make images)
 └── docs/                       # architecture, bootstrap, runbooks (dns, secrets, storage,
                                 # backup, monitoring, alerting, logging, ci), ADRs, roadmap
 ```
