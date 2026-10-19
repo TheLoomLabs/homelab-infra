@@ -78,6 +78,5 @@
     mode: "0644"
   notify: Restart journald
 
-- name: DNS resolvers
-  ansible.builtin.include_tasks: dns.yml
-  when: common_dns_servers | length > 0
+- name: Network (netplan, resolvers)
+  ansible.builtin.include_tasks: network.yml

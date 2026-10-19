@@ -27,6 +27,8 @@ That adds up to about 42 GB of RAM. The rest stays free for the Proxmox host and
 
 UFW on each node denies incoming traffic by default. Traffic is accepted from the lab, pod and service ranges (`trusted_cidrs`). SSH accepts keys only and is rate-limited.
 
+The lab is IPv4 only. The Starlink router advertises a public IPv6 prefix, so the VMs ignore router advertisements (netplan `accept-ra: false`, role `common`) and have no global IPv6 address, only `fe80::` link-local. UFW denies incoming IPv6 too.
+
 ## Provisioning flow
 
 1. **Terraform** downloads the Ubuntu cloud image to the Proxmox `import` storage once.

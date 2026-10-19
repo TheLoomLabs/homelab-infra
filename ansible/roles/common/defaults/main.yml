@@ -24,3 +24,12 @@ common_dns_servers: "{{ lab_dns_servers | default([]) }}"
 # Gateway. Use full names (k8s-cp-01.lab.theloomlabs.org) instead.
 common_dns_search: []
 common_netplan_file: /etc/netplan/50-cloud-init.yaml
+
+# IPv6 router advertisements. The Starlink router advertises a public /64, so
+# with RAs on every VM gets a globally routable address (SLAAC) next to its
+# LAN IPv4. Nothing in the lab uses IPv6, so the VMs ignore RAs and keep only
+# their fe80:: link-local address. This must be the netplan setting
+# (systemd-networkd IPv6AcceptRA=): networkd always disables the kernel's RA
+# handling and runs SLAAC itself, so the accept_ra/autoconf sysctls change
+# nothing on these interfaces.
+common_ipv6_accept_ra: false
