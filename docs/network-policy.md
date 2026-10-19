@@ -6,7 +6,7 @@ Every platform namespace is **default deny** for ingress and egress. A pod only 
 |---|---|
 | Policies | `kubernetes/platform/<component>/networkpolicy.yaml`, synced by the component's own Argo CD app |
 | Audit mode switch | `cilium_policy_audit_mode` in `ansible/inventory/group_vars/k8s.yml` → Cilium `policyAuditMode` (`make cilium`) |
-| Would-be drops and drops on each node | `/var/run/cilium/hubble/policy-verdicts.log` (Hubble static exporter, AUDIT and DROPPED only, 5 × 10 MB) |
+| Would-be drops and drops on each node | `/var/run/cilium/hubble/policy-verdicts.log` (Hubble static exporter: AUDIT, and DROPPED by policy; 5 × 10 MB) |
 | Summary of flows | `scripts/hubble-flows.py` |
 | Checks before merge | `make manifests`: every app namespace has a `default-deny` policy; kubeconform validates the policies against the pinned Cilium CRDs ([ci.md](ci.md#network-policies)) |
 
@@ -36,7 +36,7 @@ Everything else is one policy per component, named for what it allows:
 | Gateway (`ingress` entity) | argocd-server | 8080 |
 | argocd-repo-server | github.com, `*.github.io`, `*.githubusercontent.com`, charts.jetstack.io, charts.longhorn.io | 443 |
 | cert-manager pods | API server | 6443 |
-| API server | cert-manager webhook | 10250 |
+| API server (`kube-apiserver`, `remote-node`: through the tunnel it comes from its node's cilium_host address) | cert-manager webhook | 10250 |
 | cert-manager controller | acme-v02 / acme-staging-v02.api.letsencrypt.org, api.cloudflare.com | 443 |
 | cert-manager controller | 1.1.1.1, 1.0.0.1 (DNS-01 propagation checks) | 53 |
 | sops-secrets-operator | API server | 6443 |
@@ -46,7 +46,7 @@ Everything else is one policy per component, named for what it allows:
 | Gateway | Grafana; loki-gateway | 3000; 8080 |
 | Alertmanager | ntfy.lab / hc.lab.theloomlabs.org (Swarm) | 443 |
 | kube-state-metrics, Prometheus operator | API server | 6443 |
-| API server | Prometheus operator webhook | 10250 |
+| API server (same) | Prometheus operator webhook | 10250 |
 | loki-gateway, Alloy, Grafana | Loki | 3100 |
 | Loki | Loki (memberlist, gRPC) | 7946, 9095 |
 | Alloy (both releases) | API server | 6443 |
@@ -70,8 +70,10 @@ Every would-be drop since the agents started, from all nodes:
 for p in $(kubectl -n kube-system get pods -l k8s-app=cilium -o name); do
 kubectl -n kube-system exec "$p" -c cilium-agent -- \
   cat /var/run/cilium/hubble/policy-verdicts.log; done \
-  | python3 scripts/hubble-flows.py
+  | python3 scripts/hubble-flows.py --since 24h
 ```
+
+`--since` drops older lines, such as leftovers from the minute in which the policies were synced one after the other. The `LAST` column shows when each connection was last seen.
 
 Live, through Hubble Relay:
 
@@ -81,7 +83,7 @@ hubble observe --follow --verdict AUDIT --verdict DROPPED
 kill %1
 ```
 
-Each line of `hubble-flows.py` is one connection: source, destination (namespace/app, or an entity like `kube-apiserver`, `world(name)`), port, verdict and count. A legitimate line becomes an allow in that component's `networkpolicy.yaml`. Anything else is a finding.
+Each line of `hubble-flows.py` is one connection: source, destination (namespace/app, or an entity like `kube-apiserver`, `world(name)`), port, verdict (with the drop reason) and count. A legitimate line becomes an allow in that component's `networkpolicy.yaml`. Anything else is a finding.
 
 ### Checks
 

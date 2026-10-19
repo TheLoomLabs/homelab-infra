@@ -56,8 +56,12 @@ spec:
     matchLabels:
       app.kubernetes.io/name: webhook
   ingress:
+    # The API server's calls arrive through the tunnel from its node's
+    # cilium_host address, so Cilium sees remote-node, not kube-apiserver
+    # (Hubble, audit mode). Both, on the webhook port only.
     - fromEntities:
         - kube-apiserver
+        - remote-node
       toPorts:
         - ports:
             - port: "10250"
