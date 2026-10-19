@@ -13,7 +13,7 @@ Every push to `main` and every pull request runs `.github/workflows/lint.yml`. `
 | `terraform` | `terraform fmt -check`, `terraform validate`, tflint |
 | `ansible` | yamllint (whole repo), ansible-lint (production profile) |
 | `secrets` | gitleaks over the full history, `*.sops.yaml` files are encrypted |
-| `manifests` | Every Argo CD app rendered and validated: kubeconform (strict), `promtool check rules`, AppProject limits, Pod Security labels |
+| `manifests` | Every Argo CD app rendered and validated: kubeconform (strict), `promtool check rules`, AppProject limits, Pod Security labels, default-deny policies |
 
 ## Manifest checks
 
@@ -59,6 +59,10 @@ Namespaces get their Pod Security level in Git ([pod-security.md](pod-security.m
 - every rendered `Namespace` has only known `pod-security.kubernetes.io/*` labels, levels `privileged`, `baseline` or `restricted`, versions `latest` or `v1.<minor>`
 - every namespace that isn't `enforce: privileged` has `audit` and `warn` labels
 - every app's destination namespace is one of those `Namespace` objects, so a new namespace can't slip in without a level
+
+### Network policies
+
+Every app's destination namespace, except kube-system and longhorn-system (`NETPOL_EXEMPT`), needs a CiliumNetworkPolicy named `default-deny` with `endpointSelector: {}` ([network-policy.md](network-policy.md)). The policies themselves go through kubeconform like everything else, against the schema of the pinned Cilium CRDs. In those schemas, `anyOf`/`oneOf` branches only say which fields must be set, so the strict mode leaves them open (it would otherwise reject every policy).
 
 ### Prometheus rules
 
@@ -154,6 +158,7 @@ Output in `.artifacts/images/`: `images.txt` (every image and the file that pins
 | `helm pull` fails | Chart version or repo URL wrong in the Application, or no network |
 | `not permitted by project` | The app's repo, namespace or a resource kind is outside its AppProject: add it to `kubernetes/apps/projects.yaml` (or fix the namespace) |
 | `destination namespace '<ns>' has no Namespace with Pod Security labels` | Add the namespace to `kubernetes/platform/namespaces/namespaces.yaml` (and to the project's `destinations`) |
+| `no CiliumNetworkPolicy default-deny` | Add a `networkpolicy.yaml` with a `default-deny` to the app's namespace (copy one from `kubernetes/platform/`) |
 | `is not a level` / `unknown label` | Typo in a `pod-security.kubernetes.io/*` label |
 | `scan-images.py`: `rendered is empty` | Run `python3 scripts/check-manifests.py --render-only` first (`make images` does) |
 | Trivy `TOOMANYREQUESTS` / `Data limit exceeded` | Registry rate limit on the shared runner IP. The script retries, and for `ecr-public.aws.com/docker/library/*` scans the same image from Docker Hub. If it still fails, re-run the workflow later |

@@ -23,6 +23,9 @@ Then:
   5. Pod Security labels: every Namespace rendered carries valid
      pod-security.kubernetes.io/* labels with at least audit and warn, and
      every app's destination namespace is one of them (docs/pod-security.md).
+  6. Network policies: every app's destination namespace (except the ones in
+     NETPOL_EXEMPT) has a CiliumNetworkPolicy `default-deny` selecting all its
+     pods (docs/network-policy.md).
 
 Output lands in .artifacts/manifests/ (git-ignored): rendered/ is what was
 validated, cache/ holds pulled charts and clones between runs.
@@ -322,18 +325,24 @@ def cilium_crds(v: dict) -> list[dict]:
 
 # --- CRD -> JSON schema (strict, like kubeconform's openapi2jsonschema) ------
 
-def strictify(node):
+# Inside these, a structural schema only adds checks on fields declared next
+# to them (Cilium: "spec has ingress or egress"); their `properties` are no
+# field list, so they must not become strict.
+COMBINATORS = {"anyOf", "oneOf", "allOf", "not"}
+
+
+def strictify(node, in_combinator: bool = False):
     if isinstance(node, list):
-        return [strictify(n) for n in node]
+        return [strictify(n, in_combinator) for n in node]
     if not isinstance(node, dict):
         return node
-    node = {k: strictify(v) for k, v in node.items()}
+    node = {k: strictify(v, in_combinator or k in COMBINATORS) for k, v in node.items()}
     if node.pop("x-kubernetes-int-or-string", False) or node.get("format") == "int-or-string":
         node.pop("type", None)
         node.pop("format", None)
         node["oneOf"] = [{"type": "string"}, {"type": "integer"}]
     preserve = node.get("x-kubernetes-preserve-unknown-fields")
-    if "properties" in node and "additionalProperties" not in node and not preserve:
+    if "properties" in node and "additionalProperties" not in node and not preserve and not in_combinator:
         node["additionalProperties"] = False
     return node
 
@@ -535,6 +544,33 @@ def check_pod_security(apps: list[dict], rendered: dict[str, list[dict]]) -> lis
     return errors
 
 
+# --- Network policies ------------------------------------------------------------
+
+# Node agents, the CNI and Longhorn (which ships its own policies).
+NETPOL_EXEMPT = {"kube-system", "longhorn-system"}
+
+
+def check_network_policies(apps: list[dict], rendered: dict[str, list[dict]]) -> list[str]:
+    """A namespace without a default-deny policy is wide open, and nothing in
+    the cluster says so. Every app's destination namespace needs one."""
+    denied = set()
+    for docs in rendered.values():
+        for doc in docs:
+            meta = doc.get("metadata", {})
+            if (doc.get("kind") == "CiliumNetworkPolicy" and doc.get("apiVersion", "").startswith("cilium.io/")
+                    and meta.get("name") == "default-deny"
+                    and (doc.get("spec") or {}).get("endpointSelector") == {}):
+                denied.add(meta.get("namespace", ""))
+    errors = []
+    for ns in sorted({a["spec"].get("destination", {}).get("namespace", "") for a in apps} - NETPOL_EXEMPT - {""}):
+        if ns not in denied:
+            users = sorted(a["metadata"]["name"] for a in apps
+                           if a["spec"].get("destination", {}).get("namespace") == ns)
+            errors.append(f"namespace {ns!r} ({', '.join(users)}): no CiliumNetworkPolicy default-deny "
+                          f"with endpointSelector {{}}")
+    return errors
+
+
 # --- Main --------------------------------------------------------------------
 
 def main() -> int:
@@ -607,6 +643,14 @@ def main() -> int:
         print(f"  {p}", file=sys.stderr)
     if problems:
         print(f"pod security: FAILED ({len(problems)})", file=sys.stderr)
+        rc = 1
+
+    log("Network policies (default deny per namespace)")
+    problems = check_network_policies(apps, by_app)
+    for p in problems:
+        print(f"  {p}", file=sys.stderr)
+    if problems:
+        print(f"network policies: FAILED ({len(problems)})", file=sys.stderr)
         rc = 1
 
     log(f"kubeconform (Kubernetes {kube_version}, strict)")
