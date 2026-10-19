@@ -34,7 +34,7 @@ tf-destroy: ## Destroy all lab VMs
 
 ## --- Ansible -----------------------------------------------------------------
 
-.PHONY: ping base dns k8s encryption cilium longhorn sops-key argocd swarm alerting logs reboot site
+.PHONY: ping base dns k8s encryption pod-security cilium longhorn sops-key argocd swarm alerting logs reboot site
 ping: ## Check SSH to every node
 	cd $(ANSIBLE_DIR) && ansible all -m ansible.builtin.ping
 
@@ -49,6 +49,9 @@ k8s: ## Build the Kubernetes cluster (kubeadm, kube-vip, Cilium)
 
 encryption: ## Encryption at rest on the running cluster (pass 1: ARGS="-e k8s_control_plane_encryption_identity_first=true")
 	$(PLAYBOOK) playbooks/encryption.yml $(ARGS)
+
+pod-security: ## Pod Security defaults on the running cluster (checks running pods first)
+	$(PLAYBOOK) playbooks/pod-security.yml
 
 cilium: ## Re-apply Cilium Helm values (cilium upgrade if they changed)
 	$(PLAYBOOK) playbooks/cilium.yml

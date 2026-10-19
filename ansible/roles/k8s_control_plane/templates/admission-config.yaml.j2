@@ -1,0 +1,20 @@
+# {{ ansible_managed }}
+# API server admission plugin configuration (--admission-control-config-file).
+# PodSecurity: the levels for namespaces without pod-security.kubernetes.io
+# labels (docs/pod-security.md).
+apiVersion: apiserver.config.k8s.io/v1
+kind: AdmissionConfiguration
+plugins:
+  - name: PodSecurity
+    configuration:
+      apiVersion: pod-security.admission.config.k8s.io/v1
+      kind: PodSecurityConfiguration
+      defaults:
+{% for mode in ['enforce', 'audit', 'warn'] %}
+        {{ mode }}: {{ k8s_control_plane_pod_security_defaults[mode] }}
+        {{ mode }}-version: latest
+{% endfor %}
+      exemptions:
+        usernames: []
+        runtimeClasses: []
+        namespaces: {{ k8s_control_plane_pod_security_exempt_namespaces | to_json }}

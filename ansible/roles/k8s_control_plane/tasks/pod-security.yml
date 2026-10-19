@@ -1,0 +1,155 @@
+---
+# Pod Security Admission defaults for namespaces without labels
+# (docs/pod-security.md). Same rollout as tasks/encryption.yml:
+#
+# Fresh node: only the config file is placed here; kubeadm init/join then
+# starts the API server with it (kubeadm-init.yaml.j2, kubeadm-config
+# ConfigMap).
+#
+# Running node: the kubeadm-config ConfigMap gets the flag and the volume
+# (so joins and `kubeadm upgrade` keep them), then the API server manifest is
+# regenerated with `kubeadm init phase control-plane apiserver`. When only the
+# config file changes, the API server container is restarted, because it
+# reads the file only at start. playbooks/pod-security.yml runs this with
+# serial: 1 after checking that no running pod breaks the new defaults.
+
+- name: Pod Security | Check whether this node is already part of a cluster
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: k8s_control_plane_psa_kubelet_conf
+
+- name: Pod Security | Check the API server manifest for the flag
+  ansible.builtin.command: >-
+    grep -q -- '--admission-control-config-file=' /etc/kubernetes/manifests/kube-apiserver.yaml
+  register: k8s_control_plane_psa_flag
+  changed_when: false
+  failed_when: k8s_control_plane_psa_flag.rc not in [0, 1, 2]
+
+# The defaults would reject new pods (restarts included) in an unlabelled
+# namespace that needs more than baseline. playbooks/pod-security.yml checks
+# that first and sets the flag.
+- name: Pod Security | Refuse to turn on the defaults without the check
+  ansible.builtin.assert:
+    that: k8s_control_plane_pod_security_checked | default(false) | bool
+    fail_msg: >-
+      This running API server has no admission config yet. Turn it on with
+      make pod-security, which first checks every running pod against the
+      new defaults (docs/pod-security.md).
+    quiet: true
+  when:
+    - k8s_control_plane_psa_kubelet_conf.stat.exists
+    - k8s_control_plane_psa_flag.rc != 0
+
+- name: Pod Security | Create the config directory
+  ansible.builtin.file:
+    path: "{{ k8s_control_plane_admission_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Pod Security | Place the admission config
+  ansible.builtin.template:
+    src: admission-config.yaml.j2
+    dest: "{{ k8s_control_plane_admission_config }}"
+    owner: root
+    group: root
+    mode: "0600"
+  register: k8s_control_plane_psa_file
+
+- name: Pod Security | Reconfigure the running API server
+  when: k8s_control_plane_psa_kubelet_conf.stat.exists
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  block:
+    - name: Pod Security | Read the cluster configuration (kubeadm-config ConfigMap)
+      ansible.builtin.command: >-
+        kubectl --namespace kube-system get configmap kubeadm-config
+        --output jsonpath={.data.ClusterConfiguration}
+      register: k8s_control_plane_cluster_config_raw
+      changed_when: false
+
+    # Other flags and volumes (encryption at rest) stay as they are.
+    - name: Pod Security | Add the flag and the volume to the cluster configuration
+      ansible.builtin.set_fact:
+        k8s_control_plane_cluster_config_new: "{{ _config | combine({'apiServer': _api_server}) }}"
+      vars:
+        _config: "{{ k8s_control_plane_cluster_config_raw.stdout | from_yaml }}"
+        _old: "{{ _config.apiServer | default({}) }}"
+        _api_server: >-
+          {{ _old | combine({
+               'extraArgs': (_old.extraArgs | default([]) | rejectattr('name', 'equalto', 'admission-control-config-file') | list)
+                 + [{'name': 'admission-control-config-file', 'value': k8s_control_plane_admission_config}],
+               'extraVolumes': (_old.extraVolumes | default([]) | rejectattr('name', 'equalto', 'admission-config') | list)
+                 + [{'name': 'admission-config',
+                     'hostPath': k8s_control_plane_admission_dir,
+                     'mountPath': k8s_control_plane_admission_dir,
+                     'readOnly': true,
+                     'pathType': 'DirectoryOrCreate'}]
+             }) }}
+
+    - name: Pod Security | Update the kubeadm-config ConfigMap
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --namespace=kube-system
+          - patch
+          - configmap
+          - kubeadm-config
+          - --type=merge
+          - --patch
+          - "{{ {'data': {'ClusterConfiguration': k8s_control_plane_cluster_config_new | to_nice_yaml(indent=2)}} | to_json }}"
+      when: k8s_control_plane_cluster_config_new != (k8s_control_plane_cluster_config_raw.stdout | from_yaml)
+      changed_when: true
+
+    - name: Pod Security | Note the running API server container
+      ansible.builtin.command: crictl ps --name '^kube-apiserver$' --state running --quiet
+      register: k8s_control_plane_apiserver_before
+      changed_when: false
+
+    - name: Pod Security | Regenerate the API server manifest with the flag
+      when: k8s_control_plane_psa_flag.rc != 0
+      block:
+        - name: Pod Security | Render the kubeadm reconfigure input
+          ansible.builtin.template:
+            src: kubeadm-reconfigure.yaml.j2
+            dest: /etc/kubernetes/kubeadm-reconfigure.yaml
+            owner: root
+            group: root
+            mode: "0600"
+
+        # kubelet restarts the static pod when its manifest changes.
+        - name: Pod Security | kubeadm init phase control-plane apiserver
+          ansible.builtin.command: >-
+            kubeadm init phase control-plane apiserver
+            --config /etc/kubernetes/kubeadm-reconfigure.yaml
+          changed_when: true
+
+    - name: Pod Security | Restart the API server to load the changed config
+      ansible.builtin.command: crictl stop {{ k8s_control_plane_apiserver_before.stdout_lines | first }}
+      when:
+        - k8s_control_plane_psa_flag.rc == 0
+        - k8s_control_plane_psa_file is changed
+      changed_when: true
+
+    - name: Pod Security | Wait for a new API server container
+      ansible.builtin.command: crictl ps --name '^kube-apiserver$' --state running --quiet
+      register: k8s_control_plane_apiserver_after
+      changed_when: false
+      retries: 60
+      delay: 5
+      until:
+        - k8s_control_plane_apiserver_after.stdout | length > 0
+        - k8s_control_plane_apiserver_after.stdout != k8s_control_plane_apiserver_before.stdout
+      when: k8s_control_plane_psa_flag.rc != 0 or k8s_control_plane_psa_file is changed
+
+    - name: Pod Security | Wait until this API server is ready
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}:6443/readyz"
+        validate_certs: false
+        status_code: 200
+      register: k8s_control_plane_apiserver_ready
+      retries: 60
+      delay: 5
+      until: k8s_control_plane_apiserver_ready.status == 200
+      when: k8s_control_plane_psa_flag.rc != 0 or k8s_control_plane_psa_file is changed

@@ -36,13 +36,22 @@ apiServer:
 {% endfor %}
   # Encryption at rest (docs/encryption.md). Joining control-plane nodes read
   # this from the kubeadm-config ConfigMap; the role places the file first.
+  # Pod Security defaults for unlabelled namespaces (docs/pod-security.md),
+  # placed the same way.
   extraArgs:
     - name: encryption-provider-config
       value: {{ k8s_control_plane_encryption_config }}
+    - name: admission-control-config-file
+      value: {{ k8s_control_plane_admission_config }}
   extraVolumes:
     - name: encryption-config
       hostPath: {{ k8s_control_plane_encryption_dir }}
       mountPath: {{ k8s_control_plane_encryption_dir }}
+      readOnly: true
+      pathType: DirectoryOrCreate
+    - name: admission-config
+      hostPath: {{ k8s_control_plane_admission_dir }}
+      mountPath: {{ k8s_control_plane_admission_dir }}
       readOnly: true
       pathType: DirectoryOrCreate
 ---

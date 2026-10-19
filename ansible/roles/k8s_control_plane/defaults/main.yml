@@ -18,3 +18,17 @@ k8s_control_plane_encryption_resources:
 # of removing encryption again: every API server must be able to read the
 # key before any of them writes with it.
 k8s_control_plane_encryption_identity_first: false
+
+# Pod Security Admission defaults for namespaces without labels
+# (docs/pod-security.md). Labelled namespaces (kubernetes/platform/namespaces/)
+# keep their own level; exempt namespaces are not checked at all.
+k8s_control_plane_admission_dir: /etc/kubernetes/admission
+k8s_control_plane_admission_config: "{{ k8s_control_plane_admission_dir }}/config.yaml"
+k8s_control_plane_pod_security_defaults:
+  enforce: baseline
+  audit: restricted
+  warn: restricted
+# kube-system: static pods and Cilium must start before Argo CD has applied
+# any label, on a fresh cluster.
+k8s_control_plane_pod_security_exempt_namespaces:
+  - kube-system

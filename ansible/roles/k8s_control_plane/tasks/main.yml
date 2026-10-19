@@ -32,6 +32,11 @@
   ansible.builtin.import_tasks: encryption.yml
   tags: etcd_encryption
 
+# Same for the admission config (Pod Security defaults).
+- name: Pod Security Admission defaults
+  ansible.builtin.import_tasks: pod-security.yml
+  tags: pod_security
+
 - name: Bootstrap the first control-plane node
   ansible.builtin.include_tasks: init.yml
   when: inventory_hostname == k8s_control_plane_first_node

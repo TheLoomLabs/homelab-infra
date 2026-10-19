@@ -1,0 +1,56 @@
+---
+# Pod Security Admission defaults on the running cluster
+# (docs/pod-security.md). New clusters get them from `make k8s` already.
+#
+#   make pod-security
+#
+# First a server-side dry run: would the new enforce default reject any pod
+# that runs now in a namespace without an enforce label? Only then, one
+# control-plane node at a time, the API server gets the admission config.
+
+- name: Pod Security | Check running pods against the new defaults
+  hosts: k8s_control_plane[0]
+  become: true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  vars:
+    psa_enforce_default: "{{ k8s_control_plane_pod_security_defaults.enforce | default('baseline') }}"
+  tasks:
+    # Exempt namespaces carry a label anyway (namespaces app), so the selector
+    # skips them too. The warnings come back on stderr.
+    - name: Dry run the enforce default on every namespace without an enforce label
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - label
+          - --dry-run=server
+          - --overwrite
+          - namespace
+          - --selector=!pod-security.kubernetes.io/enforce
+          - "pod-security.kubernetes.io/enforce={{ psa_enforce_default }}"
+      register: psa_dry_run
+      changed_when: false
+      # "No resources found" (every namespace labelled) is fine too.
+      failed_when: psa_dry_run.rc != 0 and 'No resources found' not in psa_dry_run.stderr
+
+    - name: No running pod breaks the defaults
+      ansible.builtin.assert:
+        that: "'violate' not in psa_dry_run.stderr"
+        fail_msg: |-
+          Pods would be rejected after their next restart under enforce={{ psa_enforce_default }}.
+          Label their namespace in kubernetes/platform/namespaces/ (or fix the
+          pods), push, wait for Argo CD, then run again:
+          {{ psa_dry_run.stderr }}
+        success_msg: "{{ psa_dry_run.stdout_lines | length }} unlabelled namespaces, none breaks enforce={{ psa_enforce_default }}"
+
+- name: Pod Security | Control-plane nodes, one at a time
+  hosts: k8s_control_plane
+  become: true
+  serial: 1
+  vars:
+    k8s_control_plane_pod_security_checked: true
+  tasks:
+    - name: Roll out the admission config
+      ansible.builtin.include_role:
+        name: k8s_control_plane
+        tasks_from: pod-security.yml
