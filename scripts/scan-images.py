@@ -21,7 +21,10 @@ Each image is scanned for HIGH and CRITICAL vulnerabilities that have a fix
                the file that pins the image (the Application, the role
                defaults), so the alert shows where to bump it.
 
-Report only: vulnerabilities never fail the run, scan errors do.
+Report only: vulnerabilities never fail the run, scan errors do. Registry
+rate limits are retried; Docker Official Images pulled through ECR Public
+(`ecr-public.aws.com/docker/library/...`, whose anonymous data limit GitHub's
+shared runner IPs hit) fall back to the same image on Docker Hub.
 Needs: python3, helm, git, mikefarah yq v4, trivy (devbox). --list-only skips
 Trivy.
 """
@@ -36,6 +39,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # no __pycache__ next to the scripts
@@ -188,18 +192,54 @@ def safe_name(image: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", image)[:150] + "-" + hashlib.sha256(image.encode()).hexdigest()[:8]
 
 
-def scan(image: str) -> dict | None:
-    out = OUT / "json" / f"{safe_name(image)}.json"
-    proc = subprocess.run([
+# Registry answers that mean "later", not "wrong image".
+RATE_LIMITED = re.compile(r"TOOMANYREQUESTS|429 Too Many Requests|rate limit|Data limit exceeded", re.I)
+RETRIES = 3
+RETRY_DELAY = 30  # seconds, doubled per retry
+
+# ECR Public mirrors the Docker Official Images (same manifests and digests)
+# under docker/library/. Charts (argo-cd's redis) use it to avoid Docker
+# Hub's limits, but its own anonymous data limit is per source IP, and
+# GitHub-hosted runners share theirs.
+MIRRORS = [("ecr-public.aws.com/docker/library/", "docker.io/library/"),
+           ("public.ecr.aws/docker/library/", "docker.io/library/")]
+
+
+def alternatives(image: str) -> list[str]:
+    return [image] + [mirror + image[len(prefix):] for prefix, mirror in MIRRORS if image.startswith(prefix)]
+
+
+def trivy(image: str, out: Path) -> subprocess.CompletedProcess:
+    return subprocess.run([
         "trivy", "image", "--quiet", "--skip-db-update", "--image-src", "remote",
         "--platform", "linux/amd64", "--scanners", "vuln",
         "--severity", SEVERITIES, "--ignore-unfixed",
         "--format", "json", "--output", str(out), image,
     ], capture_output=True, text=True)
-    if proc.returncode != 0:
-        log(f"  ERROR {image}: {(proc.stderr.strip().splitlines() or ['trivy failed'])[-1]}")
-        return None
-    return json.loads(out.read_text())
+
+
+def scan(image: str) -> dict | None:
+    """Trivy report for image (findings stay attributed to `image`, also when
+    a mirror was scanned), or None after every attempt failed."""
+    out = OUT / "json" / f"{safe_name(image)}.json"
+    for ref in alternatives(image):
+        if ref != image:
+            log(f"  trying the same image from {ref}")
+        for attempt in range(RETRIES + 1):
+            proc = trivy(ref, out)
+            if proc.returncode == 0:
+                return json.loads(out.read_text())
+            err = (proc.stderr.strip().splitlines() or ["trivy failed"])[-1]
+            log(f"  ERROR {ref}: {err}")
+            if not RATE_LIMITED.search(proc.stderr) or attempt == RETRIES:
+                break
+            delay = RETRY_DELAY * 2 ** attempt
+            # A data limit doesn't reset within minutes: go to the mirror.
+            if "Data limit exceeded" in proc.stderr and ref != alternatives(image)[-1]:
+                break
+            log(f"  rate limited, retrying in {delay}s ({attempt + 1}/{RETRIES})")
+            time.sleep(delay)
+    return None
 
 
 def line_of(path: str, image: str) -> int:

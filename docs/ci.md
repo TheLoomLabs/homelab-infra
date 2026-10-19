@@ -156,4 +156,5 @@ Output in `.artifacts/images/`: `images.txt` (every image and the file that pins
 | `destination namespace '<ns>' has no Namespace with Pod Security labels` | Add the namespace to `kubernetes/platform/namespaces/namespaces.yaml` (and to the project's `destinations`) |
 | `is not a level` / `unknown label` | Typo in a `pod-security.kubernetes.io/*` label |
 | `scan-images.py`: `rendered is empty` | Run `python3 scripts/check-manifests.py --render-only` first (`make images` does) |
+| Trivy `TOOMANYREQUESTS` / `Data limit exceeded` | Registry rate limit on the shared runner IP. The script retries, and for `ecr-public.aws.com/docker/library/*` scans the same image from Docker Hub. If it still fails, re-run the workflow later |
 | Trivy `unable to find the specified image` | Tag doesn't exist (typo, or a value the collector misread); check `images.txt` |
