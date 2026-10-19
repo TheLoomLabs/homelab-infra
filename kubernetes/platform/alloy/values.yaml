@@ -142,6 +142,40 @@ alloy:
         forward_to    = [loki.write.loki.receiver]
       }
 
+      // The API server's audit log (docs/audit-logging.md), only on the
+      // control-plane nodes; on the workers the file never exists. One JSON
+      // event per line; queries parse the fields with `| json`, so the
+      // labels stay source and host. The API server rotates the file by
+      // size and Alloy follows it by name.
+      local.file_match "audit" {
+        path_targets = [{
+          __path__ = "/var/log/kubernetes/audit/audit.log",
+          source   = "audit",
+          host     = sys.env("HOSTNAME"),
+        }]
+      }
+
+      loki.source.file "audit" {
+        targets    = local.file_match.audit.targets
+        forward_to = [loki.process.audit.receiver]
+      }
+
+      loki.process "audit" {
+        // The event's own time, so lines read late (after a Loki or Alloy
+        // outage) land where they happened.
+        stage.json {
+          expressions = { ts = "stageTimestamp" }
+        }
+        stage.timestamp {
+          source = "ts"
+          format = "RFC3339Nano"
+        }
+        stage.label_drop {
+          values = ["filename"]
+        }
+        forward_to = [loki.write.loki.receiver]
+      }
+
       loki.write "loki" {
         endpoint {
           url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
