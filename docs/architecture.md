@@ -104,6 +104,7 @@ Secrets are stored in Git, encrypted with SOPS and age (ADR 0006):
 - Pre-commit, `make sops-check` and CI reject a `*.sops.yaml` file that is not encrypted.
 - Inside the cluster, the API server encrypts Secrets and ConfigMaps before they reach etcd (secretbox, key in `k8s/encryption.sops.yaml`). Details: [encryption.md](encryption.md).
 - Pod Security Admission sets what pods may do per namespace: `restricted` for everything except kube-system, longhorn-system and monitoring (node agents), `baseline` for namespaces without labels. The labels live in `kubernetes/platform/namespaces/`. Details: [pod-security.md](pod-security.md).
+- Cilium network policies make every namespace except kube-system and longhorn-system default deny, in both directions. Each component's `networkpolicy.yaml` allows what it needs; the internet only by name (`toFQDNs`). Details: [network-policy.md](network-policy.md).
 
 How to add, edit and rotate secrets: [secrets.md](secrets.md).
 
