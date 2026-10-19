@@ -28,7 +28,7 @@ Proxmox VE ──Terraform──▶ 10 Ubuntu VMs ──Ansible──▶ hardene
 | Logs | Loki + Grafana Alloy (Argo CD), role `alloy` | Pod logs, node journals and Kubernetes events from the cluster, **journal and Swarm container logs from the VMs**; 15 days in Loki, queried in Grafana |
 | Alerting | Swarm stack: Traefik, ntfy, healthchecks (role `alerting`) | **Self-hosted, no SaaS:** push to the phone via ntfy, **dead man's switch** on healthchecks outside Kubernetes, so a dead cluster is still reported |
 | Swarm | Ansible roles `docker`, `swarm`, `alerting` | Docker CE, 3-manager Raft quorum, node labels; Traefik with a wildcard cert for Swarm stacks |
-| Quality | GitHub Actions, pre-commit | `terraform fmt/validate`, tflint, yamllint, ansible-lint (production profile), gitleaks, SOPS encryption check; **every Argo CD app rendered and validated** with kubeconform against schemas generated from the pinned CRDs, plus `promtool check rules` and AppProject limits; actions pinned to commit SHAs, self-hosted Renovate, weekly Trivy image scan to code scanning ([docs/ci.md](docs/ci.md)) |
+| Quality | GitHub Actions, pre-commit | `terraform fmt/validate`, tflint, yamllint, ansible-lint (production profile), gitleaks, SOPS encryption check; **every Argo CD app rendered and validated** with kubeconform against schemas generated from the pinned CRDs, plus `promtool check rules`, AppProject limits and Pod Security labels; actions pinned to commit SHAs, self-hosted Renovate, weekly Trivy image scan to code scanning ([docs/ci.md](docs/ci.md)) |
 
 ## Architecture
 
@@ -85,6 +85,7 @@ More detail is in [docs/architecture.md](docs/architecture.md). The design decis
 | [logging.md](docs/logging.md) | Loki and Alloy: labels, push secret, checks, example queries |
 | [maintenance.md](docs/maintenance.md) | Rolling reboots (kernel updates, network changes) |
 | [encryption.md](docs/encryption.md) | Encryption at rest for Secrets and ConfigMaps: rollout, checks, key rotation |
+| [pod-security.md](docs/pod-security.md) | Pod Security Admission: level per namespace, cluster defaults, adding a namespace |
 
 ## Quick start
 
@@ -132,7 +133,7 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 │   ├── modules/proxmox-vm/     # one VM: disk import, cloud-init snippet, network
 │   └── envs/homelab/           # the lab: node map → VMs → Ansible inventory
 ├── ansible/
-│   ├── playbooks/              # site, base, dns, kubernetes, encryption, cilium, longhorn, sops, argocd, swarm, alerting, logs, reboot
+│   ├── playbooks/              # site, base, dns, kubernetes, encryption, pod-security, cilium, longhorn, sops, argocd, swarm, alerting, logs, reboot
 │   ├── roles/                  # common, hardening, bind, docker, swarm, k8s_prereqs,
 │   │                           # k8s_control_plane, k8s_worker, cilium, longhorn_node,
 │   │                           # sops_age, argocd, alerting, alloy
@@ -146,7 +147,8 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 │   └── platform/               # Helm values, manifests and *.sops.yaml secrets per component
 ├── scripts/                    # check-manifests.py (make manifests), scan-images.py (make images)
 └── docs/                       # architecture, bootstrap, runbooks (dns, secrets, storage,
-                                # backup, monitoring, alerting, logging, ci, maintenance, encryption), ADRs, roadmap
+                                # backup, monitoring, alerting, logging, ci, maintenance, encryption,
+                                # pod-security), ADRs, roadmap
 ```
 
 ## Security notes
@@ -155,6 +157,7 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 - Manifests that Argo CD syncs from GitHub, and the DNS records in `dns/records.yml`, must hold real values. Private LAN addresses (like the LoadBalancer pool in `kubernetes/platform/cilium-lb/`) and the lab domain are committed as is: the addresses are not reachable from outside, and lab hostnames have no public DNS records. Secrets never are.
 - Secrets are committed only as SOPS-encrypted `*.sops.yaml` files and decrypted in the cluster by sops-secrets-operator ([docs/secrets.md](docs/secrets.md)). The age private key exists only on the workstation, in an offline backup and in the cluster.
 - The API server encrypts Secrets and ConfigMaps in etcd (secretbox, key in SOPS; [docs/encryption.md](docs/encryption.md)).
+- Pod Security Admission: every namespace has a level in Git (`restricted` unless it runs node agents), and namespaces without labels default to `baseline`. Apps can't create or relabel namespaces ([docs/pod-security.md](docs/pod-security.md)).
 - gitleaks runs in CI and pre-commit, `detect-private-key` in pre-commit, and a check rejects unencrypted `*.sops.yaml` files.
 - Nodes accept SSH keys only, run a default-deny firewall, and allow cluster traffic only from the lab, pod and service networks.
 

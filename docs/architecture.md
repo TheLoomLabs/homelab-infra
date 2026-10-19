@@ -103,6 +103,7 @@ Secrets are stored in Git, encrypted with SOPS and age (ADR 0006):
 - The age private key is the one secret not in Git. It lives in `.artifacts/age.key` on the workstation, with an offline backup, and Ansible (`playbooks/sops.yml`) loads it into the cluster as `sops/sops-age-key-file`.
 - Pre-commit, `make sops-check` and CI reject a `*.sops.yaml` file that is not encrypted.
 - Inside the cluster, the API server encrypts Secrets and ConfigMaps before they reach etcd (secretbox, key in `k8s/encryption.sops.yaml`). Details: [encryption.md](encryption.md).
+- Pod Security Admission sets what pods may do per namespace: `restricted` for everything except kube-system, longhorn-system and monitoring (node agents), `baseline` for namespaces without labels. The labels live in `kubernetes/platform/namespaces/`. Details: [pod-security.md](pod-security.md).
 
 How to add, edit and rotate secrets: [secrets.md](secrets.md).
 
