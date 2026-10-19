@@ -8,13 +8,36 @@
     state: present
     update_cache: true
 
-- name: Configure Docker daemon
-  ansible.builtin.copy:
-    dest: /etc/docker/daemon.json
-    content: "{{ docker_daemon_config | to_nice_json }}\n"
+- name: Look up the containerd socket group
+  ansible.builtin.getent:
+    database: group
+    key: "{{ docker_containerd_socket_group }}"
+  when: docker_containerd_socket_group | length > 0
+
+# The containerd.io package's config.toml stays as shipped; only this block is
+# added (top-level keys come before it, so it can't swallow them).
+- name: Configure the containerd socket group
+  ansible.builtin.blockinfile:
+    path: /etc/containerd/config.toml
+    marker: "# {mark} ANSIBLE MANAGED: API socket group (role docker)"
+    block: |
+      [grpc]
+        gid = {{ ansible_facts.getent_group[docker_containerd_socket_group][1] if docker_containerd_socket_group | length > 0 else 0 }}
+    state: "{{ 'present' if docker_containerd_socket_group | length > 0 else 'absent' }}"
     owner: root
     group: root
     mode: "0644"
+  notify: Restart containerd
+
+- name: Configure Docker daemon
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: "{{ docker_daemon_config | combine(docker_metrics_extra) | to_nice_json }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    docker_metrics_extra: "{{ {'metrics-addr': docker_metrics_address} if docker_metrics_address | length > 0 else {} }}"
   notify: Restart docker
 
 - name: Enable Docker

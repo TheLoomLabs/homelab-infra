@@ -16,3 +16,18 @@ docker_daemon_config:
     max-size: 10m
     max-file: "3"
   live-restore: false # must stay off in Swarm mode
+
+# Docker engine metrics (incl. Swarm raft, nodes and tasks on managers) on
+# this address, e.g. "{{ ansible_host }}:9323" (group_vars/swarm.yml). Empty:
+# off. Changing it restarts dockerd, so playbooks/swarm.yml runs one node at a
+# time.
+docker_metrics_address: ""
+
+# Group that may use containerd's API socket (/run/containerd/containerd.sock,
+# root only by default), via [grpc] gid in /etc/containerd/config.toml. Docker
+# 29 keeps images and containers in containerd, so cAdvisor (Alloy, role alloy)
+# needs it for container metrics. The docker group already has root-equivalent
+# access through the Docker socket, so this adds no new privilege. Empty: leave
+# the socket root only. Changing it restarts containerd (containers keep
+# running).
+docker_containerd_socket_group: ""

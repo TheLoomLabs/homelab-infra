@@ -1,3 +1,10 @@
 ---
 swarm_default_addr_pool: 10.20.0.0/16
 swarm_default_addr_pool_mask_length: 24
+
+# Docker engine metrics for Prometheus (docs/monitoring.md, Swarm and DNS VMs).
+docker_metrics_address: "{{ ansible_host }}:9323"
+
+# cAdvisor in Alloy (alloy user, docker group) reads containers through
+# containerd since Docker 29 (role docker).
+docker_containerd_socket_group: docker

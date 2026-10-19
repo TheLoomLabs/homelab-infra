@@ -1,9 +1,43 @@
 ---
+# One node at a time: a daemon.json change restarts dockerd, which stops every
+# container on that node (live-restore is off in Swarm mode). The next node
+# starts only when this one is back in the Swarm.
 - name: Docker Swarm | Docker Engine
   hosts: swarm
   become: true
+  serial: 1
   roles:
     - docker
+  post_tasks:
+    - name: Restart Docker now if its config changed
+      ansible.builtin.meta: flush_handlers
+
+    - name: Wait for the node to be back in the Swarm
+      ansible.builtin.command:
+        argv: [docker, info, --format, "{{ '{{' }}.Swarm.LocalNodeState{{ '}}' }} {{ '{{' }}.Swarm.ControlAvailable{{ '}}' }}"]
+      register: swarm_engine_state
+      # inactive: no Swarm yet (first build). active true: manager with raft
+      # reachable. active false: worker.
+      until: >-
+        swarm_engine_state.rc == 0 and
+        (swarm_engine_state.stdout.split()[0] == 'inactive' or
+         (swarm_engine_state.stdout.split()[0] == 'active' and
+          (swarm_engine_state.stdout.split()[1] == 'true' or inventory_hostname not in groups['swarm_managers'])))
+      retries: 30
+      delay: 5
+      changed_when: false
+
+    - name: Wait for the managers to agree on a leader
+      ansible.builtin.command:
+        argv: [docker, node, ls, --format, "{{ '{{' }}.ManagerStatus{{ '}}' }}"]
+      register: swarm_node_list
+      until: swarm_node_list.rc == 0 and 'Leader' in swarm_node_list.stdout
+      retries: 30
+      delay: 5
+      changed_when: false
+      when:
+        - inventory_hostname in groups['swarm_managers']
+        - swarm_engine_state.stdout.split()[0] == 'active'
 
 - name: Docker Swarm | Cluster
   hosts: swarm

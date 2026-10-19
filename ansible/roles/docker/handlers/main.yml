@@ -1,4 +1,11 @@
 ---
+# Before Restart docker: dockerd reconnects to containerd. Running containers
+# keep running (their shims don't depend on the containerd process).
+- name: Restart containerd
+  ansible.builtin.systemd_service:
+    name: containerd
+    state: restarted
+
 - name: Restart docker
   ansible.builtin.systemd_service:
     name: docker
