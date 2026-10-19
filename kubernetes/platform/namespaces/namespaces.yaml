@@ -1,0 +1,159 @@
+---
+# Pod Security Admission labels for every namespace (docs/pod-security.md).
+# This is the only place namespaces get their level; Applications don't set
+# namespace labels themselves (the `apps` project can't create namespaces).
+#
+#   enforce  pods that break the level are rejected
+#   audit    violations are annotated in the API server audit log
+#   warn     violations come back as warnings (kubectl, Argo CD)
+#
+# Namespaces Argo CD didn't create (kube-system, default, ...) are only
+# labelled: server-side apply owns just the fields below. Prune=false and
+# Delete=false: removing an entry or the app never deletes a namespace.
+# The gateway namespace lives in kubernetes/platform/gateway/namespace.yaml
+# (same labels), because the gateway app already owns it.
+#
+# Rollout: audit + warn first; `enforce: restricted` follows once the
+# warnings are gone (docs/pod-security.md).
+#
+# Static control-plane pods, Cilium, kube-vip (host network,
+# privileged). Also exempt in the API server's PodSecurity defaults.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-system
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+---
+# Longhorn: CSI plugin, engine images, instance managers
+# (privileged, hostPath).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: longhorn-system
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+---
+# node-exporter (host network/PID, hostPath) and the Alloy
+# DaemonSet (hostPath journal and positions). Warnings show what the other
+# pods here still lack for `restricted`.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+# Argo CD.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  labels:
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+# cert-manager.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  labels:
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+# Created by Cilium (Gateway TLS secrets copied here); no pods.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cilium-secrets
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  labels:
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+# No workloads.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: default
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  labels:
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+# Node heartbeats; no pods.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-node-lease
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  labels:
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+# No pods.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-public
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  labels:
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+# sops-secrets-operator.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sops
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  labels:
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+# Velero (no node agent).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: velero
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  labels:
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest

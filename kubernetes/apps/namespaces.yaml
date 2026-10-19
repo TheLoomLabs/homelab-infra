@@ -1,0 +1,30 @@
+---
+# Pod Security Admission labels on every namespace (docs/pod-security.md).
+# Ansible applies the same file once during bootstrap, before Argo CD, so the
+# labels are in place before the first pods; after that this app owns them.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: namespaces
+  namespace: argocd
+  annotations:
+    # Before every other platform app (argocd is -10).
+    argocd.argoproj.io/sync-wave: "-15"
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+    targetRevision: main
+    path: kubernetes/platform/namespaces
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      # Never delete a namespace (each one also says Prune=false,Delete=false).
+      prune: false
+      selfHeal: true
+    syncOptions:
+      # Own only the labels and annotations above, not namespaces other
+      # tools created (kube-system, cilium-secrets, ...).
+      - ServerSideApply=true

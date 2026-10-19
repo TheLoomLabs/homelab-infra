@@ -8,8 +8,11 @@
 #   platform  cluster components (everything in kubernetes/apps today). They
 #             install CRDs, webhooks and cluster RBAC, so cluster-scoped kinds
 #             are allowed; sources and namespaces are an explicit list.
-#   apps      daily-use apps (Phase 3): namespaced resources only, plus their
-#             Namespace. Each app adds its namespace (and chart repo) here.
+#   apps      daily-use apps (Phase 3): namespaced resources only. Each app
+#             adds its namespace (and chart repo) here, and the namespace
+#             itself with its Pod Security level to
+#             kubernetes/platform/namespaces/ (docs/pod-security.md), so an
+#             app can never lower its own level.
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
@@ -33,7 +36,13 @@ spec:
   destinations:
     - {server: https://kubernetes.default.svc, namespace: argocd}
     - {server: https://kubernetes.default.svc, namespace: cert-manager}
+    # Only labelled by the namespaces app (Argo CD checks a Namespace's name
+    # against the destinations).
+    - {server: https://kubernetes.default.svc, namespace: cilium-secrets}
+    - {server: https://kubernetes.default.svc, namespace: default}
     - {server: https://kubernetes.default.svc, namespace: gateway}
+    - {server: https://kubernetes.default.svc, namespace: kube-node-lease}
+    - {server: https://kubernetes.default.svc, namespace: kube-public}
     - {server: https://kubernetes.default.svc, namespace: kube-system}
     - {server: https://kubernetes.default.svc, namespace: longhorn-system}
     - {server: https://kubernetes.default.svc, namespace: monitoring}
@@ -50,14 +59,15 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-20"
 spec:
-  description: Daily-use apps (namespaced only)
+  description: Daily-use apps (namespaced only, no Namespace objects)
   sourceRepos:
     - https://github.com/TheLoomLabs/homelab-infra.git
   # One entry per app namespace, added with the app. Never the platform
   # namespaces above.
   destinations: []
-  clusterResourceWhitelist:
-    - {group: "", kind: Namespace}
+  # Nothing cluster-scoped, not even Namespace: the platform creates app
+  # namespaces with their Pod Security labels.
+  clusterResourceWhitelist: []
   # Quotas and limits are set by the platform, not by the app.
   namespaceResourceBlacklist:
     - {group: "", kind: ResourceQuota}

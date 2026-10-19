@@ -20,6 +20,9 @@ Then:
   4. Every app stays inside its Argo CD AppProject (kubernetes/apps/projects.yaml):
      source repos, destination, and the namespace/kind of each rendered
      resource. Argo CD would refuse those at sync time.
+  5. Pod Security labels: every Namespace rendered carries valid
+     pod-security.kubernetes.io/* labels with at least audit and warn, and
+     every app's destination namespace is one of them (docs/pod-security.md).
 
 Output lands in .artifacts/manifests/ (git-ignored): rendered/ is what was
 validated, cache/ holds pulled charts and clones between runs.
@@ -471,6 +474,10 @@ def check_projects(apps: list[dict], rendered: dict[str, list[dict]], crds: list
                 ok = (gk_listed(gk, spec.get("clusterResourceWhitelist"))
                       and not gk_listed(gk, spec.get("clusterResourceBlacklist")))
                 what = f"cluster-scoped {gk[1]}.{gk[0] or 'core'}"
+                # Argo CD also checks a Namespace's name against destinations.
+                ns_name = doc.get("metadata", {}).get("name", "")
+                if ok and gk == ("", "Namespace") and not destination_ok(spec, server, ns_name):
+                    ok, what = False, f"Namespace {ns_name!r} (not a destination)"
             else:
                 ns = doc.get("metadata", {}).get("namespace") or dest_ns
                 wl = spec.get("namespaceResourceWhitelist")
@@ -481,6 +488,50 @@ def check_projects(apps: list[dict], rendered: dict[str, list[dict]], crds: list
             if not ok and what not in seen:
                 seen.add(what)
                 errors.append(f"{name}: {what} not permitted by project {pname}")
+    return errors
+
+
+# --- Pod Security labels --------------------------------------------------------
+
+PSA_PREFIX = "pod-security.kubernetes.io/"
+PSA_LEVELS = {"privileged", "baseline", "restricted"}
+PSA_VERSION = re.compile(r"^(latest|v1\.\d+)$")
+
+
+def check_pod_security(apps: list[dict], rendered: dict[str, list[dict]]) -> list[str]:
+    """Namespaces get their level in Git (kubernetes/platform/namespaces/), so
+    a typo in a label or an app in an unlabelled namespace fails here, not
+    silently in the cluster (an unknown label value is ignored by the API
+    server's cluster defaults)."""
+    errors = []
+    declared = set()
+    for app_name, docs in rendered.items():
+        for doc in docs:
+            if gk_of(doc) != ("", "Namespace"):
+                continue
+            ns = doc.get("metadata", {}).get("name", "")
+            declared.add(ns)
+            labels = {k[len(PSA_PREFIX):]: v for k, v in (doc.get("metadata", {}).get("labels") or {}).items()
+                      if k.startswith(PSA_PREFIX)}
+            for mode in ("enforce", "audit", "warn"):
+                if mode in labels and labels[mode] not in PSA_LEVELS:
+                    errors.append(f"{app_name}: namespace {ns}: {PSA_PREFIX}{mode}={labels[mode]!r} is not a level")
+                if f"{mode}-version" in labels and not PSA_VERSION.match(str(labels[f"{mode}-version"])):
+                    errors.append(f"{app_name}: namespace {ns}: {PSA_PREFIX}{mode}-version="
+                                  f"{labels[f'{mode}-version']!r} is not latest or v1.<minor>")
+            unknown = set(labels) - {m + v for m in ("enforce", "audit", "warn") for v in ("", "-version")}
+            for k in sorted(unknown):
+                errors.append(f"{app_name}: namespace {ns}: unknown label {PSA_PREFIX}{k}")
+            # privileged namespaces may skip audit/warn (nothing to report)
+            if labels.get("enforce") != "privileged":
+                for mode in ("audit", "warn"):
+                    if mode not in labels:
+                        errors.append(f"{app_name}: namespace {ns}: no {PSA_PREFIX}{mode} label")
+    for app in apps:
+        dest_ns = app["spec"].get("destination", {}).get("namespace", "")
+        if dest_ns and dest_ns not in declared:
+            errors.append(f"{app['metadata']['name']}: destination namespace {dest_ns!r} has no Namespace with "
+                          f"Pod Security labels (kubernetes/platform/namespaces/)")
     return errors
 
 
@@ -548,6 +599,14 @@ def main() -> int:
         print(f"  {p}", file=sys.stderr)
     if problems:
         print(f"projects: FAILED ({len(problems)})", file=sys.stderr)
+        rc = 1
+
+    log("Pod Security labels (namespaces)")
+    problems = check_pod_security(apps, by_app)
+    for p in problems:
+        print(f"  {p}", file=sys.stderr)
+    if problems:
+        print(f"pod security: FAILED ({len(problems)})", file=sys.stderr)
         rc = 1
 
     log(f"kubeconform (Kubernetes {kube_version}, strict)")

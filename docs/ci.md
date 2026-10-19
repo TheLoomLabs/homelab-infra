@@ -13,7 +13,7 @@ Every push to `main` and every pull request runs `.github/workflows/lint.yml`. `
 | `terraform` | `terraform fmt -check`, `terraform validate`, tflint |
 | `ansible` | yamllint (whole repo), ansible-lint (production profile) |
 | `secrets` | gitleaks over the full history, `*.sops.yaml` files are encrypted |
-| `manifests` | Every Argo CD app rendered and validated: kubeconform (strict), `promtool check rules`, AppProject limits |
+| `manifests` | Every Argo CD app rendered and validated: kubeconform (strict), `promtool check rules`, AppProject limits, Pod Security labels |
 
 ## Manifest checks
 
@@ -48,8 +48,17 @@ Every Application names an AppProject from `kubernetes/apps/projects.yaml` (`def
 - the project exists, every source `repoURL` is in its `sourceRepos`, and the destination is in its `destinations`
 - every rendered **namespaced** resource lands in a permitted namespace (its own `metadata.namespace`, or the destination's) and its kind isn't blacklisted
 - every **cluster-scoped** resource (built-in kinds from a fixed list, custom kinds by the scope in their CRD) is in `clusterResourceWhitelist`
+- every `Namespace` object's name is in `destinations` (Argo CD checks that too)
 
-A new platform component needs its chart repo and namespace added to the `platform` project in the same commit; a Phase 3 app goes into `apps`, which allows namespaced resources and its `Namespace` only.
+A new platform component needs its chart repo and namespace added to the `platform` project in the same commit; a Phase 3 app goes into `apps`, which allows namespaced resources only (no `Namespace`, see below).
+
+### Pod Security labels
+
+Namespaces get their Pod Security level in Git ([pod-security.md](pod-security.md)). The script checks:
+
+- every rendered `Namespace` has only known `pod-security.kubernetes.io/*` labels, levels `privileged`, `baseline` or `restricted`, versions `latest` or `v1.<minor>`
+- every namespace that isn't `enforce: privileged` has `audit` and `warn` labels
+- every app's destination namespace is one of those `Namespace` objects, so a new namespace can't slip in without a level
 
 ### Prometheus rules
 
@@ -144,5 +153,7 @@ Output in `.artifacts/images/`: `images.txt` (every image and the file that pins
 | `wrong yq` | Another `yq` (the Python one) is first in `PATH`; use the devbox shell |
 | `helm pull` fails | Chart version or repo URL wrong in the Application, or no network |
 | `not permitted by project` | The app's repo, namespace or a resource kind is outside its AppProject: add it to `kubernetes/apps/projects.yaml` (or fix the namespace) |
+| `destination namespace '<ns>' has no Namespace with Pod Security labels` | Add the namespace to `kubernetes/platform/namespaces/namespaces.yaml` (and to the project's `destinations`) |
+| `is not a level` / `unknown label` | Typo in a `pod-security.kubernetes.io/*` label |
 | `scan-images.py`: `rendered is empty` | Run `python3 scripts/check-manifests.py --render-only` first (`make images` does) |
 | Trivy `unable to find the specified image` | Tag doesn't exist (typo, or a value the collector misread); check `images.txt` |

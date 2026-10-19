@@ -35,7 +35,7 @@
     group: root
     mode: "0700"
 
-- name: Copy Argo CD values, AppProjects and root Application
+- name: Copy Argo CD values, namespaces, AppProjects and root Application
   ansible.builtin.copy:
     src: "{{ item.src }}"
     dest: "{{ argocd_remote_dir }}/{{ item.dest }}"
@@ -44,10 +44,25 @@
     mode: "0600"
   loop:
     - {src: "{{ argocd_values_file }}", dest: values.yaml}
+    - {src: "{{ argocd_namespaces_manifest }}", dest: namespaces.yaml}
     - {src: "{{ argocd_projects_manifest }}", dest: projects.yaml}
     - {src: "{{ argocd_root_app_manifest }}", dest: root.yaml}
   loop_control:
     label: "{{ item.dest }}"
+
+# Before the first platform pod: Argo CD syncs the apps in waves but doesn't
+# wait for one Application to finish before the next, so a namespace could
+# otherwise be created (CreateNamespace) before its labels. Server-side apply
+# with the field manager Argo CD uses later, so it adopts these fields.
+- name: Apply the namespaces with their Pod Security labels
+  ansible.builtin.command: >-
+    kubectl apply --server-side --field-manager=argocd-controller
+    --filename {{ argocd_remote_dir }}/namespaces.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  # Server-side apply prints "serverside-applied" whether or not anything
+  # changed; Argo CD owns these labels after the bootstrap anyway.
+  changed_when: false
 
 - name: Check for an existing Argo CD release
   ansible.builtin.command: helm status {{ argocd_release_name }} --namespace {{ argocd_namespace }}

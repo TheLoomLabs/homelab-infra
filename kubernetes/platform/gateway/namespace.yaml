@@ -1,5 +1,15 @@
 ---
+# Pod Security labels as in kubernetes/platform/namespaces/namespaces.yaml
+# (docs/pod-security.md). Only the shared Gateway lives here; its Envoy runs
+# in kube-system (Cilium), so no pods.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: gateway
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  labels:
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
