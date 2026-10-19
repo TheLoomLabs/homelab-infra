@@ -102,6 +102,7 @@ Secrets are stored in Git, encrypted with SOPS and age (ADR 0006):
 - Ansible-side secrets (the BIND TSIG key) are SOPS files next to their data (`dns/tsig.sops.yaml`), decrypted on the workstation by `community.sops.load_vars` when the playbook runs.
 - The age private key is the one secret not in Git. It lives in `.artifacts/age.key` on the workstation, with an offline backup, and Ansible (`playbooks/sops.yml`) loads it into the cluster as `sops/sops-age-key-file`.
 - Pre-commit, `make sops-check` and CI reject a `*.sops.yaml` file that is not encrypted.
+- Inside the cluster, the API server encrypts Secrets and ConfigMaps before they reach etcd (secretbox, key in `k8s/encryption.sops.yaml`). Details: [encryption.md](encryption.md).
 
 How to add, edit and rotate secrets: [secrets.md](secrets.md).
 

@@ -21,7 +21,7 @@ Proxmox VE ──Terraform──▶ 10 Ubuntu VMs ──Ansible──▶ hardene
 | GitOps | Argo CD (Helm), role `argocd` | Bootstrapped by Ansible, then **app of apps**: Argo CD syncs `kubernetes/apps/` and manages itself |
 | DNS | Ansible role `bind`, BIND 9 | **Primary + secondary on dedicated VMs**, zone from Git with automatic records and serial, **TSIG-signed zone transfers**, DNSSEC-validating resolver for the whole house |
 | Ingress & TLS | Cilium Gateway API, cert-manager | One shared **Gateway** on a fixed LAN IP; **Let's Encrypt wildcard cert via Cloudflare DNS-01**, so nothing has to be public |
-| Secrets | SOPS + age, sops-secrets-operator, role `sops_age`, `community.sops` | Secrets committed **encrypted**, decrypted in the cluster (Argo CD never sees plaintext) or by Ansible on the workstation |
+| Secrets | SOPS + age, sops-secrets-operator, role `sops_age`, `community.sops` | Secrets committed **encrypted**, decrypted in the cluster (Argo CD never sees plaintext) or by Ansible on the workstation; **Secrets and ConfigMaps encrypted at rest in etcd** (secretbox, two-pass rollout, key rotation runbook) |
 | Storage | Longhorn, role `longhorn_node` | Replicated block volumes on a dedicated data disk per worker, **LUKS-encrypted default StorageClass**, hourly snapshots and daily/weekly **backups to Cloudflare R2** |
 | Backups | Velero + CSI snapshots | Nightly cluster backups to R2 (objects **SSE-C encrypted**), volumes backed up by Longhorn through CSI VolumeSnapshots; restore tested end to end |
 | Monitoring | kube-prometheus-stack (Argo CD) | Prometheus, Alertmanager, Grafana; components ship their own ServiceMonitors and rules, **alerts on failed or missing backups**, degraded volumes and the usual cluster health |
@@ -84,6 +84,7 @@ More detail is in [docs/architecture.md](docs/architecture.md). The design decis
 | [alerting.md](docs/alerting.md) | Swarm alerting stack: ntfy, healthchecks, Traefik; phone setup, rebuild |
 | [logging.md](docs/logging.md) | Loki and Alloy: labels, push secret, checks, example queries |
 | [maintenance.md](docs/maintenance.md) | Rolling reboots (kernel updates, network changes) |
+| [encryption.md](docs/encryption.md) | Encryption at rest for Secrets and ConfigMaps: rollout, checks, key rotation |
 
 ## Quick start
 
@@ -103,6 +104,7 @@ make tf-plan && make tf-apply     # also writes ansible/inventory/hosts.yml
 # 4. Configuration
 make ping
 age-keygen -o .artifacts/age.key  # once, then back it up (docs/secrets.md)
+# once: k8s/encryption.sops.yaml, the etcd encryption key (docs/encryption.md)
 make site                         # base + DNS + Kubernetes + Longhorn node prep + age key + Argo CD + Swarm + alerting stack + log shipping
 
 # 5. Use it
@@ -130,7 +132,7 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 │   ├── modules/proxmox-vm/     # one VM: disk import, cloud-init snippet, network
 │   └── envs/homelab/           # the lab: node map → VMs → Ansible inventory
 ├── ansible/
-│   ├── playbooks/              # site, base, dns, kubernetes, cilium, longhorn, sops, argocd, swarm, alerting, logs
+│   ├── playbooks/              # site, base, dns, kubernetes, encryption, cilium, longhorn, sops, argocd, swarm, alerting, logs, reboot
 │   ├── roles/                  # common, hardening, bind, docker, swarm, k8s_prereqs,
 │   │                           # k8s_control_plane, k8s_worker, cilium, longhorn_node,
 │   │                           # sops_age, argocd, alerting, alloy
@@ -138,12 +140,13 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 ├── dns/                        # lab zone records + SOPS-encrypted TSIG key
 ├── swarm/                      # SOPS-encrypted secrets of the Swarm stacks
 ├── logging/                    # SOPS-encrypted push password for Alloy on the VMs
+├── k8s/                        # SOPS-encrypted key for encryption at rest in etcd
 ├── kubernetes/
 │   ├── apps/                   # Argo CD Applications + AppProjects (app of apps, synced from main)
 │   └── platform/               # Helm values, manifests and *.sops.yaml secrets per component
 ├── scripts/                    # check-manifests.py (make manifests), scan-images.py (make images)
 └── docs/                       # architecture, bootstrap, runbooks (dns, secrets, storage,
-                                # backup, monitoring, alerting, logging, ci, maintenance), ADRs, roadmap
+                                # backup, monitoring, alerting, logging, ci, maintenance, encryption), ADRs, roadmap
 ```
 
 ## Security notes
@@ -151,6 +154,7 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 - This is a public repo. Node addresses and domains in the Terraform and Ansible code are placeholders (`192.168.10.0/24`, `lab.example.internal`); real values live in git-ignored `terraform.tfvars` and `.env` files.
 - Manifests that Argo CD syncs from GitHub, and the DNS records in `dns/records.yml`, must hold real values. Private LAN addresses (like the LoadBalancer pool in `kubernetes/platform/cilium-lb/`) and the lab domain are committed as is: the addresses are not reachable from outside, and lab hostnames have no public DNS records. Secrets never are.
 - Secrets are committed only as SOPS-encrypted `*.sops.yaml` files and decrypted in the cluster by sops-secrets-operator ([docs/secrets.md](docs/secrets.md)). The age private key exists only on the workstation, in an offline backup and in the cluster.
+- The API server encrypts Secrets and ConfigMaps in etcd (secretbox, key in SOPS; [docs/encryption.md](docs/encryption.md)).
 - gitleaks runs in CI and pre-commit, `detect-private-key` in pre-commit, and a check rejects unencrypted `*.sops.yaml` files.
 - Nodes accept SSH keys only, run a default-deny firewall, and allow cluster traffic only from the lab, pod and service networks.
 
