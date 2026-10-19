@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Write Swarm service replica metrics every {{ alloy_swarm_services_interval }}
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec={{ alloy_swarm_services_interval }}
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

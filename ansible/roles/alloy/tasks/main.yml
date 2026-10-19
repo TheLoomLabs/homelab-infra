@@ -46,6 +46,50 @@
   when: alloy_docker_logs | bool
   notify: Restart alloy
 
+- name: Create the textfile directory for host metrics
+  ansible.builtin.file:
+    path: "{{ alloy_textfile_dir }}"
+    state: directory
+    owner: alloy
+    group: alloy
+    mode: "0755"
+  when: alloy_node_metrics | bool
+
+- name: Swarm service replica metrics
+  when: alloy_swarm_services_metrics | bool
+  block:
+    - name: Check that container access and host metrics are on
+      ansible.builtin.assert:
+        that:
+          - alloy_docker_logs | bool
+          - alloy_node_metrics | bool
+        fail_msg: alloy_swarm_services_metrics needs alloy_docker_logs (docker group) and alloy_node_metrics (textfile collector).
+        quiet: true
+
+    - name: Install the replica metrics script
+      ansible.builtin.copy:
+        src: swarm-services-metrics.py
+        dest: /usr/local/bin/swarm-services-metrics
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Write the replica metrics units
+      ansible.builtin.template:
+        src: "swarm-services-metrics.{{ item }}.j2"
+        dest: "/etc/systemd/system/swarm-services-metrics.{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: [service, timer]
+
+    - name: Enable the replica metrics timer
+      ansible.builtin.systemd_service:
+        name: swarm-services-metrics.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+
 - name: Write the Loki password
   ansible.builtin.copy:
     dest: /etc/alloy/loki-password

@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+# Swarm service replicas as Prometheus textfile metrics (role alloy).
+[Unit]
+Description=Write Swarm service replica metrics for Alloy
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# The alloy user is in the docker group (role alloy).
+User=alloy
+Group=alloy
+ExecStart=/usr/local/bin/swarm-services-metrics {{ alloy_textfile_dir }}/swarm_services.prom
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths={{ alloy_textfile_dir }} /run/docker.sock

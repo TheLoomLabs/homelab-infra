@@ -1,7 +1,9 @@
 ---
 # Grafana Alloy on the VMs outside Kubernetes (DNS, Swarm): ships the systemd
-# journal and, on Docker hosts, the container logs to Loki. ADR 0012,
-# docs/logging.md. The Kubernetes nodes run Alloy as a DaemonSet instead.
+# journal and, on Docker hosts, the container logs to Loki (ADR 0012,
+# docs/logging.md), and serves host and container metrics that Prometheus on
+# Kubernetes scrapes (ADR 0011, docs/monitoring.md). The Kubernetes nodes run
+# Alloy as a DaemonSet instead.
 
 # Installed from the GitHub release .deb, checked against the release's
 # SHA256SUMS. Keep it at the version of the Alloy Helm chart's appVersion
@@ -28,8 +30,29 @@ alloy_docker_logs: "{{ 'swarm' in group_names }}"
 # back. The journal itself keeps more (common_journald_max_use).
 alloy_journal_max_age: 12h
 
-# Alloy's UI and metrics stay on the VM until Prometheus scrapes the VMs.
-alloy_listen_address: 127.0.0.1:12345
+# Alloy's HTTP server: its own metrics on /metrics, the exporters below under
+# /api/v0/component/<component>/metrics, and the read-only UI. On the VM's
+# address, because Prometheus scrapes it from Kubernetes. No authentication:
+# the LAN is trusted on these VMs (UFW, role hardening).
+alloy_listen_address: "{{ ansible_host }}:12345"
+
+# Host metrics (Alloy's built-in node_exporter, prometheus.exporter.unix).
+# Prometheus scrapes them as job node-exporter, so kube-prometheus-stack's node
+# alerts and dashboards cover these VMs too.
+alloy_node_metrics: true
+
+# Container metrics (Alloy's built-in cAdvisor) on Docker hosts.
+alloy_container_metrics: "{{ alloy_docker_logs }}"
+
+# node_exporter textfile collector: *.prom files in this directory are served
+# with the host metrics.
+alloy_textfile_dir: /var/lib/alloy/textfile
+
+# Desired and running replicas of every Swarm service, written to the textfile
+# directory by a systemd timer (swarm-services-metrics). On every manager, so
+# the metrics survive one manager being down; the alert rules take the max.
+alloy_swarm_services_metrics: "{{ 'swarm_managers' in group_names }}"
+alloy_swarm_services_interval: 30s
 
 # From logging/alloy.sops.yaml (playbooks/logs.yml loads it):
 # alloy_loki_password
