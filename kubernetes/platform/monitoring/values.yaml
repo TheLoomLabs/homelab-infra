@@ -193,6 +193,12 @@ grafana:
       reporting_enabled: false
     users:
       allow_sign_up: false
+    # Nothing from the internet: egress is limited to the cluster
+    # (networkpolicy.yaml), so avatars and the news feed would only time out.
+    security:
+      disable_gravatar: true
+    news:
+      news_feed_enabled: false
   resources:
     requests:
       cpu: 50m

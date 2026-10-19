@@ -1,0 +1,124 @@
+---
+# Default deny for every pod in argocd (docs/network-policy.md): once a policy
+# selects a pod, it only gets what some policy allows. This one allows what
+# every pod needs: DNS through Cilium's DNS proxy (the toFQDNs rules depend on
+# it seeing the lookups) and scrapes from Prometheus.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  namespace: argocd
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+            k8s:app.kubernetes.io/name: prometheus
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# Argo CD's controllers and API server watch and change cluster resources.
+# repo-server and redis never call the API.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: kube-apiserver
+  namespace: argocd
+spec:
+  endpointSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - argocd-application-controller
+          - argocd-applicationset-controller
+          - argocd-server
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+---
+# Inside Argo CD: everyone talks to the repo-server (manifest generation) and
+# to redis (cache).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: internal
+  namespace: argocd
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - {}
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+            - port: "6379"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - {}
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+            - port: "6379"
+              protocol: TCP
+---
+# The UI and API through the shared Gateway (argocd.lab, Cilium's Envoy).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: server-from-gateway
+  namespace: argocd
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-server
+  ingress:
+    - fromEntities:
+        - ingress
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+---
+# The repo-server clones this repo and the external Git sources and pulls the
+# Helm charts. Chart repos on GitHub Pages serve their tarballs from GitHub
+# releases (*.githubusercontent.com). A new chart repo outside these names
+# needs a line here, next to its entry in the platform AppProject.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: repo-server-to-git-and-charts
+  namespace: argocd
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-repo-server
+  egress:
+    - toFQDNs:
+        - matchName: github.com
+        - matchPattern: "*.github.io"
+        - matchPattern: "*.githubusercontent.com"
+        - matchName: charts.jetstack.io
+        - matchName: charts.longhorn.io
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

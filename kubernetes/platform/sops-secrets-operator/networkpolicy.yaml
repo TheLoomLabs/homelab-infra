@@ -1,0 +1,46 @@
+---
+# Default deny for every pod in sops (docs/network-policy.md): once a policy
+# selects a pod, it only gets what some policy allows. This one allows what
+# every pod needs: DNS through Cilium's DNS proxy (the toFQDNs rules depend on
+# it seeing the lookups) and scrapes from Prometheus.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  namespace: sops
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+            k8s:app.kubernetes.io/name: prometheus
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# The operator reads SopsSecrets and writes Secrets. Nothing else: the age key
+# is a mounted Secret.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: kube-apiserver
+  namespace: sops
+spec:
+  endpointSelector: {}
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP

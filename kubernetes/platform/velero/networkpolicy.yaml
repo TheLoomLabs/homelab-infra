@@ -1,0 +1,64 @@
+---
+# Default deny for every pod in velero (docs/network-policy.md): once a policy
+# selects a pod, it only gets what some policy allows. This one allows what
+# every pod needs: DNS through Cilium's DNS proxy (the toFQDNs rules depend on
+# it seeing the lookups) and scrapes from Prometheus.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  namespace: velero
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+            k8s:app.kubernetes.io/name: prometheus
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# Velero reads every resource it backs up and creates the CSI snapshots.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: kube-apiserver
+  namespace: velero
+spec:
+  endpointSelector: {}
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+---
+# The R2 bucket. The account ID in the hostname is secret (it never appears in
+# Git), so the rule matches any R2 endpoint.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: velero-to-r2
+  namespace: velero
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: velero
+  egress:
+    - toFQDNs:
+        - matchPattern: "*.r2.cloudflarestorage.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
