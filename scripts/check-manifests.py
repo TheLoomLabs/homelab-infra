@@ -17,6 +17,9 @@ Then:
   2. kubeconform -strict validates all rendered resources (built-in kinds
      against the upstream schemas for the cluster's Kubernetes version).
   3. promtool check rules runs on the spec of every PrometheusRule.
+  4. Every app stays inside its Argo CD AppProject (kubernetes/apps/projects.yaml):
+     source repos, destination, and the namespace/kind of each rendered
+     resource. Argo CD would refuse those at sync time.
 
 Output lands in .artifacts/manifests/ (git-ignored): rendered/ is what was
 validated, cache/ holds pulled charts and clones between runs.
@@ -378,15 +381,123 @@ def dedupe_crds(crds: list[dict]) -> list[dict]:
     return list(by_name.values())
 
 
+# --- Argo CD projects ----------------------------------------------------------
+
+# Built-in kinds that are not namespaced. Custom kinds take their scope from
+# the CRDs collected in pass 1.
+CLUSTER_SCOPED_BUILTIN = {
+    ("", "Namespace"), ("", "Node"), ("", "PersistentVolume"), ("", "ComponentStatus"),
+    ("rbac.authorization.k8s.io", "ClusterRole"), ("rbac.authorization.k8s.io", "ClusterRoleBinding"),
+    ("apiextensions.k8s.io", "CustomResourceDefinition"),
+    ("apiregistration.k8s.io", "APIService"),
+    ("storage.k8s.io", "StorageClass"), ("storage.k8s.io", "CSIDriver"), ("storage.k8s.io", "CSINode"),
+    ("storage.k8s.io", "VolumeAttachment"), ("storage.k8s.io", "VolumeAttributesClass"),
+    ("scheduling.k8s.io", "PriorityClass"), ("node.k8s.io", "RuntimeClass"),
+    ("networking.k8s.io", "IngressClass"), ("networking.k8s.io", "IPAddress"),
+    ("networking.k8s.io", "ServiceCIDR"),
+    ("admissionregistration.k8s.io", "ValidatingWebhookConfiguration"),
+    ("admissionregistration.k8s.io", "MutatingWebhookConfiguration"),
+    ("admissionregistration.k8s.io", "ValidatingAdmissionPolicy"),
+    ("admissionregistration.k8s.io", "ValidatingAdmissionPolicyBinding"),
+    ("admissionregistration.k8s.io", "MutatingAdmissionPolicy"),
+    ("admissionregistration.k8s.io", "MutatingAdmissionPolicyBinding"),
+    ("certificates.k8s.io", "CertificateSigningRequest"), ("certificates.k8s.io", "ClusterTrustBundle"),
+    ("flowcontrol.apiserver.k8s.io", "FlowSchema"),
+    ("flowcontrol.apiserver.k8s.io", "PriorityLevelConfiguration"),
+    ("resource.k8s.io", "DeviceClass"), ("resource.k8s.io", "ResourceSlice"),
+}
+
+
+def load_projects() -> dict[str, dict]:
+    projects = {}
+    for f in sorted(APPS_DIR.glob("*.yaml")):
+        for doc in load_yaml_file(f):
+            if doc.get("kind") == "AppProject":
+                projects[doc["metadata"]["name"]] = doc.get("spec", {})
+    return projects
+
+
+def gk_of(doc: dict) -> tuple[str, str]:
+    api = doc.get("apiVersion", "")
+    return (api.split("/")[0] if "/" in api else "", doc.get("kind", ""))
+
+
+def gk_listed(gk: tuple[str, str], entries: list[dict] | None) -> bool:
+    return any(fnmatch.fnmatchcase(gk[0], e.get("group", "")) and fnmatch.fnmatchcase(gk[1], e.get("kind", ""))
+               for e in entries or [])
+
+
+def destination_ok(spec: dict, server: str, namespace: str) -> bool:
+    """Argo CD destination matching: globs, `!` entries deny."""
+    allowed = False
+    for d in spec.get("destinations") or []:
+        pat_ns = d.get("namespace", "")
+        deny = pat_ns.startswith("!")
+        if not fnmatch.fnmatchcase(server, d.get("server", "*")):
+            continue
+        if fnmatch.fnmatchcase(namespace, pat_ns.lstrip("!")):
+            if deny:
+                return False
+            allowed = True
+    return allowed
+
+
+def check_projects(apps: list[dict], rendered: dict[str, list[dict]], crds: list[dict]) -> list[str]:
+    """What Argo CD would refuse to sync: sources, destinations and resource
+    kinds each AppProject doesn't permit."""
+    projects = load_projects()
+    scope = {(c["spec"]["group"], c["spec"]["names"]["kind"]): c["spec"].get("scope", "Namespaced") for c in crds}
+    errors = []
+    for app in apps:
+        name = app["metadata"]["name"]
+        pname = app["spec"].get("project", "default")
+        spec = projects.get(pname)
+        if spec is None:
+            errors.append(f"{app['_file']}: project {pname!r} is not defined in {APPS_DIR.relative_to(REPO)}")
+            continue
+        for src in app_sources(app):
+            if not any(fnmatch.fnmatchcase(src["repoURL"], pat) for pat in spec.get("sourceRepos") or []):
+                errors.append(f"{name}: source {src['repoURL']} not in project {pname} sourceRepos")
+        dest = app["spec"].get("destination", {})
+        server = dest.get("server", "")
+        dest_ns = dest.get("namespace", "")
+        if not destination_ok(spec, server, dest_ns):
+            errors.append(f"{name}: destination {server} namespace {dest_ns!r} not permitted by project {pname}")
+        seen = set()
+        for doc in rendered.get(name, []):
+            gk = gk_of(doc)
+            cluster = gk in CLUSTER_SCOPED_BUILTIN or scope.get(gk) == "Cluster"
+            if cluster:
+                ok = (gk_listed(gk, spec.get("clusterResourceWhitelist"))
+                      and not gk_listed(gk, spec.get("clusterResourceBlacklist")))
+                what = f"cluster-scoped {gk[1]}.{gk[0] or 'core'}"
+            else:
+                ns = doc.get("metadata", {}).get("namespace") or dest_ns
+                wl = spec.get("namespaceResourceWhitelist")
+                ok = ((wl is None or gk_listed(gk, wl))
+                      and not gk_listed(gk, spec.get("namespaceResourceBlacklist"))
+                      and destination_ok(spec, server, ns))
+                what = f"{gk[1]}.{gk[0] or 'core'} in namespace {ns!r}"
+            if not ok and what not in seen:
+                seen.add(what)
+                errors.append(f"{name}: {what} not permitted by project {pname}")
+    return errors
+
+
 # --- Main --------------------------------------------------------------------
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--no-promtool", action="store_true", help="skip promtool check rules")
+    ap.add_argument("--render-only", action="store_true",
+                    help="only render into .artifacts/manifests/rendered (no kubeconform, no promtool)")
     args = ap.parse_args()
+    if args.render_only:
+        args.no_promtool = True
 
     try:
-        check_tools(["helm", "kubectl", "kubeconform", "git"] + ([] if args.no_promtool else ["promtool"]))
+        check_tools(["helm", "kubectl", "git"] + ([] if args.render_only else ["kubeconform"])
+                    + ([] if args.no_promtool else ["promtool"]))
         check_yq()
         v = k8s_vars()
         kube_version = f"{str(v['kubernetes_minor_version']).strip()}.0"
@@ -411,17 +522,34 @@ def main() -> int:
         log("Pass 2: render with the cluster's API versions")
         api_versions = api_versions_of(crds)
         resources: list[dict] = []
+        by_app: dict[str, list[dict]] = {}
         for app in apps:
             name = app["metadata"]["name"]
             for label, docs in render_app(app, kube_version, api_versions).items():
                 write_docs(RENDERED / name / f"{label}.yaml", docs)
                 resources.extend(docs)
+                by_app.setdefault(name, []).extend(docs)
                 log(f"  {name}/{label}: {len(docs)} resources")
     except CheckError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
+    if args.render_only:
+        log(f"Rendered {len(resources)} resources into {RENDERED.relative_to(REPO)}")
+        return 0
+
     rc = 0
+    log("Argo CD projects (sources, destinations, resource kinds)")
+    try:
+        problems = check_projects(apps, by_app, crds)
+    except CheckError as exc:
+        problems = [str(exc)]
+    for p in problems:
+        print(f"  {p}", file=sys.stderr)
+    if problems:
+        print(f"projects: FAILED ({len(problems)})", file=sys.stderr)
+        rc = 1
+
     log(f"kubeconform (Kubernetes {kube_version}, strict)")
     schema_cache = CACHE / "kubeconform"
     schema_cache.mkdir(parents=True, exist_ok=True)
