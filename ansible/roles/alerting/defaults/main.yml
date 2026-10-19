@@ -15,6 +15,9 @@ alerting_traefik_image: traefik:v3.7.15
 alerting_ntfy_image: binwiederhier/ntfy:v2.31.1
 alerting_healthchecks_image: healthchecks/healthchecks:v4.4
 
+# Traefik's Prometheus metrics (host-mode port on alerting_node).
+alerting_traefik_metrics_port: 8082
+
 # Let's Encrypt (account without e-mail) and the public resolvers for the
 # DNS-01 propagation check. BIND answers lab.theloomlabs.org itself, so the
 # check must not use the lab DNS (same as cert-manager, ADR 0007).
