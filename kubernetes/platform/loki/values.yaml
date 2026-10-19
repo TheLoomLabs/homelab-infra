@@ -33,6 +33,24 @@ loki:
   ingester:
     chunk_encoding: snappy
 
+  # Log-based alerts (docs/audit-logging.md). In single-binary mode the ruler
+  # runs inside the one Loki process. Rules come from Git: the ConfigMap
+  # loki-rules-audit (audit-rules.yaml) is mounted read-only below; Loki
+  # re-reads the directory on every poll, so a rule change needs no restart.
+  # Firing alerts go to Alertmanager, which routes them like Prometheus'.
+  rulerConfig:
+    storage:
+      type: local
+      local:
+        directory: /etc/loki/rules
+    # Scratch copy of the rules the ruler evaluates (writable volume).
+    rule_path: /var/loki/ruler-scratch
+    alertmanager_url: http://kube-prometheus-stack-alertmanager.monitoring.svc.cluster.local:9093
+    # The link in an alert (generatorURL) opens Grafana's Explore.
+    external_url: https://grafana.lab.theloomlabs.org/explore
+    # Grafana's alerting page lists the rules through this API.
+    enable_api: true
+
   # Merged with the chart's limits_config.
   limits_config:
     # 15 days, same as Prometheus. The compactor deletes older chunks.
@@ -52,8 +70,17 @@ loki:
 
 singleBinary:
   replicas: 1
-  # The rules sidecar is for the ruler (log-based alerts), which comes later.
+  # Rules come from the ConfigMap below, not from the sidecar.
   sidecar: false
+  # Tenant "fake" (auth_enabled: false) is the directory name.
+  extraVolumes:
+    - name: rules-audit
+      configMap:
+        name: loki-rules-audit
+  extraVolumeMounts:
+    - name: rules-audit
+      mountPath: /etc/loki/rules/fake
+      readOnly: true
   # Plain longhorn class (two replicas, no encryption, no backups), like
   # Prometheus. Retention is by time only, so the default
   # KubePersistentVolumeFillingUp alerts are the guard against a full volume.
@@ -92,10 +119,14 @@ monitoring:
     enabled: true
     interval: 30s
 
-# Off: the ruler and its sidecar (log-based alerts come later), the memcached
-# caches (the chunk cache alone asks for 8 GiB), the canary and its Helm test.
+# Renders the ruler section of Loki's config (loki.rulerConfig above). The
+# ruler's own StatefulSet exists only in distributed mode, so nothing else is
+# created.
 ruler:
-  enabled: false
+  enabled: true
+
+# Off: the rules sidecar (rules come from a ConfigMap), the memcached caches
+# (the chunk cache alone asks for 8 GiB), the canary and its Helm test.
 sidecar:
   rules:
     enabled: false

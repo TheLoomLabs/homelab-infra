@@ -1,0 +1,132 @@
+---
+# Log-based alerts on the Kubernetes audit log (docs/audit-logging.md).
+# Loki's ruler (single binary, values.yaml) reads this ConfigMap from
+# /etc/loki/rules/fake (tenant "fake": auth is off), evaluates the LogQL every
+# minute and sends firing alerts to Alertmanager, which routes them like the
+# Prometheus alerts (warning → ntfy priority 3).
+#
+# Event fields are parsed with `| json`: user.username, verb,
+# objectRef.{resource,namespace,name,subresource}, responseStatus.code,
+# annotations. A line filter first keeps the parsing cheap.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-rules-audit
+  namespace: monitoring
+data:
+  audit.yaml: |
+    groups:
+      - name: kubernetes-audit
+        rules:
+          - alert: KubeAuditLogsMissing
+            expr: |
+              absent_over_time({source="audit"}[15m])
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: No Kubernetes audit events in Loki for 15 minutes.
+              description: >-
+                Either the API servers stopped writing the audit log or Alloy
+                on the control-plane nodes stopped shipping it. Check the file
+                /var/log/kubernetes/audit/audit.log on a control-plane node and
+                the Alloy pods there (docs/audit-logging.md).
+
+          - alert: KubeAuditPodExec
+            expr: |
+              sum by (user, namespace, pod, subresource) (
+                count_over_time(
+                  {source="audit"}
+                    |~ `"subresource":"(exec|attach|portforward)"`
+                    | json user="user.username", namespace="objectRef.namespace", pod="objectRef.name", subresource="objectRef.subresource"
+                  [5m]
+                )
+              ) > 0
+            labels:
+              severity: warning
+            annotations:
+              summary: "{{ $labels.user }} used {{ $labels.subresource }} on {{ $labels.namespace }}/{{ $labels.pod }}."
+              description: >-
+                Someone opened a shell, attached or port-forwarded into a pod.
+                Expected when you did it yourself; otherwise find the request in
+                Grafana (Kubernetes audit dashboard).
+
+          - alert: KubeAuditSecretReadByUser
+            expr: |
+              sum by (user, namespace, verb) (
+                count_over_time(
+                  {source="audit"}
+                    |= `"resource":"secrets"`
+                    | json user="user.username", verb="verb", resource="objectRef.resource", namespace="objectRef.namespace"
+                    | resource="secrets" and verb=~"get|list|watch" and user!~"system:.*"
+                  [5m]
+                )
+              ) > 0
+            labels:
+              severity: warning
+            annotations:
+              summary: "{{ $labels.user }} ran {{ $labels.verb }} on Secrets in {{ $labels.namespace }}."
+              description: >-
+                A person (not a service account or cluster component) read
+                Secrets. Expected when you did it yourself, e.g. with kubectl
+                get secret.
+
+          - alert: KubeAuditAnonymousRequest
+            expr: |
+              sum by (verb, uri, code) (
+                count_over_time(
+                  {source="audit"}
+                    |= `"username":"system:anonymous"`
+                    | json verb="verb", uri="requestURI", code="responseStatus.code"
+                  [5m]
+                )
+              ) > 0
+            labels:
+              severity: warning
+            annotations:
+              summary: "Anonymous {{ $labels.verb }} {{ $labels.uri }} (HTTP {{ $labels.code }})."
+              description: >-
+                A request without credentials reached the API server, other
+                than the health checks the audit policy drops. Something on the
+                network is probing the API, or a client lost its credentials.
+
+          - alert: KubeAuditForbiddenRequests
+            expr: |
+              sum by (user) (
+                count_over_time(
+                  {source="audit"}
+                    |= `"code":403`
+                    | json user="user.username", code="responseStatus.code"
+                    | code="403"
+                  [10m]
+                )
+              ) > 10
+            labels:
+              severity: warning
+            annotations:
+              summary: "{{ $labels.user }} got {{ $value }} forbidden (403) answers in 10 minutes."
+              description: >-
+                RBAC or admission (Pod Security) keeps rejecting this user or
+                service account: missing permissions after a chart upgrade, or
+                someone trying what they may not do.
+
+          - alert: KubeAuditPodSecurityViolation
+            expr: |
+              sum by (namespace, user) (
+                count_over_time(
+                  {source="audit"}
+                    |~ `audit-violations|violates PodSecurity`
+                    | json namespace="objectRef.namespace", user="user.username"
+                    | namespace!~"kube-system|longhorn-system|monitoring"
+                  [5m]
+                )
+              ) > 0
+            labels:
+              severity: warning
+            annotations:
+              summary: "Pod Security violation in {{ $labels.namespace }} by {{ $labels.user }}."
+              description: >-
+                A workload breaks the namespace's Pod Security level (restricted
+                for every namespace except kube-system, longhorn-system and
+                monitoring, which are privileged on purpose). See
+                docs/pod-security.md.

@@ -2,7 +2,8 @@
 # Loki (docs/network-policy.md; the namespace's default deny is in
 # kubernetes/platform/monitoring/networkpolicy.yaml). Pushes come from the
 # Alloys in the cluster and, through the gateway, from the VMs; queries from
-# Grafana. Memberlist and gRPC only between Loki's own pods.
+# Grafana. Memberlist and gRPC only between Loki's own pods. The ruler sends
+# log-based alerts to Alertmanager (docs/audit-logging.md).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -44,6 +45,13 @@ spec:
             - port: "7946"
               protocol: TCP
             - port: "9095"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: alertmanager
+      toPorts:
+        - ports:
+            - port: "9093"
               protocol: TCP
 ---
 # The nginx gateway in front of Loki: the VMs' Alloys push through the shared

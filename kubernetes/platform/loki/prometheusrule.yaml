@@ -1,5 +1,5 @@
 ---
-# Alerts for Loki (ADR 0012). Metrics come from the chart's ServiceMonitor
+# Alerts for Loki and its ruler (ADR 0012). Metrics come from the chart's ServiceMonitor
 # (monitoring.serviceMonitor in values.yaml); its job label is
 # "monitoring/loki". A full volume is covered by the default
 # KubePersistentVolumeFillingUp alerts.
@@ -56,3 +56,38 @@ spec:
           annotations:
             summary: "Loki's compactor has not run for over 3 hours"
             description: "Retention is not applied while the compactor fails. Check the Loki log for compactor errors."
+        # Log-based alerts (audit-rules.yaml, docs/audit-logging.md). A rule
+        # file Loki can't parse keeps the previous rules running and only
+        # logs "unable to list rules"; with no rules loaded at all (fresh
+        # start with a broken file) there is no evaluation to time.
+        - alert: LokiRulerNotEvaluating
+          expr: |
+            absent(loki_prometheus_rule_group_last_evaluation_timestamp_seconds{job="monitoring/loki"})
+              or
+            time() - max(loki_prometheus_rule_group_last_evaluation_timestamp_seconds{job="monitoring/loki"}) > 300
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Loki's ruler evaluates no rules"
+            description: >-
+              Log-based alerts (Kubernetes audit) are not checked. Look for "unable to list rules" in the Loki log:
+              kubectl -n monitoring logs sts/loki -c loki | grep -i rule
+        - alert: LokiRuleEvaluationFailures
+          expr: sum by (rule_group) (rate(loki_prometheus_rule_evaluation_failures_total{job="monitoring/loki"}[5m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Loki fails to evaluate rules in {{ $labels.rule_group }}"
+            description: "Usually a query limit or timeout. Check the Loki log: kubectl -n monitoring logs sts/loki -c loki"
+        - alert: LokiRulerAlertsNotDelivered
+          expr: sum(rate(loki_prometheus_notifications_dropped_total{job="monitoring/loki"}[5m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Loki's ruler can't deliver alerts to Alertmanager"
+            description: >-
+              Log-based alerts are dropped. Check the network policies between Loki and Alertmanager
+              (docs/network-policy.md) and the Alertmanager pod.
