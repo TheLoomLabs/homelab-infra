@@ -23,12 +23,12 @@ pvesm set local --content iso,vztmpl,backup,import,snippets
 Run on the Proxmox node:
 
 ```bash
-pveum role add TerraformProv -privs "Datastore.Allocate Datastore.AllocateSpace Datastore.AllocateTemplate Datastore.Audit Sys.Audit Sys.Modify SDN.Use VM.Allocate VM.Audit VM.Config.CDROM VM.Config.Cloudinit VM.Config.CPU VM.Config.Disk VM.Config.HWType VM.Config.Memory VM.Config.Network VM.Config.Options VM.GuestAgent.Audit VM.PowerMgmt"
+pveum role add TerraformRole -privs "Datastore.Allocate Datastore.AllocateSpace Datastore.AllocateTemplate Datastore.Audit Sys.Audit Sys.Modify SDN.Use VM.Allocate VM.Audit VM.Config.CDROM VM.Config.Cloudinit VM.Config.CPU VM.Config.Disk VM.Config.HWType VM.Config.Memory VM.Config.Network VM.Config.Options VM.GuestAgent.Audit VM.PowerMgmt"
 pveum user add terraform@pve
-pveum aclmod / -user terraform@pve -role TerraformProv
+pveum aclmod / -user terraform@pve -role TerraformRole
 # Privilege-separated token: it gets its own ACL and can never do more than the user.
-pveum user token add terraform@pve provider --privsep 1
-pveum aclmod / -token 'terraform@pve!provider' -role TerraformProv
+pveum user token add terraform@pve homelab-infra --privsep 1
+pveum aclmod / -token 'terraform@pve!homelab-infra' -role TerraformRole
 ```
 
 Why these privileges (Proxmox VE 9, what the bpg provider does here):
@@ -47,7 +47,7 @@ Put the token into `.env`:
 
 ```bash
 PROXMOX_VE_ENDPOINT=https://<proxmox-host>:8006/
-PROXMOX_VE_API_TOKEN=terraform@pve!provider=<token-secret>
+PROXMOX_VE_API_TOKEN=terraform@pve!homelab-infra=<token-secret>
 ```
 
 ## 4. SSH to the Proxmox node
