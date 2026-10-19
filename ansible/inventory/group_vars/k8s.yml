@@ -5,14 +5,19 @@ pod_cidr: 10.244.0.0/16
 service_cidr: 10.96.0.0/12
 cluster_dns_domain: cluster.local
 
+# renovate: datasource=docker depName=ghcr.io/kube-vip/kube-vip
 kube_vip_version: v1.2.4
+# renovate: datasource=github-releases depName=cilium/cilium extractVersion=^v(?<version>.+)$
 cilium_version: 1.20.3
+# renovate: datasource=github-releases depName=cilium/cilium-cli
 cilium_cli_version: v0.20.1
+# renovate: datasource=github-releases depName=helm/helm
 helm_version: v4.2.3 # installed on the first control-plane node for the Argo CD bootstrap
 
 # Gateway API CRDs (standard channel) for Cilium's Gateway controller. Keep this
 # at the version the Cilium release supports (see the Cilium Gateway API docs).
 # The checksum pins the release asset standard-install.yaml.
+# renovate: datasource=github-releases depName=kubernetes-sigs/gateway-api
 gateway_api_version: v1.6.3
 gateway_api_crds_sha256: 356c2b8e286a964dc20995435659ad1095386329974793af10bbfe3eff977fe5
 

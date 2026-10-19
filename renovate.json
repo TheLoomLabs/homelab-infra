@@ -1,0 +1,180 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Self-hosted Renovate (.github/workflows/renovate.yml). Nothing merges itself: Argo CD deploys whatever lands on main. See docs/ci.md.",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "Europe/Zagreb",
+  "schedule": [
+    "* 0-7 * * 1"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "dependencyDashboard": true,
+  "prConcurrentLimit": 10,
+  "prHourlyLimit": 0,
+  "minimumReleaseAge": "3 days",
+  "internalChecksFilter": "strict",
+  "automerge": false,
+  "enabledManagers": [
+    "argocd",
+    "helm-values",
+    "github-actions",
+    "terraform",
+    "custom.regex"
+  ],
+  "argocd": {
+    "managerFilePatterns": [
+      "/^kubernetes/apps/.+\\.ya?ml$/"
+    ]
+  },
+  "helm-values": {
+    "managerFilePatterns": [
+      "/^kubernetes/platform/.+/values[^/]*\\.ya?ml$/"
+    ]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Versions marked with a `# renovate:` comment on the line above (Ansible vars, workflow env)",
+      "managerFilePatterns": [
+        "/^ansible/inventory/group_vars/.+\\.ya?ml$/",
+        "/^ansible/roles/[^/]+/defaults/main\\.ya?ml$/",
+        "/^\\.github/workflows/.+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?(?: extractVersion=(?<extractVersion>\\S+))?\\s+[A-Za-z0-9_]+:\\s*\"?(?<currentValue>[^\\s\"]+)\"?"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}{{#if (equals datasource 'docker')}}docker{{else}}semver-coerced{{/if}}{{/if}}",
+      "extractVersionTemplate": "{{#if extractVersion}}{{{extractVersion}}}{{else}}^(?<version>.+)${{/if}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Container images in Ansible role defaults (`<name>_image: repo:tag`, the Swarm stacks)",
+      "managerFilePatterns": [
+        "/^ansible/roles/[^/]+/defaults/main\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "\\n[a-z0-9_]+_image:\\s*\"?(?<depName>[^\\s:\"]+):(?<currentValue>[^\\s@\"]+)\"?"
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Sources in this repo track main",
+      "matchDepNames": [
+        "https://github.com/TheLoomLabs/homelab-infra.git"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "One PR for all non-major GitHub Actions (and the Renovate image)",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest",
+        "pinDigest"
+      ],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "matchDepNames": [
+        "ghcr.io/renovatebot/renovate"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "Terraform's own version constraint is a floor, not a pin",
+      "matchManagers": [
+        "terraform"
+      ],
+      "matchDepTypes": [
+        "required_version"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "The Prometheus operator CRDs belong to the kube-prometheus-stack release",
+      "matchDepNames": [
+        "kube-prometheus-stack",
+        "prometheus-operator-crds"
+      ],
+      "groupName": "kube-prometheus-stack"
+    },
+    {
+      "description": "Alloy on the VMs follows the Alloy chart",
+      "matchDepNames": [
+        "alloy",
+        "grafana/alloy"
+      ],
+      "groupName": "Alloy",
+      "prBodyNotes": [
+        "Keep `alloy_version` (VMs) at the chart's appVersion. VMs pick it up with `make logs`."
+      ]
+    },
+    {
+      "description": "Release assets checked against a SHA-256 next to the version",
+      "matchDepNames": [
+        "gitleaks/gitleaks",
+        "yannh/kubeconform",
+        "prometheus/prometheus",
+        "kubernetes-sigs/gateway-api",
+        "aquasecurity/trivy"
+      ],
+      "prBodyNotes": [
+        "**Checksum pinned:** update the matching `*_SHA256` / `*_sha256` value in this PR (from the release's checksums file). CI fails until it matches."
+      ]
+    },
+    {
+      "matchDepNames": [
+        "prometheus/prometheus"
+      ],
+      "prBodyNotes": [
+        "promtool must match the Prometheus that kube-prometheus-stack deploys: merge only together with that chart. Also bump the nixpkgs commit of `prometheus.cli` in devbox.json."
+      ]
+    },
+    {
+      "description": "Installed by Ansible, not Argo CD",
+      "matchDepNames": [
+        "cilium/cilium",
+        "cilium/cilium-cli",
+        "ghcr.io/kube-vip/kube-vip",
+        "helm/helm",
+        "kubernetes-sigs/gateway-api"
+      ],
+      "prBodyNotes": [
+        "Applied by Ansible, not Argo CD: after merging run the playbook for it (Cilium/Gateway API: `make cilium`; kube-vip: `make k8s` on the control-plane nodes). Check the Cilium release notes for the supported Gateway API version and cilium-cli."
+      ]
+    },
+    {
+      "matchDepNames": [
+        "traefik",
+        "binwiederhier/ntfy",
+        "healthchecks/healthchecks"
+      ],
+      "groupName": "alerting stack",
+      "prBodyNotes": [
+        "Swarm stack: after merging run `make alerting`."
+      ]
+    },
+    {
+      "matchDepNames": [
+        "argo-cd"
+      ],
+      "prBodyNotes": [
+        "Argo CD upgrades itself from this Application; Ansible reads the same version for a fresh bootstrap."
+      ]
+    }
+  ]
+}
