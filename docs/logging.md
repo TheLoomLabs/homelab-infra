@@ -17,6 +17,7 @@ Loki runs as one process (single binary) in `monitoring`, with its index and chu
 | Alloy on the VMs | `ansible/roles/alloy`, `ansible/playbooks/logs.yml`, `make logs` |
 | Push password for the VMs | `logging/alloy.sops.yaml` (SOPS, loaded by the playbook) |
 | Grafana datasource | `grafana.additionalDataSources` in `kubernetes/platform/monitoring/values.yaml` |
+| Log-based alerts | Loki's ruler → Alertmanager; rules in ConfigMaps `loki-rules-*` (`kubernetes/platform/loki/audit-rules.yaml`, [audit-logging.md](audit-logging.md#alerts)) |
 
 ## Labels
 
@@ -28,6 +29,7 @@ Every log line has `source` and `host`; the rest depends on the source. Keep que
 | `journal` | systemd journal of every node and VM | `unit` (`kernel` for kernel messages), `level` (`emerg` … `debug`) |
 | `events` | Kubernetes events | `namespace` of the object; kind, name, reason and message are in the line (logfmt) |
 | `docker` | Containers on the Swarm nodes | `stack`, `service` |
+| `audit` | Kubernetes API audit log on the control-plane nodes | none; one JSON event per line, parse with `\| json` ([audit-logging.md](audit-logging.md)) |
 
 `host` is the Kubernetes node or the VM name from the inventory (`k8s-wk-01`, `dns-01`, `swarm-m-02` …). The events have no `host`.
 
@@ -144,7 +146,6 @@ https://grafana.lab.theloomlabs.org → **Explore** (compass icon in the left me
 
 ## Later
 
-- Log-based alerts: enable Loki's ruler (and its rules sidecar), point it at Alertmanager, ship rules as ConfigMaps.
 - Prometheus scrapes the Alloys on the VMs (they listen on `127.0.0.1:12345` today), together with the Swarm nodes.
 - Alloy on the Proxmox host itself.
 - Loki's mixin dashboards (the chart's `monitoring.dashboards`), once they suit a single-binary install.

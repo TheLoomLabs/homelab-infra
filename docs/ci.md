@@ -13,7 +13,7 @@ Every push to `main` and every pull request runs `.github/workflows/lint.yml`. `
 | `terraform` | `terraform fmt -check`, `terraform validate`, tflint |
 | `ansible` | yamllint (whole repo), ansible-lint (production profile) |
 | `secrets` | gitleaks over the full history, `*.sops.yaml` files are encrypted |
-| `manifests` | Every Argo CD app rendered and validated: kubeconform (strict), `promtool check rules`, AppProject limits, Pod Security labels, default-deny policies |
+| `manifests` | Every Argo CD app rendered and validated: kubeconform (strict), `promtool check rules`, `lokitool rules lint`, AppProject limits, Pod Security labels, default-deny policies |
 
 ## Manifest checks
 
@@ -68,6 +68,10 @@ Every app's destination namespace, except kube-system and longhorn-system (`NETP
 
 The `spec` of every PrometheusRule (the repo's own and the ones charts render) goes through `promtool check rules`: PromQL syntax and label/annotation templates fail the run; duplicate rules are reported as warnings. `promtool` matches the Prometheus version that kube-prometheus-stack deploys. `--no-promtool` skips this step.
 
+### Loki rules
+
+Every key of a ConfigMap named `loki-rules-*` is a Loki ruler file ([audit-logging.md](audit-logging.md#alerts)). They go through `lokitool rules lint --dry-run`: rule structure (unknown fields fail) and LogQL syntax. This matters more than for Prometheus: when one file doesn't parse, Loki's ruler loads none of the changes. `lokitool` matches the Loki version the chart deploys. `--no-lokitool` skips this step.
+
 ### Output
 
 Everything lands in `.artifacts/manifests/` (git-ignored):
@@ -77,6 +81,7 @@ Everything lands in `.artifacts/manifests/` (git-ignored):
 | `rendered/<app>/` | What was validated, one file per source |
 | `schemas/<group>/` | Generated JSON schemas |
 | `rules/` | Extracted rule files given to promtool |
+| `loki-rules/` | Extracted Loki rule files given to lokitool |
 | `cache/` | Pulled charts, clones, kubeconform's schema cache; kept between runs, safe to delete |
 
 `rendered/` is also handy for reviewing what a values change does to a chart: render before and after, then `diff -r`.
@@ -88,16 +93,17 @@ Everything lands in `.artifacts/manifests/` (git-ignored):
 | helm | `kubernetes-helm` | `azure/setup-helm`, same version as `helm_version` in `group_vars/k8s.yml` |
 | kubeconform | `kubeconform` | GitHub release, SHA-256 pinned in the workflow |
 | promtool | `prometheus.cli` from a pinned nixpkgs commit (devbox links only the default output of `prometheus`, and promtool lives in `cli`) | GitHub release, SHA-256 pinned in the workflow |
+| lokitool | `grafana-loki` from the same pinned nixpkgs commit (also brings `loki` and `logcli`) | GitHub release, SHA-256 pinned in the workflow |
 | yq (mikefarah v4) | `yq-go` | preinstalled on the runner |
 | kubectl | `kubectl` | preinstalled on the runner |
 | python3 | `python` | preinstalled on the runner (stdlib only, no packages) |
 
-When kube-prometheus-stack moves to a new Prometheus version, bump `PROMETHEUS_VERSION` and its checksum in the workflow, and the nixpkgs commit of `prometheus.cli` in `devbox.json` (one that ships the same version).
+When kube-prometheus-stack moves to a new Prometheus version, bump `PROMETHEUS_VERSION` and its checksum in the workflow, and the nixpkgs commit of `prometheus.cli` in `devbox.json` (one that ships the same version). Same for the loki chart and `LOKITOOL_VERSION` / `grafana-loki`.
 
 ## Supply chain
 
 - **Actions are pinned to full commit SHAs** (`uses: owner/action@<sha> # vX.Y.Z`); the repo setting *Require actions to be pinned to a full-length commit SHA* enforces it. Renovate bumps SHA and comment together.
-- **Downloaded tools** (gitleaks, kubeconform, promtool, Trivy) come from GitHub releases and are checked against a SHA-256 next to the version in the workflow. Trivy runs from its release binary, not a third-party action.
+- **Downloaded tools** (gitleaks, kubeconform, promtool, lokitool, Trivy) come from GitHub releases and are checked against a SHA-256 next to the version in the workflow. Trivy runs from its release binary, not a third-party action.
 - `actions/checkout` runs with `persist-credentials: false`: no job pushes, so the token isn't left in `.git/config`.
 - Workflows default to `permissions: contents: read`; only the Trivy job gets `security-events: write` (SARIF upload).
 
@@ -160,6 +166,7 @@ Output in `.artifacts/images/`: `images.txt` (every image and the file that pins
 | `destination namespace '<ns>' has no Namespace with Pod Security labels` | Add the namespace to `kubernetes/platform/namespaces/namespaces.yaml` (and to the project's `destinations`) |
 | `no CiliumNetworkPolicy default-deny` | Add a `networkpolicy.yaml` with a `default-deny` to the app's namespace (copy one from `kubernetes/platform/`) |
 | `is not a level` / `unknown label` | Typo in a `pod-security.kubernetes.io/*` label |
+| `lokitool`: `could not parse expression for alert` / `field … not found in type rulefmt.Rule` | LogQL syntax error or a misspelled rule key in a `loki-rules-*` ConfigMap; try the expression in Grafana → Explore |
 | `scan-images.py`: `rendered is empty` | Run `python3 scripts/check-manifests.py --render-only` first (`make images` does) |
 | Trivy `TOOMANYREQUESTS` / `Data limit exceeded` | Registry rate limit on the shared runner IP. The script retries, and for `ecr-public.aws.com/docker/library/*` scans the same image from Docker Hub. If it still fails, re-run the workflow later |
 | Trivy `unable to find the specified image` | Tag doesn't exist (typo, or a value the collector misread); check `images.txt` |

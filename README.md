@@ -87,6 +87,7 @@ More detail is in [docs/architecture.md](docs/architecture.md). The design decis
 | [encryption.md](docs/encryption.md) | Encryption at rest for Secrets and ConfigMaps: rollout, checks, key rotation |
 | [pod-security.md](docs/pod-security.md) | Pod Security Admission: level per namespace, cluster defaults, adding a namespace |
 | [network-policy.md](docs/network-policy.md) | Cilium default-deny policies: what is allowed, audit-mode rollout, reviewing drops |
+| [audit-logging.md](docs/audit-logging.md) | Kubernetes audit log: policy, Loki queries, dashboard, log-based alerts |
 
 ## Quick start
 
@@ -134,7 +135,7 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 │   ├── modules/proxmox-vm/     # one VM: disk import, cloud-init snippet, network
 │   └── envs/homelab/           # the lab: node map → VMs → Ansible inventory
 ├── ansible/
-│   ├── playbooks/              # site, base, dns, kubernetes, encryption, pod-security, cilium, longhorn, sops, argocd, swarm, alerting, logs, reboot
+│   ├── playbooks/              # site, base, dns, kubernetes, encryption, pod-security, audit, cilium, longhorn, sops, argocd, swarm, alerting, logs, reboot
 │   ├── roles/                  # common, hardening, bind, docker, swarm, k8s_prereqs,
 │   │                           # k8s_control_plane, k8s_worker, cilium, longhorn_node,
 │   │                           # sops_age, argocd, alerting, alloy
@@ -149,7 +150,7 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 ├── scripts/                    # check-manifests.py (make manifests), scan-images.py (make images), hubble-flows.py
 └── docs/                       # architecture, bootstrap, runbooks (dns, secrets, storage,
                                 # backup, monitoring, alerting, logging, ci, maintenance, encryption,
-                                # pod-security, network-policy), ADRs, roadmap
+                                # pod-security, network-policy, audit-logging), ADRs, roadmap
 ```
 
 ## Security notes
@@ -160,6 +161,7 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 - The API server encrypts Secrets and ConfigMaps in etcd (secretbox, key in SOPS; [docs/encryption.md](docs/encryption.md)).
 - Pod Security Admission: every namespace has a level in Git (`restricted` unless it runs node agents), and namespaces without labels default to `baseline`. Apps can't create or relabel namespaces ([docs/pod-security.md](docs/pod-security.md)).
 - Every platform and app namespace is default deny for ingress and egress (CiliumNetworkPolicies); internet access only to named hosts ([docs/network-policy.md](docs/network-policy.md)).
+- The API server's audit log goes to Loki: who changed what, with the request body for changes outside Argo CD; alerts on exec, secret reads by people, anonymous and repeatedly forbidden requests, Pod Security violations ([docs/audit-logging.md](docs/audit-logging.md)).
 - gitleaks runs in CI and pre-commit, `detect-private-key` in pre-commit, and a check rejects unencrypted `*.sops.yaml` files.
 - Nodes accept SSH keys only, run a default-deny firewall, and allow cluster traffic only from the lab, pod and service networks.
 

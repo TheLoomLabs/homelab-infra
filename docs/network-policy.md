@@ -45,6 +45,7 @@ Everything else is one policy per component, named for what it allows:
 | Grafana | Prometheus, Alertmanager, Loki; API server (sidecars) | 9090, 9093, 3100; 6443 |
 | Gateway | Grafana; loki-gateway | 3000; 8080 |
 | Alertmanager | ntfy.lab / hc.lab.theloomlabs.org (Swarm) | 443 |
+| Loki (ruler) | Alertmanager | 9093 |
 | kube-state-metrics, Prometheus operator | API server | 6443 |
 | API server (same) | Prometheus operator webhook | 10250 |
 | loki-gateway, Alloy, Grafana | Loki | 3100 |
