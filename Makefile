@@ -34,7 +34,7 @@ tf-destroy: ## Destroy all lab VMs
 
 ## --- Ansible -----------------------------------------------------------------
 
-.PHONY: ping base dns k8s cilium longhorn sops-key argocd swarm alerting logs site
+.PHONY: ping base dns k8s cilium longhorn sops-key argocd swarm alerting logs reboot site
 ping: ## Check SSH to every node
 	cd $(ANSIBLE_DIR) && ansible all -m ansible.builtin.ping
 
@@ -67,6 +67,9 @@ alerting: ## Deploy the Swarm alerting stack (Traefik, ntfy, healthchecks)
 
 logs: ## Ship the DNS and Swarm VMs' logs to Loki (Alloy)
 	$(PLAYBOOK) playbooks/logs.yml
+
+reboot: ## Rolling reboot, one VM at a time (ARGS="-e reboot_required_only=true")
+	$(PLAYBOOK) playbooks/reboot.yml $(ARGS)
 
 site: ## Everything: base + Kubernetes + Swarm
 	$(PLAYBOOK) playbooks/site.yml

@@ -16,7 +16,7 @@ Proxmox VE ──Terraform──▶ 10 Ubuntu VMs ──Ansible──▶ hardene
 |---|---|---|
 | Toolchain | [Devbox](https://www.jetify.com/devbox) (Nix) | Pinned versions of terraform, ansible, kubectl, helm, cilium, k9s, sops… nothing on the host OS |
 | Provisioning | Terraform + [`bpg/proxmox`](https://registry.terraform.io/providers/bpg/proxmox) | Reusable VM module, Ubuntu cloud image import, cloud-init, static IPs, **generated Ansible inventory** |
-| OS baseline | Ansible roles `common`, `hardening` | SSH key-only, UFW default-deny, fail2ban, sysctl hardening, unattended security updates, chrony |
+| OS baseline | Ansible roles `common`, `hardening` | SSH key-only, UFW default-deny, fail2ban, sysctl hardening, IPv6 router advertisements ignored, unattended security updates, rolling reboots (`make reboot`), chrony |
 | Kubernetes | Ansible roles `k8s_*`, `cilium` | kubeadm, **3 control-plane nodes behind a kube-vip VIP**, containerd 2.x, **Cilium with kube-proxy replacement**, Hubble, **LB IPAM + L2 announcements** for `LoadBalancer` services |
 | GitOps | Argo CD (Helm), role `argocd` | Bootstrapped by Ansible, then **app of apps**: Argo CD syncs `kubernetes/apps/` and manages itself |
 | DNS | Ansible role `bind`, BIND 9 | **Primary + secondary on dedicated VMs**, zone from Git with automatic records and serial, **TSIG-signed zone transfers**, DNSSEC-validating resolver for the whole house |
@@ -83,6 +83,7 @@ More detail is in [docs/architecture.md](docs/architecture.md). The design decis
 | [monitoring.md](docs/monitoring.md) | Prometheus, Alertmanager, Grafana: alert routing, checks, testing the alert path |
 | [alerting.md](docs/alerting.md) | Swarm alerting stack: ntfy, healthchecks, Traefik; phone setup, rebuild |
 | [logging.md](docs/logging.md) | Loki and Alloy: labels, push secret, checks, example queries |
+| [maintenance.md](docs/maintenance.md) | Rolling reboots (kernel updates, network changes) |
 
 ## Quick start
 
@@ -142,7 +143,7 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 │   └── platform/               # Helm values, manifests and *.sops.yaml secrets per component
 ├── scripts/                    # check-manifests.py (make manifests), scan-images.py (make images)
 └── docs/                       # architecture, bootstrap, runbooks (dns, secrets, storage,
-                                # backup, monitoring, alerting, logging, ci), ADRs, roadmap
+                                # backup, monitoring, alerting, logging, ci, maintenance), ADRs, roadmap
 ```
 
 ## Security notes

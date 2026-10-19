@@ -1,0 +1,212 @@
+---
+# Rolling reboot of every VM, one node at a time, keeping each cluster up:
+# DNS -> Kubernetes control plane -> Kubernetes workers -> Swarm managers.
+# A node is only rebooted when the cluster around it is healthy, and the play
+# waits until the node is back in its cluster before it moves on.
+#
+#   make reboot                                    # every VM
+#   make reboot ARGS="-e reboot_required_only=true" # only VMs with a pending kernel/libc update
+#   make reboot ARGS="--limit k8s_workers"
+#
+# unattended-upgrades never reboots (role common), so run this after security
+# updates that leave /var/run/reboot-required behind. Runbook: docs/maintenance.md.
+
+- name: Reboot | DNS servers
+  hosts: dns
+  become: true
+  serial: 1
+  gather_facts: false
+  vars:
+    reboot_required_only: false
+  tasks:
+    - name: Check for a pending reboot
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+
+    - name: Reboot and wait for BIND
+      when: not reboot_required_only | bool or reboot_required.stat.exists
+      block:
+        - name: Reboot
+          ansible.builtin.reboot:
+            reboot_timeout: 600
+
+        - name: Wait for named
+          ansible.builtin.systemd_service:
+            name: named
+          register: reboot_named
+          until: reboot_named.status.ActiveState == 'active'
+          retries: 30
+          delay: 5
+
+- name: Reboot | Kubernetes control plane
+  hosts: k8s_control_plane
+  become: true
+  serial: 1
+  gather_facts: false
+  vars:
+    reboot_required_only: false
+    # kubectl runs on another control-plane node; the API server is reached
+    # through the kube-vip VIP, which moves away from a rebooting node.
+    reboot_kubectl_host: "{{ groups['k8s_control_plane'] | difference([inventory_hostname]) | first }}"
+    reboot_kubectl: kubectl --kubeconfig /etc/kubernetes/admin.conf
+  tasks:
+    - name: Check for a pending reboot
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+
+    - name: Reboot and wait for the node and its static pods
+      when: not reboot_required_only | bool or reboot_required.stat.exists
+      block:
+        # etcd keeps quorum with one of three members down, not with two.
+        - name: Check that every control-plane node is Ready
+          ansible.builtin.command: >-
+            {{ reboot_kubectl }} wait node
+            --selector node-role.kubernetes.io/control-plane
+            --for condition=Ready --timeout 60s
+          delegate_to: "{{ reboot_kubectl_host }}"
+          changed_when: false
+
+        - name: Reboot
+          ansible.builtin.reboot:
+            reboot_timeout: 600
+
+        - name: Wait for the node to be Ready
+          ansible.builtin.command: >-
+            {{ reboot_kubectl }} wait node {{ inventory_hostname }}
+            --for condition=Ready --timeout 300s
+          delegate_to: "{{ reboot_kubectl_host }}"
+          register: reboot_node_ready
+          # The API server (VIP) can be briefly unreachable while kube-vip
+          # moves the address; kubectl wait fails at once then.
+          until: reboot_node_ready.rc == 0
+          retries: 5
+          delay: 10
+          changed_when: false
+
+        - name: Wait for etcd, API server, controller manager and scheduler
+          ansible.builtin.command: >-
+            {{ reboot_kubectl }} --namespace kube-system wait
+            pod/{{ item }}-{{ inventory_hostname }}
+            --for condition=Ready --timeout 300s
+          loop: [etcd, kube-apiserver, kube-controller-manager, kube-scheduler]
+          delegate_to: "{{ reboot_kubectl_host }}"
+          register: reboot_static_pods
+          until: reboot_static_pods.rc == 0
+          retries: 5
+          delay: 10
+          changed_when: false
+
+- name: Reboot | Kubernetes workers
+  hosts: k8s_workers
+  become: true
+  serial: 1
+  gather_facts: false
+  vars:
+    reboot_required_only: false
+    reboot_kubectl_host: "{{ groups['k8s_control_plane'] | first }}"
+    reboot_kubectl: kubectl --kubeconfig /etc/kubernetes/admin.conf
+    # Longhorn rebuilds the replicas of a returning worker; the next worker is
+    # drained only when every attached volume has all its replicas again.
+    reboot_longhorn_wait: >-
+      for i in $(seq 1 120); do
+      r=$({{ reboot_kubectl }} --namespace longhorn-system get volumes.longhorn.io
+      -o jsonpath='{.items[*].status.robustness}');
+      case " $r " in *" degraded "*|*" faulted "*) sleep 10 ;; *) exit 0 ;; esac;
+      done; echo "volumes not healthy: $r"; exit 1
+  tasks:
+    - name: Check for a pending reboot
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+
+    - name: Drain, reboot, uncordon
+      when: not reboot_required_only | bool or reboot_required.stat.exists
+      block:
+        - name: Wait for healthy Longhorn volumes before the drain
+          ansible.builtin.shell: "{{ reboot_longhorn_wait }}"
+          args:
+            executable: /bin/bash
+          delegate_to: "{{ reboot_kubectl_host }}"
+          changed_when: false
+
+        # Longhorn (nodeDrainPolicy) holds the drain until no volume would lose
+        # its last healthy replica.
+        - name: Drain the node
+          ansible.builtin.command: >-
+            {{ reboot_kubectl }} drain {{ inventory_hostname }}
+            --ignore-daemonsets --delete-emptydir-data --timeout 900s
+          delegate_to: "{{ reboot_kubectl_host }}"
+          changed_when: true
+
+        - name: Reboot
+          ansible.builtin.reboot:
+            reboot_timeout: 600
+
+        - name: Wait for the node to be Ready
+          ansible.builtin.command: >-
+            {{ reboot_kubectl }} wait node {{ inventory_hostname }}
+            --for condition=Ready --timeout 300s
+          delegate_to: "{{ reboot_kubectl_host }}"
+          register: reboot_node_ready
+          # The API server (VIP) can be briefly unreachable while kube-vip
+          # moves the address; kubectl wait fails at once then.
+          until: reboot_node_ready.rc == 0
+          retries: 5
+          delay: 10
+          changed_when: false
+
+        - name: Uncordon the node
+          ansible.builtin.command: >-
+            {{ reboot_kubectl }} uncordon {{ inventory_hostname }}
+          delegate_to: "{{ reboot_kubectl_host }}"
+          changed_when: true
+
+        - name: Wait for healthy Longhorn volumes after the reboot
+          ansible.builtin.shell: "{{ reboot_longhorn_wait }}"
+          args:
+            executable: /bin/bash
+          delegate_to: "{{ reboot_kubectl_host }}"
+          changed_when: false
+
+- name: Reboot | Swarm managers
+  hosts: swarm_managers
+  become: true
+  serial: 1
+  gather_facts: false
+  vars:
+    reboot_required_only: false
+  tasks:
+    - name: Check for a pending reboot
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+
+    - name: Reboot and wait for the node to rejoin
+      when: not reboot_required_only | bool or reboot_required.stat.exists
+      block:
+        # Raft keeps quorum with one of three managers down, not with two.
+        - name: Check that every manager is reachable
+          ansible.builtin.command: >-
+            docker node ls --filter role=manager
+            --format {% raw %}'{{ .Status }} {{ .ManagerStatus }}'{% endraw %}
+          register: reboot_swarm_nodes
+          failed_when: >-
+            reboot_swarm_nodes.rc != 0 or
+            reboot_swarm_nodes.stdout_lines | reject('match', '^Ready (Leader|Reachable)$') | list | length > 0
+          changed_when: false
+
+        - name: Reboot
+          ansible.builtin.reboot:
+            reboot_timeout: 600
+
+        - name: Wait for the node to be ready and reachable
+          ansible.builtin.command: >-
+            docker node inspect self
+            --format {% raw %}'{{ .Status.State }} {{ .ManagerStatus.Reachability }}'{% endraw %}
+          register: reboot_swarm_self
+          until: reboot_swarm_self.rc == 0 and reboot_swarm_self.stdout == 'ready reachable'
+          retries: 30
+          delay: 10
+          changed_when: false
