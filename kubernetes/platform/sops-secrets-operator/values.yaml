@@ -11,3 +11,18 @@ secretsAsFiles:
 extraEnv:
   - name: SOPS_AGE_KEY_FILE
     value: /etc/sops-age-key-file/key
+
+# Pod Security `restricted` (docs/pod-security.md). The image's user is a name
+# (nonroot), so runAsNonRoot needs a numeric UID: the chart's 13001. The age
+# key is a Secret volume (0644), readable by any UID.
+securityContext:
+  enabled: true
+  container:
+    enabled: true
+    # Replaces the chart's capabilities (drop "all" lowercase, add
+    # NET_BIND_SERVICE): the operator binds no port below 1024.
+    customContainerSecurityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL

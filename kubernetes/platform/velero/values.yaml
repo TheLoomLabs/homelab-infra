@@ -9,6 +9,12 @@ initContainers:
   - name: velero-plugin-for-aws
     image: velero/velero-plugin-for-aws:v1.14.4
     imagePullPolicy: IfNotPresent
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
     volumeMounts:
       - mountPath: /target
         name: plugins
@@ -47,6 +53,31 @@ configuration:
         # SSE-C: R2 encrypts every object with our key and can't read it
         # without. The backups contain Kubernetes Secrets.
         customerKeyEncryptionSecret: velero-r2/customer-key
+
+# Pod Security `restricted` (docs/pod-security.md). Any non-root UID works:
+# Velero writes only to the plugins/ and scratch/ emptyDirs, and with
+# readOnlyRootFilesystem the chart adds an emptyDir for /tmp.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+# The chart's CRD cleanup job (shares podSecurityContext).
+kubectl:
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
 
 resources:
   requests:
