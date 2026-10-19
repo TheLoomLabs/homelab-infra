@@ -13,8 +13,8 @@
 # The gateway namespace lives in kubernetes/platform/gateway/namespace.yaml
 # (same labels), because the gateway app already owns it.
 #
-# Rollout: audit + warn first; `enforce: restricted` follows once the
-# warnings are gone (docs/pod-security.md).
+# `enforce` is pinned to the cluster's minor version; bump it after a
+# Kubernetes upgrade once `warn` (latest) shows nothing new.
 #
 # Static control-plane pods, Cilium, kube-vip (host network,
 # privileged). Also exempt in the API server's PodSecurity defaults.
@@ -62,6 +62,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
   labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.37
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/audit-version: latest
     pod-security.kubernetes.io/warn: restricted
@@ -75,6 +77,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
   labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.37
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/audit-version: latest
     pod-security.kubernetes.io/warn: restricted
@@ -88,6 +92,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
   labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.37
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/audit-version: latest
     pod-security.kubernetes.io/warn: restricted
@@ -101,6 +107,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
   labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.37
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/audit-version: latest
     pod-security.kubernetes.io/warn: restricted
@@ -114,6 +122,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
   labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.37
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/audit-version: latest
     pod-security.kubernetes.io/warn: restricted
@@ -127,6 +137,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
   labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.37
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/audit-version: latest
     pod-security.kubernetes.io/warn: restricted
@@ -140,6 +152,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
   labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.37
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/audit-version: latest
     pod-security.kubernetes.io/warn: restricted
@@ -153,6 +167,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
   labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.37
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/audit-version: latest
     pod-security.kubernetes.io/warn: restricted
