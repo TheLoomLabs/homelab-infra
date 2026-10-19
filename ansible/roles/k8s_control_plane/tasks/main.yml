@@ -37,6 +37,11 @@
   ansible.builtin.import_tasks: pod-security.yml
   tags: pod_security
 
+# Same for the audit policy and log flags.
+- name: Kubernetes audit log
+  ansible.builtin.import_tasks: audit.yml
+  tags: audit
+
 - name: Bootstrap the first control-plane node
   ansible.builtin.include_tasks: init.yml
   when: inventory_hostname == k8s_control_plane_first_node

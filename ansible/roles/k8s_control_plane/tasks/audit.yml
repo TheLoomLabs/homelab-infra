@@ -1,0 +1,177 @@
+---
+# Kubernetes audit log (docs/audit-logging.md). Same rollout as
+# tasks/pod-security.yml:
+#
+# Fresh node: only the policy file is placed here; kubeadm init/join then
+# starts the API server with the flags (kubeadm-init.yaml.j2, kubeadm-config
+# ConfigMap).
+#
+# Running node: the kubeadm-config ConfigMap gets the flags and the volumes
+# (so joins and `kubeadm upgrade` keep them), then the API server manifest is
+# regenerated with `kubeadm init phase control-plane apiserver` whenever one
+# of the flags is missing or has another value. When only the policy changes,
+# the API server container is restarted, because it reads the policy only at
+# start. The callers run this with serial: 1 (playbooks/audit.yml,
+# playbooks/kubernetes.yml), so the other two API servers keep serving.
+
+- name: Audit | Check whether this node is already part of a cluster
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: k8s_control_plane_audit_kubelet_conf
+
+- name: Audit | Create the policy directory
+  ansible.builtin.file:
+    path: "{{ k8s_control_plane_audit_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+# Alloy (DaemonSet, root, /var/log mounted read-only) reads the log here.
+- name: Audit | Create the log directory
+  ansible.builtin.file:
+    path: "{{ k8s_control_plane_audit_log_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Audit | Place the audit policy
+  ansible.builtin.template:
+    src: audit-policy.yaml.j2
+    dest: "{{ k8s_control_plane_audit_policy }}"
+    owner: root
+    group: root
+    mode: "0600"
+  register: k8s_control_plane_audit_file
+
+- name: Audit | Reconfigure the running API server
+  when: k8s_control_plane_audit_kubelet_conf.stat.exists
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  block:
+    - name: Audit | Read the API server manifest
+      ansible.builtin.slurp:
+        src: /etc/kubernetes/manifests/kube-apiserver.yaml
+      register: k8s_control_plane_audit_manifest
+
+    # Every flag with its current value, e.g. "--audit-log-maxsize=100".
+    - name: Audit | Compare the flags in the manifest
+      ansible.builtin.set_fact:
+        k8s_control_plane_audit_flags_missing: "{{ _wanted | reject('in', _have) | list }}"
+      vars:
+        _have: "{{ (k8s_control_plane_audit_manifest.content | b64decode | from_yaml).spec.containers[0].command }}"
+        _wanted: >-
+          {{ k8s_control_plane_audit_log_args | dict2items
+             | map(attribute='key') | map('regex_replace', '^', '--')
+             | zip(k8s_control_plane_audit_log_args.values()) | map('join', '=') | list }}
+
+    - name: Audit | Read the cluster configuration (kubeadm-config ConfigMap)
+      ansible.builtin.command: >-
+        kubectl --namespace kube-system get configmap kubeadm-config
+        --output jsonpath={.data.ClusterConfiguration}
+      register: k8s_control_plane_cluster_config_raw
+      changed_when: false
+
+    # Other flags and volumes (encryption at rest, admission config) stay as
+    # they are.
+    - name: Audit | Add the flags and the volumes to the cluster configuration
+      ansible.builtin.set_fact:
+        k8s_control_plane_cluster_config_new: "{{ _config | combine({'apiServer': _api_server}) }}"
+      vars:
+        _config: "{{ k8s_control_plane_cluster_config_raw.stdout | from_yaml }}"
+        _old: "{{ _config.apiServer | default({}) }}"
+        _flags: "{{ k8s_control_plane_audit_log_args.keys() | list }}"
+        _args: >-
+          {{ k8s_control_plane_audit_log_args | dict2items(key_name='name', value_name='value') }}
+        _volumes:
+          - name: audit-policy
+            hostPath: "{{ k8s_control_plane_audit_dir }}"
+            mountPath: "{{ k8s_control_plane_audit_dir }}"
+            readOnly: true
+            pathType: DirectoryOrCreate
+          - name: audit-log
+            hostPath: "{{ k8s_control_plane_audit_log_dir }}"
+            mountPath: "{{ k8s_control_plane_audit_log_dir }}"
+            readOnly: false
+            pathType: DirectoryOrCreate
+        _api_server: >-
+          {{ _old | combine({
+               'extraArgs': (_old.extraArgs | default([]) | rejectattr('name', 'in', _flags) | list) + _args,
+               'extraVolumes': (_old.extraVolumes | default([]) | rejectattr('name', 'in', ['audit-policy', 'audit-log']) | list)
+                 + _volumes
+             }) }}
+
+    - name: Audit | Update the kubeadm-config ConfigMap
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --namespace=kube-system
+          - patch
+          - configmap
+          - kubeadm-config
+          - --type=merge
+          - --patch
+          - "{{ {'data': {'ClusterConfiguration': k8s_control_plane_cluster_config_new | to_nice_yaml(indent=2)}} | to_json }}"
+      when: k8s_control_plane_cluster_config_new != (k8s_control_plane_cluster_config_raw.stdout | from_yaml)
+      changed_when: true
+
+    - name: Audit | Note the running API server container
+      ansible.builtin.command: crictl ps --name '^kube-apiserver$' --state running --quiet
+      register: k8s_control_plane_apiserver_before
+      changed_when: false
+
+    - name: Audit | Regenerate the API server manifest with the flags
+      when: k8s_control_plane_audit_flags_missing | length > 0
+      block:
+        - name: Audit | Render the kubeadm reconfigure input
+          ansible.builtin.template:
+            src: kubeadm-reconfigure.yaml.j2
+            dest: /etc/kubernetes/kubeadm-reconfigure.yaml
+            owner: root
+            group: root
+            mode: "0600"
+
+        # kubelet restarts the static pod when its manifest changes.
+        - name: Audit | kubeadm init phase control-plane apiserver
+          ansible.builtin.command: >-
+            kubeadm init phase control-plane apiserver
+            --config /etc/kubernetes/kubeadm-reconfigure.yaml
+          changed_when: true
+
+    - name: Audit | Restart the API server to load the changed policy
+      ansible.builtin.command: crictl stop {{ k8s_control_plane_apiserver_before.stdout_lines | first }}
+      when:
+        - k8s_control_plane_audit_flags_missing | length == 0
+        - k8s_control_plane_audit_file is changed
+      changed_when: true
+
+    - name: Audit | Wait for a new API server container
+      ansible.builtin.command: crictl ps --name '^kube-apiserver$' --state running --quiet
+      register: k8s_control_plane_apiserver_after
+      changed_when: false
+      retries: 60
+      delay: 5
+      until:
+        - k8s_control_plane_apiserver_after.stdout | length > 0
+        - k8s_control_plane_apiserver_after.stdout != k8s_control_plane_apiserver_before.stdout
+      when: k8s_control_plane_audit_flags_missing | length > 0 or k8s_control_plane_audit_file is changed
+
+    - name: Audit | Wait until this API server is ready
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}:6443/readyz"
+        validate_certs: false
+        status_code: 200
+      register: k8s_control_plane_apiserver_ready
+      retries: 60
+      delay: 5
+      until: k8s_control_plane_apiserver_ready.status == 200
+      when: k8s_control_plane_audit_flags_missing | length > 0 or k8s_control_plane_audit_file is changed
+
+    - name: Audit | Wait for the first audit events
+      ansible.builtin.stat:
+        path: "{{ k8s_control_plane_audit_log_args['audit-log-path'] }}"
+      register: k8s_control_plane_audit_log_file
+      retries: 12
+      delay: 5
+      until: k8s_control_plane_audit_log_file.stat.exists and k8s_control_plane_audit_log_file.stat.size > 0

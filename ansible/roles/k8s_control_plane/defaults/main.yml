@@ -32,3 +32,34 @@ k8s_control_plane_pod_security_defaults:
 # any label, on a fresh cluster.
 k8s_control_plane_pod_security_exempt_namespaces:
   - kube-system
+
+# Kubernetes audit log (docs/audit-logging.md). The API server writes JSON
+# lines to the log file and rotates it by size; Alloy on the node ships them
+# to Loki ({source="audit"}). The files on the node are only a buffer for
+# Loki outages: 4 × 100 MB at most, none older than 7 days.
+k8s_control_plane_audit_dir: /etc/kubernetes/audit
+k8s_control_plane_audit_policy: "{{ k8s_control_plane_audit_dir }}/policy.yaml"
+k8s_control_plane_audit_log_dir: /var/log/kubernetes/audit
+k8s_control_plane_audit_log_args:
+  audit-policy-file: "{{ k8s_control_plane_audit_policy }}"
+  audit-log-path: "{{ k8s_control_plane_audit_log_dir }}/audit.log"
+  audit-log-format: json
+  audit-log-maxsize: "100"
+  audit-log-maxbackup: "3"
+  audit-log-maxage: "7"
+  # Events over 100 KB lose their bodies first (Loki rejects lines over
+  # 256 KB).
+  audit-log-truncate-enabled: "true"
+# Cluster components whose reads are not logged and whose writes get
+# metadata only (templates/audit-policy.yaml.j2).
+k8s_control_plane_audit_system_users:
+  - system:apiserver
+  - system:kube-controller-manager
+  - system:kube-scheduler
+k8s_control_plane_audit_system_groups:
+  - system:nodes
+  - system:serviceaccounts:kube-system
+  - system:serviceaccounts:longhorn-system
+# Writes with metadata only (no request body). Argo CD applies what is in Git.
+k8s_control_plane_audit_metadata_users:
+  - system:serviceaccount:argocd:argocd-application-controller

@@ -1,0 +1,19 @@
+---
+# Kubernetes audit log on the running cluster (docs/audit-logging.md). New
+# clusters get it from `make k8s` already.
+#
+#   make audit
+#
+# One control-plane node at a time: the API server gets the audit policy and
+# the log flags (a new policy restarts it), so the other two keep serving.
+# Alloy ships the log to Loki ({source="audit"}).
+
+- name: Audit | Control-plane nodes, one at a time
+  hosts: k8s_control_plane
+  become: true
+  serial: 1
+  tasks:
+    - name: Roll out the audit policy and the log flags
+      ansible.builtin.include_role:
+        name: k8s_control_plane
+        tasks_from: audit.yml

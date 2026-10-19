@@ -1,0 +1,94 @@
+# {{ ansible_managed }}
+# Kubernetes audit policy (--audit-policy-file, docs/audit-logging.md).
+#
+# The first rule that matches a request decides its level:
+#   None             not logged
+#   Metadata         who, what, when, result; no bodies
+#   Request          Metadata plus the request body
+#
+# Writes keep their request body, reads only metadata. Secrets, ConfigMaps
+# and tokens never get a body. Argo CD syncs from Git, which already holds
+# the content of its writes. The API server reads this file only at start.
+apiVersion: audit.k8s.io/v1
+kind: Policy
+# Every request would otherwise be logged twice (received + complete).
+# ResponseStarted stays: long-running requests (exec, watch) show up when
+# they begin, not only when they end.
+omitStages:
+  - RequestReceived
+rules:
+  # Health checks, metrics and API discovery.
+  - level: None
+    nonResourceURLs:
+      - /healthz*
+      - /livez*
+      - /readyz*
+      - /metrics
+      - /version
+      - /api
+      - /api/*
+      - /apis
+      - /apis/*
+      - /openapi/*
+
+  # Leader election and node heartbeats (every few seconds), events.
+  - level: None
+    resources:
+      - group: coordination.k8s.io
+        resources: ["leases"]
+  - level: None
+    resources:
+      - group: ""
+        resources: ["events"]
+      - group: events.k8s.io
+        resources: ["events"]
+
+  # Reads by the cluster's own components: kubelets, controller manager,
+  # scheduler, API server loopback, and the service accounts in the
+  # namespaces exempt from network policies (Cilium, CoreDNS, Longhorn).
+  - level: None
+    verbs: ["get", "list", "watch"]
+    users:
+{% for user in k8s_control_plane_audit_system_users %}
+      - {{ user }}
+{% endfor %}
+  - level: None
+    verbs: ["get", "list", "watch"]
+    userGroups:
+{% for group in k8s_control_plane_audit_system_groups %}
+      - {{ group }}
+{% endfor %}
+
+  # Contents are secret, or tokens: metadata only, for everyone.
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["secrets", "configmaps", "serviceaccounts/token"]
+      - group: authentication.k8s.io
+        resources: ["tokenreviews"]
+  # Streams, not bodies.
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["pods/exec", "pods/attach", "pods/portforward", "pods/proxy", "services/proxy", "nodes/proxy"]
+
+  # Writes by the same components (mostly status updates) and by Argo CD.
+  - level: Metadata
+    users:
+{% for user in k8s_control_plane_audit_system_users + k8s_control_plane_audit_metadata_users %}
+      - {{ user }}
+{% endfor %}
+  - level: Metadata
+    userGroups:
+{% for group in k8s_control_plane_audit_system_groups %}
+      - {{ group }}
+{% endfor %}
+
+  # Everyone else: reads with metadata, writes with the request body.
+  - level: Metadata
+    verbs: ["get", "list", "watch"]
+  - level: Request
+    verbs: ["create", "update", "patch", "delete", "deletecollection"]
+
+  # Anything left (other verbs, non-resource URLs).
+  - level: Metadata

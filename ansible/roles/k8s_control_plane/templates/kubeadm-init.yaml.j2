@@ -37,12 +37,17 @@ apiServer:
   # Encryption at rest (docs/encryption.md). Joining control-plane nodes read
   # this from the kubeadm-config ConfigMap; the role places the file first.
   # Pod Security defaults for unlabelled namespaces (docs/pod-security.md),
-  # placed the same way.
+  # placed the same way. The audit policy too; the API server writes the
+  # audit log next to the node's other logs (docs/audit-logging.md).
   extraArgs:
     - name: encryption-provider-config
       value: {{ k8s_control_plane_encryption_config }}
     - name: admission-control-config-file
       value: {{ k8s_control_plane_admission_config }}
+{% for name, value in k8s_control_plane_audit_log_args.items() %}
+    - name: {{ name }}
+      value: "{{ value }}"
+{% endfor %}
   extraVolumes:
     - name: encryption-config
       hostPath: {{ k8s_control_plane_encryption_dir }}
@@ -53,6 +58,16 @@ apiServer:
       hostPath: {{ k8s_control_plane_admission_dir }}
       mountPath: {{ k8s_control_plane_admission_dir }}
       readOnly: true
+      pathType: DirectoryOrCreate
+    - name: audit-policy
+      hostPath: {{ k8s_control_plane_audit_dir }}
+      mountPath: {{ k8s_control_plane_audit_dir }}
+      readOnly: true
+      pathType: DirectoryOrCreate
+    - name: audit-log
+      hostPath: {{ k8s_control_plane_audit_log_dir }}
+      mountPath: {{ k8s_control_plane_audit_log_dir }}
+      readOnly: false
       pathType: DirectoryOrCreate
 ---
 apiVersion: kubelet.config.k8s.io/v1beta1

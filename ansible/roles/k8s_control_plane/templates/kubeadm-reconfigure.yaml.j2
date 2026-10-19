@@ -1,8 +1,9 @@
 # {{ ansible_managed }}
 # Input for `kubeadm init phase control-plane apiserver` on a running node
-# (tasks/encryption.yml, tasks/pod-security.yml): this node's endpoint plus the
-# cluster's current ClusterConfiguration from the kubeadm-config ConfigMap, so
-# the regenerated manifest only differs by the new flag and volume.
+# (tasks/encryption.yml, tasks/pod-security.yml, tasks/audit.yml): this node's
+# endpoint plus the cluster's current ClusterConfiguration from the
+# kubeadm-config ConfigMap, so the regenerated manifest only differs by the
+# new flags and volumes.
 apiVersion: kubeadm.k8s.io/v1beta4
 kind: InitConfiguration
 localAPIEndpoint:
