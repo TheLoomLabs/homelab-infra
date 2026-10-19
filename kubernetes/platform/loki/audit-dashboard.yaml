@@ -1,0 +1,762 @@
+---
+# Grafana dashboard "Kubernetes audit" (docs/audit-logging.md): the API
+# server's audit log from Loki. Grafana's dashboard sidecar loads every
+# ConfigMap labelled grafana_dashboard=1 in the monitoring namespace.
+# Generated as JSON; edit in Grafana, export (Share → Export → JSON) and paste
+# it back here, or edit the JSON directly.
+# LogQL queries are long single lines in JSON.
+# yamllint disable rule:line-length
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-kubernetes-audit
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  kubernetes-audit.json: |
+    {
+      "uid": "kubernetes-audit",
+      "title": "Kubernetes audit",
+      "tags": [
+        "kubernetes",
+        "audit",
+        "security"
+      ],
+      "description": "Kubernetes API audit log from Loki ({source=\"audit\"}), docs/audit-logging.md",
+      "editable": true,
+      "schemaVersion": 41,
+      "version": 1,
+      "timezone": "browser",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "refresh": "1m",
+      "templating": {
+        "list": [
+          {
+            "name": "host",
+            "label": "Control-plane node",
+            "type": "query",
+            "datasource": {
+              "type": "loki",
+              "uid": "loki"
+            },
+            "query": {
+              "label": "host",
+              "stream": "{source=\"audit\"}",
+              "type": 1,
+              "refId": "LokiVariableQueryEditor-VariableQuery"
+            },
+            "definition": "label_values({source=\"audit\"}, host)",
+            "includeAll": true,
+            "allValue": ".+",
+            "multi": true,
+            "current": {
+              "text": "All",
+              "value": "$__all"
+            },
+            "refresh": 2,
+            "sort": 1
+          },
+          {
+            "name": "user",
+            "label": "User (regex)",
+            "type": "textbox",
+            "query": ".*",
+            "current": {
+              "text": ".*",
+              "value": ".*"
+            }
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Audit events",
+          "description": "Every event the audit policy keeps, in the selected time range.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 0
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "sum(count_over_time({source=\"audit\", host=~\"$host\"} [$__range]))",
+              "queryType": "instant"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Changes by people",
+          "description": "Create, update, patch and delete by users that are not service accounts or cluster components.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 0
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "sum(count_over_time({source=\"audit\", host=~\"$host\"} |~ `\"verb\":\"(create|update|patch|delete|deletecollection)\"` | json user=\"user.username\", verb=\"verb\", resource=\"objectRef.resource\", subresource=\"objectRef.subresource\", namespace=\"objectRef.namespace\", name=\"objectRef.name\", code=\"responseStatus.code\" | user!~\"system:.*\" [$__range]))",
+              "queryType": "instant"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Forbidden (403)",
+          "description": "Requests RBAC or admission (Pod Security) rejected.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 0
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "sum(count_over_time({source=\"audit\", host=~\"$host\"} |= `\"code\":403` [$__range]))",
+              "queryType": "instant"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Exec / attach / port-forward",
+          "description": "Shells, attaches and port-forwards into pods (alert KubeAuditPodExec).",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 0
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "sum(count_over_time({source=\"audit\", host=~\"$host\"} |~ `\"subresource\":\"(exec|attach|portforward)\"` [$__range]))",
+              "queryType": "instant"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "Secret reads by people",
+          "description": "Get, list and watch on Secrets by users that are not service accounts (alert KubeAuditSecretReadByUser).",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 0
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "sum(count_over_time({source=\"audit\", host=~\"$host\"} |= `\"resource\":\"secrets\"` | json user=\"user.username\", verb=\"verb\", resource=\"objectRef.resource\", subresource=\"objectRef.subresource\", namespace=\"objectRef.namespace\", name=\"objectRef.name\", code=\"responseStatus.code\" | verb=~\"get|list|watch\" and user!~\"system:.*\" [$__range]))",
+              "queryType": "instant"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "Pod Security violations",
+          "description": "All namespaces, including the privileged ones (monitoring audits restricted on purpose); the alert skips kube-system, longhorn-system and monitoring.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 0
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "sum(count_over_time({source=\"audit\", host=~\"$host\"} |~ `audit-violations|violates PodSecurity` [$__range]))",
+              "queryType": "instant"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "Events by verb",
+          "description": "What the API server is asked to do.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 4
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "sum by (verb) (count_over_time({source=\"audit\", host=~\"$host\"} | json verb=\"verb\" [$__auto]))",
+              "queryType": "range",
+              "legendFormat": "{{verb}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "sum"
+              ],
+              "sortBy": "Total",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 60,
+                "stacking": {
+                  "mode": "normal"
+                }
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "Events by user (top 10)",
+          "description": "Who talks to the API server. Reads by cluster components are not logged (audit policy).",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 4
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "topk(10, sum by (user) (count_over_time({source=\"audit\", host=~\"$host\"} | json user=\"user.username\" [$__auto])))",
+              "queryType": "range",
+              "legendFormat": "{{user}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "sum"
+              ],
+              "sortBy": "Total",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 60,
+                "stacking": {
+                  "mode": "normal"
+                }
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "Errors by code and user",
+          "description": "4xx and 5xx answers. 404 and 409 from controllers are normal (lookups, update conflicts).",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 12
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "sum by (code, user) (count_over_time({source=\"audit\", host=~\"$host\"} |~ `\"code\":[45][0-9][0-9]` | json user=\"user.username\", verb=\"verb\", resource=\"objectRef.resource\", subresource=\"objectRef.subresource\", namespace=\"objectRef.namespace\", name=\"objectRef.name\", code=\"responseStatus.code\" [$__auto]))",
+              "queryType": "range",
+              "legendFormat": "{{code}} {{user}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "sum"
+              ],
+              "sortBy": "Total",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 60,
+                "stacking": {
+                  "mode": "normal"
+                }
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 10,
+          "type": "logs",
+          "title": "Changes by people",
+          "description": "Writes by users that are not service accounts. Expand a line for the full event, including the request body.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 20
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "{source=\"audit\", host=~\"$host\"} |~ `\"verb\":\"(create|update|patch|delete|deletecollection)\"` | json user=\"user.username\", verb=\"verb\", resource=\"objectRef.resource\", subresource=\"objectRef.subresource\", namespace=\"objectRef.namespace\", name=\"objectRef.name\", code=\"responseStatus.code\" | user!~\"system:.*\" | user=~\"$user\" | line_format `{{.user}}  {{.verb}}  {{.resource}}{{with .subresource}}/{{.}}{{end}}  {{.namespace}}{{with .namespace}}/{{end}}{{.name}}  → {{.code}}`",
+              "queryType": "range"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending",
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "prettifyLogMessage": false
+          }
+        },
+        {
+          "id": 11,
+          "type": "logs",
+          "title": "Forbidden requests",
+          "description": "Rejected by RBAC or admission.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 29
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "{source=\"audit\", host=~\"$host\"} |= `\"code\":403` | json user=\"user.username\", verb=\"verb\", resource=\"objectRef.resource\", subresource=\"objectRef.subresource\", namespace=\"objectRef.namespace\", name=\"objectRef.name\", code=\"responseStatus.code\" | user=~\"$user\" | line_format `{{.user}}  {{.verb}}  {{.resource}}{{with .subresource}}/{{.}}{{end}}  {{.namespace}}{{with .namespace}}/{{end}}{{.name}}  → {{.code}}`",
+              "queryType": "range"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending",
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "prettifyLogMessage": false
+          }
+        },
+        {
+          "id": 12,
+          "type": "logs",
+          "title": "Exec, attach, port-forward and secret reads by people",
+          "description": "Shells and port-forwards by anyone; Secret reads by people.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 38
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "{source=\"audit\", host=~\"$host\"} |~ `\"subresource\":\"(exec|attach|portforward)\"|\"resource\":\"secrets\"` | json user=\"user.username\", verb=\"verb\", resource=\"objectRef.resource\", subresource=\"objectRef.subresource\", namespace=\"objectRef.namespace\", name=\"objectRef.name\", code=\"responseStatus.code\" | subresource=~\"exec|attach|portforward\" or (resource=\"secrets\" and user!~\"system:.*\") | user=~\"$user\" | line_format `{{.user}}  {{.verb}}  {{.resource}}{{with .subresource}}/{{.}}{{end}}  {{.namespace}}{{with .namespace}}/{{end}}{{.name}}  → {{.code}}`",
+              "queryType": "range"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending",
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "prettifyLogMessage": false
+          }
+        },
+        {
+          "id": 13,
+          "type": "logs",
+          "title": "Pod Security violations",
+          "description": "Workloads that break their namespace's Pod Security level (docs/pod-security.md).",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 47
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "{source=\"audit\", host=~\"$host\"} |~ `audit-violations|violates PodSecurity` | json user=\"user.username\", verb=\"verb\", resource=\"objectRef.resource\", subresource=\"objectRef.subresource\", namespace=\"objectRef.namespace\", name=\"objectRef.name\", code=\"responseStatus.code\", violation=`annotations[\"pod-security.kubernetes.io/audit-violations\"]` | user=~\"$user\" | line_format `{{.namespace}}/{{.name}} ({{.user}}): {{.violation}}`",
+              "queryType": "range"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending",
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "prettifyLogMessage": false
+          }
+        },
+        {
+          "id": 14,
+          "type": "logs",
+          "title": "All events",
+          "description": "Everything the audit policy keeps; filter with the user variable.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "gridPos": {
+            "h": 12,
+            "w": 24,
+            "x": 0,
+            "y": 56
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "{source=\"audit\", host=~\"$host\"} | json user=\"user.username\", verb=\"verb\", resource=\"objectRef.resource\", subresource=\"objectRef.subresource\", namespace=\"objectRef.namespace\", name=\"objectRef.name\", code=\"responseStatus.code\" | user=~\"$user\" | line_format `{{.user}}  {{.verb}}  {{.resource}}{{with .subresource}}/{{.}}{{end}}  {{.namespace}}{{with .namespace}}/{{end}}{{.name}}  → {{.code}}`",
+              "queryType": "range"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending",
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "prettifyLogMessage": false
+          }
+        }
+      ]
+    }
