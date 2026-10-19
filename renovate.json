@@ -129,6 +129,7 @@
         "gitleaks/gitleaks",
         "yannh/kubeconform",
         "prometheus/prometheus",
+        "grafana/loki",
         "kubernetes-sigs/gateway-api",
         "aquasecurity/trivy"
       ],
@@ -142,6 +143,14 @@
       ],
       "prBodyNotes": [
         "promtool must match the Prometheus that kube-prometheus-stack deploys: merge only together with that chart. Also bump the nixpkgs commit of `prometheus.cli` in devbox.json."
+      ]
+    },
+    {
+      "matchDepNames": [
+        "grafana/loki"
+      ],
+      "prBodyNotes": [
+        "lokitool must match the Loki that the loki chart deploys: merge only together with that chart. Also bump the nixpkgs commit of `grafana-loki` in devbox.json."
       ]
     },
     {

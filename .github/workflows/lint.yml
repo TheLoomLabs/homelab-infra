@@ -100,6 +100,10 @@ jobs:
       # renovate: datasource=github-releases depName=prometheus/prometheus extractVersion=^v(?<version>.+)$
       PROMETHEUS_VERSION: 3.15.0
       PROMETHEUS_SHA256: 2a542df32eac02ee17b9d844fb2aa1de00dafa5476579ba8a3ba862e9d572ea0
+      # Same version as the Loki that the loki chart deploys
+      # renovate: datasource=github-releases depName=grafana/loki extractVersion=^v(?<version>.+)$
+      LOKITOOL_VERSION: 3.7.8
+      LOKITOOL_SHA256: 72b7c1ee1adfa28a3d4e3715221e26acacf5657bdef5643a34f859a8d2949672
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -109,7 +113,7 @@ jobs:
         with:
           version: ${{ env.HELM_VERSION }}
 
-      - name: Install kubeconform and promtool
+      - name: Install kubeconform, lokitool and promtool
         run: |
           base="https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}"
           curl -sSfLo /tmp/kubeconform.tar.gz "${base}/kubeconform-linux-amd64.tar.gz"
@@ -120,6 +124,11 @@ jobs:
           curl -sSfLo /tmp/prometheus.tar.gz "${base}/${p}.tar.gz"
           echo "${PROMETHEUS_SHA256}  /tmp/prometheus.tar.gz" | sha256sum -c -
           sudo tar -xzf /tmp/prometheus.tar.gz -C /usr/local/bin --strip-components=1 "${p}/promtool"
+          base="https://github.com/grafana/loki/releases/download/v${LOKITOOL_VERSION}"
+          curl -sSfLo /tmp/lokitool.zip "${base}/lokitool-linux-amd64.zip"
+          echo "${LOKITOOL_SHA256}  /tmp/lokitool.zip" | sha256sum -c -
+          unzip -p /tmp/lokitool.zip lokitool-linux-amd64 > /tmp/lokitool
+          sudo install -m 0755 /tmp/lokitool /usr/local/bin/lokitool
 
       - name: Render and validate the Argo CD apps
         run: make manifests

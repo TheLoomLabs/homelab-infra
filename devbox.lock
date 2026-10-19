@@ -295,6 +295,10 @@
         }
       }
     },
+    "github:NixOS/nixpkgs/f20cd90e28fe0403873f473b29e42662cd86e8c4#grafana-loki": {
+      "last_modified": "1970-01-01T00:00:00Z",
+      "resolved": "github:NixOS/nixpkgs/f20cd90e28fe0403873f473b29e42662cd86e8c4#grafana-loki"
+    },
     "github:NixOS/nixpkgs/f20cd90e28fe0403873f473b29e42662cd86e8c4#prometheus.cli": {
       "last_modified": "1970-01-01T00:00:00Z",
       "resolved": "github:NixOS/nixpkgs/f20cd90e28fe0403873f473b29e42662cd86e8c4#prometheus.cli"

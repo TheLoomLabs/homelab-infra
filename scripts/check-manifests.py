@@ -26,12 +26,15 @@ Then:
   6. Network policies: every app's destination namespace (except the ones in
      NETPOL_EXEMPT) has a CiliumNetworkPolicy `default-deny` selecting all its
      pods (docs/network-policy.md).
+  7. lokitool rules lint parses every Loki rule file (the data of each
+     ConfigMap named loki-rules-*, docs/audit-logging.md): rule structure and
+     LogQL. A broken file would stop Loki's ruler from loading any rule.
 
 Output lands in .artifacts/manifests/ (git-ignored): rendered/ is what was
 validated, cache/ holds pulled charts and clones between runs.
 
-Needs: python3 (stdlib only), helm, kubectl, kubeconform, promtool, git and
-mikefarah yq v4. All of them are in devbox.json; CI installs the same.
+Needs: python3 (stdlib only), helm, kubectl, kubeconform, promtool, lokitool,
+git and mikefarah yq v4. All of them are in devbox.json; CI installs the same.
 """
 
 from __future__ import annotations
@@ -56,6 +59,9 @@ CACHE = OUT / "cache"
 RENDERED = OUT / "rendered"
 SCHEMAS = OUT / "schemas"
 RULES = OUT / "rules"
+LOKI_RULES = OUT / "loki-rules"
+# ConfigMaps with this name prefix hold Loki ruler files (tenant "fake").
+LOKI_RULES_PREFIX = "loki-rules-"
 
 # This repository, as Argo CD sees it. Sources pointing here are read from the
 # working tree, so a branch is checked before it reaches main.
@@ -576,19 +582,22 @@ def check_network_policies(apps: list[dict], rendered: dict[str, list[dict]]) ->
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--no-promtool", action="store_true", help="skip promtool check rules")
+    ap.add_argument("--no-lokitool", action="store_true", help="skip lokitool rules lint (Loki rules)")
     ap.add_argument("--render-only", action="store_true",
-                    help="only render into .artifacts/manifests/rendered (no kubeconform, no promtool)")
+                    help="only render into .artifacts/manifests/rendered (no kubeconform, no promtool, no lokitool)")
     args = ap.parse_args()
     if args.render_only:
         args.no_promtool = True
+        args.no_lokitool = True
 
     try:
         check_tools(["helm", "kubectl", "git"] + ([] if args.render_only else ["kubeconform"])
-                    + ([] if args.no_promtool else ["promtool"]))
+                    + ([] if args.no_promtool else ["promtool"])
+                    + ([] if args.no_lokitool else ["lokitool"]))
         check_yq()
         v = k8s_vars()
         kube_version = f"{str(v['kubernetes_minor_version']).strip()}.0"
-        for d in (RENDERED, SCHEMAS, RULES):
+        for d in (RENDERED, SCHEMAS, RULES, LOKI_RULES):
             shutil.rmtree(d, ignore_errors=True)
             d.mkdir(parents=True)
 
@@ -687,6 +696,28 @@ def main() -> int:
                     print(line)
             if proc.returncode != 0:
                 print("promtool: FAILED", file=sys.stderr)
+            rc |= proc.returncode
+
+    if not args.no_lokitool:
+        files = []
+        for d in resources:
+            meta = d.get("metadata", {})
+            if d.get("kind") != "ConfigMap" or not meta.get("name", "").startswith(LOKI_RULES_PREFIX):
+                continue
+            for key, text in sorted((d.get("data") or {}).items()):
+                path = LOKI_RULES / f"{meta.get('namespace', '_')}__{meta['name']}__{key}"
+                path.write_text(text)
+                files.append(str(path))
+        log(f"lokitool rules lint ({len(files)} Loki rule files)")
+        if files:
+            # --dry-run: parse and format in memory, leave the files alone.
+            proc = subprocess.run(["lokitool", "rules", "lint", "--dry-run", *files],
+                                  capture_output=True, text=True)
+            for line in (proc.stdout + proc.stderr).splitlines():
+                if line.strip() and "level=info" not in line:
+                    print(line)
+            if proc.returncode != 0:
+                print("lokitool: FAILED", file=sys.stderr)
             rc |= proc.returncode
 
     log("OK" if rc == 0 else "FAILED")
