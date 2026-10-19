@@ -21,6 +21,9 @@ tfplan
 crash.log
 .terraform.tfstate.lock.info
 
+# Python
+__pycache__/
+
 # Devbox
 .devbox/
 

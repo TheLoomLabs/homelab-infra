@@ -1090,6 +1090,44 @@
         }
       }
     },
+    "trivy@latest": {
+      "last_modified": "2026-10-16T02:15:57Z",
+      "resolved": "github:NixOS/nixpkgs/f20cd90e28fe0403873f473b29e42662cd86e8c4#trivy",
+      "source": "devbox-search",
+      "version": "0.76.0",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/gnjb98bv4s39b2w3jds0zssw82bcfs2r-trivy-0.76.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/gnjb98bv4s39b2w3jds0zssw82bcfs2r-trivy-0.76.0"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/v1afw3gzvydn9n9qvy92rmjw64d4r346-trivy-0.76.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/v1afw3gzvydn9n9qvy92rmjw64d4r346-trivy-0.76.0"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/l4r2z4jd9f9mqvq58paypqfvxmpdrf7c-trivy-0.76.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/l4r2z4jd9f9mqvq58paypqfvxmpdrf7c-trivy-0.76.0"
+        }
+      }
+    },
     "yamllint@latest": {
       "last_modified": "2026-10-10T12:58:50Z",
       "resolved": "github:NixOS/nixpkgs/ca1659429c950a11a565b5764e37a1b704e17ec8#yamllint",

@@ -73,7 +73,7 @@ site: ## Everything: base + Kubernetes + Swarm
 
 ## --- Quality -----------------------------------------------------------------
 
-.PHONY: fmt sops-check secrets manifests lint
+.PHONY: fmt sops-check secrets manifests images lint
 fmt: ## Format Terraform code
 	terraform fmt -recursive terraform
 
@@ -87,6 +87,10 @@ secrets: ## Scan the full git history for leaked secrets (gitleaks)
 
 manifests: ## Render every Argo CD app and validate it (kubeconform, promtool)
 	python3 scripts/check-manifests.py
+
+images: ## Scan every image the lab runs with Trivy (HIGH/CRITICAL with a fix, report only)
+	python3 scripts/check-manifests.py --render-only
+	python3 scripts/scan-images.py
 
 lint: ## Run all linters (same as CI)
 	terraform fmt -check -recursive terraform

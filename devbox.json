@@ -21,6 +21,7 @@
     "shellcheck":                                                                   "latest",
     "gnumake":                                                                      "latest",
     "gitleaks":                                                                     "latest",
+    "trivy":                                                                        "latest",
     "dig":                                                                          "latest",
     "github:NixOS/nixpkgs/f20cd90e28fe0403873f473b29e42662cd86e8c4#prometheus.cli": ""
   },

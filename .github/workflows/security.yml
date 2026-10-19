@@ -1,0 +1,76 @@
+---
+# Trivy scan of every image the lab runs (scripts/scan-images.py, docs/ci.md).
+# Report only: findings go to Security -> Code scanning and the job summary;
+# they never fail the run. Scan errors (an image that can't be pulled) do.
+name: security
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - kubernetes/**
+      - ansible/**
+      - scripts/check-manifests.py
+      - scripts/scan-images.py
+      - .github/workflows/security.yml
+  schedule:
+    # Weekly, for CVEs published against images that didn't change.
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trivy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      # renovate: datasource=github-releases depName=helm/helm
+      HELM_VERSION: v4.2.3
+      # renovate: datasource=github-releases depName=aquasecurity/trivy extractVersion=^v(?<version>.+)$
+      TRIVY_VERSION: 0.76.0
+      TRIVY_SHA256: e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      # The release binary, checksum-pinned, instead of a third-party action.
+      - name: Install Trivy
+        run: |
+          base="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          curl -sSfLo /tmp/trivy.tar.gz "${base}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  /tmp/trivy.tar.gz" | sha256sum -c -
+          sudo tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
+
+      - name: Cache the Trivy DB
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ github.run_id }}
+          restore-keys: trivy-db-
+
+      - name: Render the Argo CD apps
+        run: python3 scripts/check-manifests.py --render-only
+
+      - name: Scan images
+        run: python3 scripts/scan-images.py
+
+      - name: Upload to code scanning
+        if: always() && hashFiles('.artifacts/images/trivy.sarif') != ''
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: .artifacts/images/trivy.sarif
+          category: trivy-images
