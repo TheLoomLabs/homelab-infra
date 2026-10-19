@@ -1,0 +1,68 @@
+---
+# Alerts for encryption at rest of Secrets and ConfigMaps (docs/encryption.md).
+# The metric comes from every API server (job "apiserver", kube-prometheus-
+# stack's ServiceMonitor). It exists only when an encryption config is
+# loaded; transformer_prefix is "k8s:enc:secretbox:v1:<key>:" for encrypted
+# data, "identity" for plaintext reads and "" for plaintext writes.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: encryption-at-rest
+  namespace: monitoring
+spec:
+  groups:
+    - name: encryption-at-rest
+      rules:
+        - alert: KubeAPIServerEncryptionErrors
+          # Failed encrypt/decrypt, or stored data that no configured provider
+          # recognises (for example a key removed too early).
+          expr: |
+            sum by (instance, transformation_type) (
+              rate(apiserver_storage_transformation_operations_total{job="apiserver", status!="OK"}[5m])
+            ) > 0
+            or
+            sum by (instance, transformation_type) (
+              rate(apiserver_storage_transformation_operations_total{job="apiserver", transformer_prefix="unknown"}[5m])
+            ) > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Encryption errors ({{ $labels.transformation_type }}) on API server {{ $labels.instance }}"
+            description: >-
+              Reads or writes of encrypted Secrets or ConfigMaps fail on this API server. Compare
+              /etc/kubernetes/encryption/config.yaml on the control-plane nodes with k8s/encryption.sops.yaml
+              and check the API server log (docs/encryption.md).
+        - alert: KubeAPIServerWritesUnencrypted
+          # Normal for a few minutes during pass 1 of a rollout or a key
+          # rotation; not as a lasting state.
+          expr: |
+            sum by (instance) (
+              rate(apiserver_storage_transformation_operations_total{
+                job="apiserver", transformation_type="to_storage", transformer_prefix!~"k8s:enc:.+"
+              }[15m])
+            ) > 0
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "API server {{ $labels.instance }} writes Secrets/ConfigMaps in plaintext"
+            description: >-
+              identity is the first provider in this API server's encryption config. Finish the rollout without
+              -e k8s_control_plane_encryption_identity_first=true (make encryption, docs/encryption.md).
+        - alert: KubeAPIServerEncryptionNotConfigured
+          # The API server records the metric for every read from etcd once a
+          # config is loaded, starting with its cache fill at start-up.
+          expr: |
+            up{job="apiserver"} == 1
+            unless on (instance)
+            apiserver_storage_transformation_operations_total{job="apiserver"}
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "API server {{ $labels.instance }} runs without encryption at rest"
+            description: >-
+              No --encryption-provider-config on this API server, for example after a manifest was regenerated
+              from an old configuration. New Secrets and ConfigMaps from it are stored in plaintext.
+              Run make encryption (docs/encryption.md).
