@@ -34,7 +34,8 @@ spec:
 # Prometheus scrapes everything in the cluster: pods in every namespace, the
 # nodes (node-exporter, kubelet, etcd, scheduler, controller manager on the
 # node addresses) and the API server. Any port: targets come and go with
-# ServiceMonitors.
+# ServiceMonitors. Outside the cluster only the VM targets of
+# scrapeconfig-vms.yaml, on their ports.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -55,6 +56,28 @@ spec:
   egress:
     - toEntities:
         - cluster
+    # Alloy on every DNS and Swarm VM (host, container and Alloy metrics).
+    - toCIDR:
+        - 192.168.1.11/32
+        - 192.168.1.12/32
+        - 192.168.1.41/32
+        - 192.168.1.42/32
+        - 192.168.1.43/32
+      toPorts:
+        - ports:
+            - port: "12345"
+              protocol: TCP
+    # Docker engine on the Swarm VMs, Traefik on the alerting node.
+    - toCIDR:
+        - 192.168.1.41/32
+        - 192.168.1.42/32
+        - 192.168.1.43/32
+      toPorts:
+        - ports:
+            - port: "9323"
+              protocol: TCP
+            - port: "8082"
+              protocol: TCP
 ---
 # Alertmanager gets alerts from Prometheus (default-deny) and Loki's ruler,
 # queries from Grafana, and sends notifications to ntfy and pings to

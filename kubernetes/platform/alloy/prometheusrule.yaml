@@ -2,8 +2,8 @@
 # Alerts for the Alloy log shippers in the cluster (ADR 0012). Metrics come
 # from the charts' ServiceMonitors (jobs alloy and alloy-events). Pods that
 # don't run are covered by the default KubeDaemonSet*/KubeDeployment* alerts.
-# The Alloys on the VMs listen on localhost only and are not scraped yet
-# (docs/logging.md, Later).
+# The Alloys on the VMs (job alloy-vm) have their own rules in
+# monitoring/vms-prometheusrule.yaml.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:

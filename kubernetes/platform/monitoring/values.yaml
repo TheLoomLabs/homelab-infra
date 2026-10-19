@@ -115,6 +115,10 @@ alertmanager:
         target_matchers: ['severity = info']
         equal: ['namespace']
       - target_matchers: ['alertname = InfoInhibitor']
+      # A down VM also fails its other scrape targets (vms-prometheusrule.yaml).
+      # TargetDown of the VM jobs (no namespace label) adds nothing then.
+      - source_matchers: ['alertname = VMHostDown']
+        target_matchers: ['alertname = TargetDown', 'namespace = ""']
     route:
       receiver: ntfy
       group_by: ['namespace', 'alertname']

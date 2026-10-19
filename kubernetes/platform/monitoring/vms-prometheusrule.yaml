@@ -1,0 +1,134 @@
+---
+# Alerts for the VMs outside Kubernetes: DNS and Swarm (docs/monitoring.md,
+# scrapeconfig-vms.yaml). Disk, memory, clock and the other host alerts come
+# from kube-prometheus-stack's node-exporter rules, because the VMs' host
+# metrics use job node-exporter. A down VM target also fires the chart's
+# TargetDown; Alertmanager inhibits that while VMHostDown fires (values.yaml).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vms
+  namespace: monitoring
+spec:
+  groups:
+    - name: vms
+      rules:
+        - alert: VMHostDown
+          # Alloy is the one agent on every VM: when it can't be scraped, the
+          # VM (or its network, or Alloy) is down.
+          expr: up{job="alloy-vm"} == 0
+          for: 3m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.host }} is down or unreachable"
+            description: >-
+              Prometheus can't scrape Alloy on {{ $labels.host }} ({{ $labels.group }}). Check the VM in Proxmox,
+              then `systemctl status alloy` on it.
+        - alert: AlloyVMDroppingLogs
+          # loki.write gives up on a batch after its retries (Loki or the
+          # Gateway down for minutes, or Loki rejecting the lines). The lines
+          # stay in the VM's journal.
+          expr: sum by (host) (rate(loki_write_dropped_entries_total{job="alloy-vm"}[10m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Alloy on {{ $labels.host }} is dropping log lines"
+            description: "It can't deliver them to Loki. Check the LokiDown and LokiDiscardingLogs alerts and docs/logging.md."
+        - alert: AlloyVMComponentUnhealthy
+          expr: sum by (host) (alloy_component_controller_running_components{job="alloy-vm", health_type!="healthy"}) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Alloy on {{ $labels.host }} has unhealthy components"
+            description: >-
+              See `journalctl -u alloy` on {{ $labels.host }}, or the Alloy UI on
+              http://{{ $labels.host }}.lab.theloomlabs.org:12345 (LAN only).
+
+    - name: swarm
+      rules:
+        - alert: SwarmQuorumLost
+          # Three managers: Raft needs two. Without quorum running containers
+          # keep running, but nothing can be deployed, changed or rescheduled.
+          expr: sum(up{job="docker-engine"}) < 2
+          for: 3m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Fewer than two Swarm managers reachable"
+            description: >-
+              The Swarm has lost (or is about to lose) Raft quorum. Bring the managers back
+              (VMHostDown tells which); see docs/monitoring.md.
+        - alert: SwarmNoLeader
+          expr: sum(swarm_manager_leader{job="docker-engine"}) < 1
+          for: 3m
+          labels:
+            severity: critical
+          annotations:
+            summary: "The Swarm has no Raft leader"
+            description: "`docker node ls` on a manager shows the managers' state."
+        - alert: SwarmNodeNotReady
+          # Every manager reports the same counts from the Raft store: max.
+          expr: max by (state) (swarm_manager_nodes{job="docker-engine", state!="ready"}) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $value }} Swarm node(s) in state {{ $labels.state }}"
+            description: "`docker node ls` on a manager shows which."
+        - alert: SwarmServiceReplicasMismatch
+          # From the swarm-services-metrics timer on every manager (role
+          # alloy). Jobs (replicated-job, global-job) finish on purpose.
+          expr: |
+            max by (stack, service) (swarm_service_replicas_running{mode!~".*-job"})
+              < max by (stack, service) (swarm_service_replicas_desired{mode!~".*-job"})
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Swarm service {{ $labels.service }} runs fewer tasks than desired"
+            description: >-
+              `docker service ps --no-trunc {{ $labels.service }}` on a manager shows why the tasks
+              don't run; their logs are in Loki (source=docker, service={{ $labels.service }}).
+        - alert: SwarmServiceMetricsStale
+          # The timer on a manager stopped writing (Docker API errors, no
+          # quorum, timer broken), or no manager writes at all.
+          expr: |
+            time() - swarm_services_last_success_timestamp_seconds{job="node-exporter"} > 300
+            or
+            absent(swarm_services_last_success_timestamp_seconds{job="node-exporter"})
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Swarm service replica metrics are stale"
+            description: >-
+              `systemctl status swarm-services-metrics.service` and
+              `journalctl -u swarm-services-metrics` on the managers. SwarmServiceReplicasMismatch can't fire meanwhile.
+        - alert: DockerContainerOOMKilled
+          expr: |
+            sum by (host, container_label_com_docker_swarm_service_name, name) (
+              increase(container_oom_events_total{job="docker-cadvisor"}[10m])
+            ) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "A container on {{ $labels.host }} ran out of memory"
+            description: >-
+              Container {{ $labels.name }} (service {{ $labels.container_label_com_docker_swarm_service_name }})
+              hit its memory limit. Raise the limit in its stack or find the leak.
+
+    - name: traefik
+      rules:
+        - alert: TraefikCertificateExpiringSoon
+          # Traefik renews 30 days before expiry. Under 14 days left means
+          # renewals fail (Cloudflare token, DNS-01, Let's Encrypt).
+          expr: min by (cn) ((traefik_tls_certs_not_after{job="traefik"} - time()) / 86400) < 14
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Traefik's certificate for {{ $labels.cn }} expires in {{ $value | humanize }} days"
+            description: "Traefik's log in Loki (source=docker, service=alerting_traefik) shows the ACME errors."
