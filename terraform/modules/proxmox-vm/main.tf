@@ -39,6 +39,12 @@ resource "proxmox_virtual_environment_vm" "this" {
 
   stop_on_destroy = true
 
+  # Never reboot a running VM from Terraform: a change to every worker would
+  # restart them all at once, without a drain. Changes that need a restart
+  # (memory, cores) stay pending in Proxmox until the VM is restarted from
+  # the host, one node at a time (docs/maintenance.md, "Resizing a VM").
+  reboot_after_update = false
+
   dynamic "startup" {
     for_each = var.startup_order == null ? [] : [var.startup_order]
     content {
