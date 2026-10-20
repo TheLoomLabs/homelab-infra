@@ -50,7 +50,7 @@ make tf-plan
 make tf-apply
 ```
 
-2. On `pve`, check what is pending (lines starting with `pending`):
+2. On `pve`, check what is pending: a `new` line next to the `cur` line of each changed value (`cur memory: 8192`, `new memory: 12288`). After the restart in step 3 the `new` lines are gone:
 
 ```
 ssh root@pve.lab.theloomlabs.org qm pending 231
