@@ -39,4 +39,5 @@ alerting_ntfy_cache_duration: 72h
 # alerting_cloudflare_api_token, alerting_ntfy_admin_user (the account the
 # phone logs in with; admin, reads every topic), alerting_ntfy_admin_hash, alerting_ntfy_publisher_hash,
 # alerting_ntfy_token_alertmanager, alerting_ntfy_token_healthchecks,
+# alerting_ntfy_token_uptime (Uptime Kuma, role uptime_kuma),
 # alerting_healthchecks_secret_key

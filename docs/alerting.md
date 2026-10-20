@@ -23,6 +23,7 @@ The services keep their state in local Docker volumes (`alerting_ntfy-data`, `al
 | Backups, volumes, pods, nodes | Alertmanager → ntfy |
 | Prometheus, Alertmanager, the Kubernetes cluster | healthchecks misses the Watchdog pings → ntfy |
 | The Swarm node with this stack | Only as "connection lost" in the ntfy app |
+| A lab service that is up but not answering (web UI, DNS, API VIP) | Uptime Kuma → ntfy (docs/uptime.md) |
 | The whole Proxmox host, power, Starlink | No. Accepted until a second machine runs this stack |
 
 Away from home, the phone reaches ntfy only over Tailscale (Phase 4). ntfy keeps messages for 72 hours, so they arrive when the phone reconnects.
@@ -63,6 +64,7 @@ read -rp 'ntfy hash for that user: ' NTFY_ADMIN_HASH
 read -rp 'ntfy hash for publisher: ' NTFY_PUB_HASH
 TK_AM=tk_$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom | head -c 29)
 TK_HC=tk_$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom | head -c 29)
+TK_UK=tk_$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom | head -c 29)
 sops encrypt --filename-override "$f" --input-type yaml --output-type yaml /dev/stdin > "$f" <<YAML
 alerting_cloudflare_api_token: "${CF_TOKEN}"
 alerting_ntfy_admin_user: "${NTFY_ADMIN_USER}"
@@ -70,9 +72,10 @@ alerting_ntfy_admin_hash: '${NTFY_ADMIN_HASH}'
 alerting_ntfy_publisher_hash: '${NTFY_PUB_HASH}'
 alerting_ntfy_token_alertmanager: "${TK_AM}"
 alerting_ntfy_token_healthchecks: "${TK_HC}"
+alerting_ntfy_token_uptime: "${TK_UK}"
 alerting_healthchecks_secret_key: "$(openssl rand -base64 48)"
 YAML
-unset CF_TOKEN NTFY_ADMIN_USER NTFY_ADMIN_HASH NTFY_PUB_HASH TK_AM TK_HC
+unset CF_TOKEN NTFY_ADMIN_USER NTFY_ADMIN_HASH NTFY_PUB_HASH TK_AM TK_HC TK_UK
 make sops-check
 ```
 

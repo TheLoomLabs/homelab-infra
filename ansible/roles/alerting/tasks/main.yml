@@ -9,6 +9,7 @@
       - alerting_ntfy_publisher_hash is defined
       - alerting_ntfy_token_alertmanager is match('^tk_[a-z0-9]{29}$')
       - alerting_ntfy_token_healthchecks is match('^tk_[a-z0-9]{29}$')
+      - alerting_ntfy_token_uptime is match('^tk_[a-z0-9]{29}$')
       - alerting_healthchecks_secret_key is defined
     quiet: true
   no_log: true
