@@ -27,7 +27,7 @@ Proxmox VE ──Terraform──▶ 10 Ubuntu VMs ──Ansible──▶ hardene
 | Monitoring | kube-prometheus-stack (Argo CD), roles `alloy`, `docker` | Prometheus, Alertmanager, Grafana; components ship their own ServiceMonitors and rules, **alerts on failed or missing backups**, degraded volumes and the usual cluster health; **the DNS and Swarm VMs too**: host and container metrics, Swarm Raft and service replicas, Traefik |
 | Logs | Loki + Grafana Alloy (Argo CD), role `alloy` | Pod logs, node journals and Kubernetes events from the cluster, **journal and Swarm container logs from the VMs**; 15 days in Loki, queried in Grafana |
 | Alerting | Swarm stack: Traefik, ntfy, healthchecks (role `alerting`) | **Self-hosted, no SaaS:** push to the phone via ntfy, **dead man's switch** on healthchecks outside Kubernetes, so a dead cluster is still reported |
-| Swarm | Ansible roles `docker`, `swarm`, `alerting`, `uptime_kuma` | Docker CE, 3-manager Raft quorum, node labels; Traefik with a wildcard cert for Swarm stacks; **Uptime Kuma** checks the lab from outside Kubernetes and reports through ntfy |
+| Swarm | Ansible roles `docker`, `swarm`, `alerting`, `uptime_kuma` | Docker CE, 3-manager Raft quorum, node labels; Traefik with a wildcard cert for Swarm stacks; **Uptime Kuma** checks the lab from outside Kubernetes and reports through ntfy, its monitors defined in Ansible (AutoKuma) |
 | Quality | GitHub Actions, pre-commit | `terraform fmt/validate`, tflint, yamllint, ansible-lint (production profile), gitleaks, SOPS encryption check; **every Argo CD app rendered and validated** with kubeconform against schemas generated from the pinned CRDs, plus `promtool check rules`, AppProject limits, Pod Security labels and a default-deny network policy per namespace; actions pinned to commit SHAs, self-hosted Renovate, weekly Trivy image scan to code scanning ([docs/ci.md](docs/ci.md)) |
 
 ## Architecture
@@ -85,7 +85,7 @@ More detail is in [docs/architecture.md](docs/architecture.md). The design decis
 | [backup.md](docs/backup.md) | Velero: schedule, restores, disaster recovery |
 | [monitoring.md](docs/monitoring.md) | Prometheus, Alertmanager, Grafana: alert routing, checks, testing the alert path |
 | [alerting.md](docs/alerting.md) | Swarm alerting stack: ntfy, healthchecks, Traefik; phone setup, rebuild |
-| [uptime.md](docs/uptime.md) | Uptime Kuma on Swarm: setup, ntfy notification, the list of checks |
+| [uptime.md](docs/uptime.md) | Uptime Kuma on Swarm: setup, monitors as code (AutoKuma), ntfy notification |
 | [logging.md](docs/logging.md) | Loki and Alloy: labels, push secret, checks, example queries |
 | [maintenance.md](docs/maintenance.md) | Rolling reboots (kernel updates, network changes) |
 | [encryption.md](docs/encryption.md) | Encryption at rest for Secrets and ConfigMaps: rollout, checks, key rotation |

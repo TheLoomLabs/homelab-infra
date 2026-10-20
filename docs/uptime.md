@@ -2,21 +2,24 @@
 
 Uptime Kuma checks the lab the way a user sees it: web UIs answer, DNS resolves, the Kubernetes API is ready. It runs on Docker Swarm, so it keeps checking (and reporting through ntfy) while Kubernetes is down. Prometheus covers the inside view (docs/monitoring.md); this is the outside one.
 
+The checks and the ntfy notification are code: **AutoKuma**, a second service in the stack, creates them in Uptime Kuma from `uptime_kuma_monitors` and deletes the ones removed from the list. Monitors added by hand in the UI are left alone.
+
 | What | Where |
 |---|---|
 | Stack definition | `ansible/roles/uptime_kuma` (`templates/compose.yml.j2`), `ansible/playbooks/uptime.yml`, `make uptime` |
-| Image | `uptime_kuma_image` in `ansible/roles/uptime_kuma/defaults/main.yml` (slim, rootless) |
+| Monitors, defaults, ntfy settings | `uptime_kuma_monitors`, `uptime_kuma_monitor_defaults`, `uptime_kuma_ntfy_*` in `ansible/roles/uptime_kuma/defaults/main.yml` |
+| Images | `uptime_kuma_image` (slim, rootless), `uptime_kuma_autokuma_image` in the same file |
 | DNS name | `status` in `dns/records.yml`, CNAME like the alerting names |
 | ntfy token | `alerting_ntfy_token_uptime` in `swarm/alerting.sops.yaml` (ntfy reads its tokens from the alerting stack's config) |
-| Checks and notification | Uptime Kuma's own database, set up in its UI (below) |
+| AutoKuma's login (the admin account) | `swarm/uptime.sops.yaml` |
 
 | URL | Login |
 |---|---|
 | https://status.lab.theloomlabs.org | the admin account created at the first visit |
 
-Monitors, history and settings are in SQLite in the local volume `uptime_kuma-data`, so the service runs on one node: `uptime_kuma_node`, the last Swarm manager by default, labelled `homelab.uptime=true`. It must not be the node the `ntfy`/`hc` CNAMEs point at: a container can't reach its own node's published ports, so its checks of ntfy and hc (and its notifications) would fail there.
+Monitors, history and settings are in SQLite in the local volume `uptime_kuma-data`; AutoKuma keeps the map from its IDs to Uptime Kuma's in `uptime_autokuma-data`. Both services run on one node: `uptime_kuma_node`, the last Swarm manager by default, labelled `homelab.uptime=true`. It must not be the node the `ntfy`/`hc` CNAMEs point at: a container can't reach its own node's published ports, so its checks of ntfy and hc (and its notifications) would fail there.
 
-There is no backup of the volume yet (Swarm stack backups come later in Phase 3). Losing it means redoing the setup below; the checks are listed here for that reason.
+There is no backup of the volumes yet (Swarm stack backups come later in Phase 3). Losing them costs the history only: a new admin account and `make uptime` bring back every monitor.
 
 ## Who watches whom
 
@@ -29,7 +32,7 @@ There is no backup of the volume yet (Swarm stack backups come later in Phase 3)
 
 ## One-time setup
 
-### 1. ntfy token
+### 1. ntfy token and first deploy
 
 Uptime Kuma publishes to the `alerts` topic as the `publisher` user with its own token. Add the token to the alerting secrets; the value never appears on screen:
 
@@ -38,79 +41,87 @@ TK_UK=tk_$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom | head -c 29)
 sops set swarm/alerting.sops.yaml '["alerting_ntfy_token_uptime"]' "\"${TK_UK}\""
 unset TK_UK
 make sops-check
-```
-
-### 2. Deploy
-
-```bash
 make alerting    # ntfy gets the new token (ntfy restarts)
 make dns         # status CNAME
-make uptime      # the stack
+make uptime      # Uptime Kuma alone: AutoKuma waits for its login (step 3)
+```
+
+### 2. Admin account
+
+AutoKuma logs in with the admin account, which exists only after the first visit. Without `swarm/uptime.sops.yaml`, `make uptime` deploys Uptime Kuma alone and says so. Do this right after the deploy: until an admin exists, anyone on the LAN who opens the page can create one.
+
+1. Open https://status.lab.theloomlabs.org. The database step is skipped (SQLite is set in the stack).
+2. **Create your admin account**: username and a password from the password manager → **Create**.
+3. Optional, 2FA: profile icon (top right) → **Settings** → **Security** → **Two Factor Authentication** → **Setup 2FA** → **Show URI** and keep the `otpauth://…` text for step 3 → scan the QR code with the authenticator app, enter the code → **Enable 2FA**. AutoKuma logs in with the same account, so it needs that URI. If 2FA is already on and the URI is gone: **Disable 2FA**, then set it up again.
+
+### 3. AutoKuma's login
+
+The values go from prompts through Python (JSON-quoting any character in the password) straight into sops:
+
+```bash
+f=swarm/uptime.sops.yaml
+read -rp 'Uptime Kuma username: ' UK_USER
+read -rsp 'Uptime Kuma password: ' UK_PASS; echo
+read -rsp '2FA URI (otpauth://..., empty without 2FA): ' UK_MFA; echo
+export UK_USER UK_PASS UK_MFA
+python3 -c 'import json, os; print(json.dumps({
+  "uptime_kuma_username": os.environ["UK_USER"],
+  "uptime_kuma_password": os.environ["UK_PASS"],
+  "uptime_kuma_mfa_secret": os.environ["UK_MFA"]}))' \
+| sops encrypt --filename-override "$f" --input-type json --output-type yaml /dev/stdin > "$f"
+unset UK_USER UK_PASS UK_MFA
+make sops-check
+```
+
+Changing the password (or 2FA) in Uptime Kuma later means updating this file (`sops edit swarm/uptime.sops.yaml`) and `make uptime`.
+
+### 4. Deploy again, now with AutoKuma
+
+```bash
+make uptime
 ```
 
 Check:
 
 ```bash
-ssh ops@swarm-m-01.lab.theloomlabs.org docker stack ps uptime --no-trunc
-ssh ops@swarm-m-01.lab.theloomlabs.org docker service logs uptime_kuma 2>&1 | tail -20
-curl -sI https://status.lab.theloomlabs.org/ | head -1    # HTTP/2 302 (to /setup or /dashboard)
+ssh ops@swarm-m-01.lab.theloomlabs.org docker stack ps uptime
+ssh ops@swarm-m-01.lab.theloomlabs.org docker service logs uptime_autokuma 2>&1 | tail -20
+curl -sI https://status.lab.theloomlabs.org/ | head -1    # HTTP/2 302
 ```
 
-The task runs on swarm-m-03 (`NODE` column). The image's healthcheck allows a 3-minute start; until then `docker stack ps` shows the task as `Running` with `health: starting`.
+Both tasks run on swarm-m-03 (`NODE` column). The AutoKuma log shows it logging in and creating the notification and each monitor. In the UI the monitors appear within a minute, tagged `AutoKuma`.
 
-### 3. Admin account (do this right after the deploy)
+Test the notification: **Settings** → **Notifications** → **ntfy alerts** → **Edit** → **Test** — the phone gets a message. (Don't **Save** there: AutoKuma owns the entry and puts its own values back.)
 
-Until an admin exists, anyone on the LAN who opens the page can create one.
+### 5. Settings (UI, once)
 
-1. Open https://status.lab.theloomlabs.org. The database step is skipped (SQLite is set in the stack).
-2. **Create your admin account**: username and a password from the password manager → **Create**.
-3. Profile icon (top right) → **Settings** → **Security** → **Two Factor Authentication** → **Setup 2FA** → scan the QR code with the authenticator app, enter the code → **Enable 2FA**.
+AutoKuma doesn't manage Uptime Kuma's settings. **Settings** →
 
-### 4. Settings
-
-**Settings** →
-
-1. **General**: Display Timezone `Europe/Zagreb`, Server Timezone `Europe/Zagreb`, Primary Base URL `https://status.lab.theloomlabs.org` → **Save**.
+1. **General**: Display Timezone and Server Timezone `Europe/Zagreb`, Primary Base URL `https://status.lab.theloomlabs.org` → **Save**.
 2. **Reverse Proxy**: **Trust Proxy** → **Yes** → **Save** (Traefik sets `X-Forwarded-For`; the login log shows real client addresses).
-3. **Monitor History**: keep 180 days → **Save**.
 
-### 5. ntfy notification
+## Monitors
 
-**Settings** → **Notifications** → **Setup Notification**:
+Defined in `uptime_kuma_monitors` (role defaults). Each key is AutoKuma's ID: renaming it deletes the monitor with its history and creates a new one. The fields are AutoKuma's entity types ([ENTITY_TYPES.md](https://github.com/BigBoot/AutoKuma/blob/master/ENTITY_TYPES.md)); `uptime_kuma_monitor_defaults` adds interval 60 s, two retries and the ntfy notification to each.
 
-- Notification Type: **ntfy**
-- Friendly Name: `ntfy alerts`
-- Server URL: `https://ntfy.lab.theloomlabs.org`
-- Topic: `alerts`
-- Priority: `5`
-- Authentication Method: **Access Token**, Access Token: output of `sops decrypt --extract '["alerting_ntfy_token_uptime"]' swarm/alerting.sops.yaml`
-- **Default enabled** on (every new monitor gets it), **Apply on all existing monitors** on
-- **Test** — the phone gets a message → **Save**
-
-### 6. Monitors
-
-**Add New Monitor** for each row. Common settings for all: Heartbeat Interval `60`, Retries `2`, Heartbeat Retry Interval `60`, Resend Notification if Down X times consecutively `0`, notification **ntfy alerts** ticked (default). Retries 2 means a service must fail three checks in a row (about three minutes) before the phone hears about it.
-
-| Friendly Name | Monitor Type | Target | Extra |
-|---|---|---|---|
-| Kubernetes API | HTTP(s) - Keyword | URL `https://k8s-api.lab.theloomlabs.org:6443/readyz` | Keyword `ok`; Advanced → **Ignore TLS/SSL errors** on (cluster CA) |
-| Argo CD | HTTP(s) | URL `https://argocd.lab.theloomlabs.org/healthz` | |
-| Grafana | HTTP(s) - Keyword | URL `https://grafana.lab.theloomlabs.org/api/health` | Keyword `ok` |
-| ntfy | HTTP(s) - Keyword | URL `https://ntfy.lab.theloomlabs.org/v1/health` | Keyword `"healthy":true` |
-| healthchecks | HTTP(s) | URL `https://hc.lab.theloomlabs.org/` | (follows the redirect to the login page) |
-| DNS dns-01 | DNS | Hostname `k8s-api.lab.theloomlabs.org`, Resolver Server `192.168.1.11`, Port `53` | Resource Record Type `A` |
-| DNS dns-02 | DNS | Hostname `k8s-api.lab.theloomlabs.org`, Resolver Server `192.168.1.12`, Port `53` | Resource Record Type `A` |
-| Proxmox | HTTP(s) | URL `https://pve.lab.theloomlabs.org:8006/` | Advanced → **Ignore TLS/SSL errors** on (self-signed) |
+| ID | Type | Checks |
+|---|---|---|
+| `k8s-api` | keyword | `https://k8s-api…:6443/readyz` returns `ok` (TLS not verified: cluster CA) |
+| `argocd` | http | `https://argocd…/healthz` |
+| `grafana` | keyword | `https://grafana…/api/health` contains `ok` |
+| `ntfy` | keyword | `https://ntfy…/v1/health` contains `"healthy":true` |
+| `healthchecks` | http | `https://hc…/` (follows the redirect to the login page) |
+| `dns-01`, `dns-02` | dns | each BIND server answers `k8s-api.lab.theloomlabs.org` |
+| `proxmox` | http | `https://pve…:8006/` (TLS not verified: self-signed) |
 
 The `/readyz` probe is anonymous on purpose: kubeadm allows it, and the audit policy drops health checks, so it doesn't trip `KubeAuditAnonymousRequest`.
 
-Add a row here (and the monitor in the UI) for every new app in Phase 3.
-
-Optional: **Status Pages** → **New Status Page** `lab` → add the monitors → **Save**. It is readable without login on the LAN; skip it if that's not wanted.
+Add a monitor for every new app in Phase 3: a new key in `uptime_kuma_monitors`, then `make uptime`. To find a field name, create the monitor once in the UI and look at it with the `kuma` CLI (part of AutoKuma), or read ENTITY_TYPES.md.
 
 ## Day to day
 
-- Upgrade: bump `uptime_kuma_image` in `ansible/roles/uptime_kuma/defaults/main.yml`, `make uptime`. Renovate opens the PR. Read the release notes first: major versions migrate the database, which can take a while on start.
+- Upgrade: bump `uptime_kuma_image` or `uptime_kuma_autokuma_image` in `ansible/roles/uptime_kuma/defaults/main.yml`, `make uptime`. Renovate opens the PRs. Read the release notes first: Uptime Kuma major versions migrate the database, which can take a while on start, and AutoKuma has separate images for Uptime Kuma v1 (`uptime-kuma-v1-` tags).
+- AutoKuma's log: `docker service logs uptime_autokuma` (or Loki, `{source="docker", stack="uptime", service="autokuma"}`). A login error means `swarm/uptime.sops.yaml` doesn't match the account.
 - Logs: in Grafana (Loki, `{source="docker", stack="uptime"}`) or `docker service logs uptime_kuma` on a manager.
 - Forgot the password or lost the 2FA device, on the node that runs it (swarm-m-03):
 
@@ -122,11 +133,13 @@ ssh -t ops@swarm-m-03.lab.theloomlabs.org 'docker exec -it $(docker ps -q -f nam
 ## Move to another node
 
 1. Set `uptime_kuma_node` (for example in `ansible/inventory/group_vars/swarm.yml`) to a node that is not the alerting node. Remove the old label: `docker node update --label-rm homelab.uptime <old node>`.
-2. `make uptime`. The new node starts with an empty volume: redo steps 3–6.
+2. `make uptime`. The new node starts with empty volumes: create the admin account again (step 2, same username and password as in `swarm/uptime.sops.yaml`), and AutoKuma recreates the monitors. Redo step 5.
 
 ## Troubleshooting
 
 - **404 from Traefik:** the service is not on the `edge` network or its labels are wrong: `docker service inspect uptime_kuma --format '{{json .Spec.Labels}}'`.
-- **Notification test fails with 403:** the token in Uptime Kuma doesn't match `alerting_ntfy_token_uptime`, or `make alerting` wasn't run after adding it.
+- **Notification test fails with 403:** ntfy doesn't know `alerting_ntfy_token_uptime` yet: `make alerting`.
+- **A monitor changed in the UI changes back:** AutoKuma owns it. Change it in `uptime_kuma_monitors` instead, or create your own monitor in the UI.
+- **Monitors missing:** `docker service logs uptime_autokuma`. A file it can't parse is logged with its name (`/run/secrets/<id>.json`) and skipped.
 - **ntfy/hc checks fail but the sites work from the workstation:** the service runs on the node the CNAMEs point at (hairpin). Check the `NODE` column of `docker stack ps uptime`.
 - **Task stays `Pending`:** no node has the `homelab.uptime=true` label: `docker node ls --filter node.label=homelab.uptime=true`.
