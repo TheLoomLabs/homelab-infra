@@ -27,7 +27,7 @@ Proxmox VE ──Terraform──▶ 10 Ubuntu VMs ──Ansible──▶ hardene
 | Monitoring | kube-prometheus-stack (Argo CD), roles `alloy`, `docker` | Prometheus, Alertmanager, Grafana; components ship their own ServiceMonitors and rules, **alerts on failed or missing backups**, degraded volumes and the usual cluster health; **the DNS and Swarm VMs too**: host and container metrics, Swarm Raft and service replicas, Traefik |
 | Logs | Loki + Grafana Alloy (Argo CD), role `alloy` | Pod logs, node journals and Kubernetes events from the cluster, **journal and Swarm container logs from the VMs**; 15 days in Loki, queried in Grafana |
 | Alerting | Swarm stack: Traefik, ntfy, healthchecks (role `alerting`) | **Self-hosted, no SaaS:** push to the phone via ntfy, **dead man's switch** on healthchecks outside Kubernetes, so a dead cluster is still reported |
-| Swarm | Ansible roles `docker`, `swarm`, `alerting` | Docker CE, 3-manager Raft quorum, node labels; Traefik with a wildcard cert for Swarm stacks |
+| Swarm | Ansible roles `docker`, `swarm`, `alerting`, `uptime_kuma` | Docker CE, 3-manager Raft quorum, node labels; Traefik with a wildcard cert for Swarm stacks; **Uptime Kuma** checks the lab from outside Kubernetes and reports through ntfy |
 | Quality | GitHub Actions, pre-commit | `terraform fmt/validate`, tflint, yamllint, ansible-lint (production profile), gitleaks, SOPS encryption check; **every Argo CD app rendered and validated** with kubeconform against schemas generated from the pinned CRDs, plus `promtool check rules`, AppProject limits, Pod Security labels and a default-deny network policy per namespace; actions pinned to commit SHAs, self-hosted Renovate, weekly Trivy image scan to code scanning ([docs/ci.md](docs/ci.md)) |
 
 ## Architecture
@@ -55,6 +55,7 @@ flowchart LR
       M2[swarm-m-02]
       M3[swarm-m-03]
       AL[alerting stack<br/>Traefik · ntfy · healthchecks]
+      UK[Uptime Kuma]
     end
     LK[(Loki<br/>in Kubernetes)]
   end
@@ -69,6 +70,8 @@ flowchart LR
   SW -. logs .-> LK
   DNS -. logs .-> LK
   AL -- push --> PH[Phone<br/>ntfy app]
+  UK -. checks .-> K8S
+  UK -- down/up --> AL
 ```
 
 More detail is in [docs/architecture.md](docs/architecture.md). The design decisions are recorded as ADRs in [docs/adr](docs/adr), the plan in [docs/roadmap.md](docs/roadmap.md).
@@ -82,6 +85,7 @@ More detail is in [docs/architecture.md](docs/architecture.md). The design decis
 | [backup.md](docs/backup.md) | Velero: schedule, restores, disaster recovery |
 | [monitoring.md](docs/monitoring.md) | Prometheus, Alertmanager, Grafana: alert routing, checks, testing the alert path |
 | [alerting.md](docs/alerting.md) | Swarm alerting stack: ntfy, healthchecks, Traefik; phone setup, rebuild |
+| [uptime.md](docs/uptime.md) | Uptime Kuma on Swarm: setup, ntfy notification, the list of checks |
 | [logging.md](docs/logging.md) | Loki and Alloy: labels, push secret, checks, example queries |
 | [maintenance.md](docs/maintenance.md) | Rolling reboots (kernel updates, network changes) |
 | [encryption.md](docs/encryption.md) | Encryption at rest for Secrets and ConfigMaps: rollout, checks, key rotation |
@@ -108,7 +112,7 @@ make tf-plan && make tf-apply     # also writes ansible/inventory/hosts.yml
 make ping
 age-keygen -o .artifacts/age.key  # once, then back it up (docs/secrets.md)
 # once: k8s/encryption.sops.yaml, the etcd encryption key (docs/encryption.md)
-make site                         # base + DNS + Kubernetes + Longhorn node prep + age key + Argo CD + Swarm + alerting stack + log shipping
+make site                         # base + DNS + Kubernetes + Longhorn node prep + age key + Argo CD + Swarm + alerting stack + Uptime Kuma + log shipping
 
 # 5. Use it
 kubectl get nodes -o wide         # KUBECONFIG is set by devbox
@@ -138,10 +142,10 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 │   ├── modules/proxmox-vm/     # one VM: disk import, cloud-init snippet, network
 │   └── envs/homelab/           # the lab: node map → VMs → Ansible inventory
 ├── ansible/
-│   ├── playbooks/              # site, base, dns, kubernetes, encryption, pod-security, audit, cilium, longhorn, sops, argocd, swarm, alerting, logs, reboot
+│   ├── playbooks/              # site, base, dns, kubernetes, encryption, pod-security, audit, cilium, longhorn, sops, argocd, swarm, alerting, uptime, logs, reboot
 │   ├── roles/                  # common, hardening, bind, docker, swarm, k8s_prereqs,
 │   │                           # k8s_control_plane, k8s_worker, cilium, longhorn_node,
-│   │                           # sops_age, argocd, alerting, alloy
+│   │                           # sops_age, argocd, alerting, uptime_kuma, alloy
 │   └── inventory/group_vars/   # versions and CIDRs
 ├── dns/                        # lab zone records + SOPS-encrypted TSIG key
 ├── swarm/                      # SOPS-encrypted secrets of the Swarm stacks
@@ -152,7 +156,7 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 │   └── platform/               # Helm values, manifests and *.sops.yaml secrets per component
 ├── scripts/                    # check-manifests.py (make manifests), scan-images.py (make images), hubble-flows.py
 └── docs/                       # architecture, bootstrap, runbooks (dns, secrets, storage,
-                                # backup, monitoring, alerting, logging, ci, maintenance, encryption,
+                                # backup, monitoring, alerting, uptime, logging, ci, maintenance, encryption,
                                 # pod-security, network-policy, audit-logging), ADRs, roadmap
 ```
 
