@@ -1,6 +1,7 @@
 ---
-# Swarm stack "uptime": Uptime Kuma, the lab seen from outside Kubernetes.
-# Checks are set up in its UI (docs/uptime.md); notifications go to ntfy.
+# Swarm stack "uptime": Uptime Kuma, the lab seen from outside Kubernetes,
+# and AutoKuma, which creates its monitors and ntfy notification from the
+# lists below (docs/uptime.md).
 
 uptime_kuma_domain: lab.theloomlabs.org
 uptime_kuma_host: "status.{{ uptime_kuma_domain }}"
@@ -21,3 +22,71 @@ uptime_kuma_edge_network: edge
 
 uptime_kuma_stack_name: uptime
 uptime_kuma_stack_dir: /opt/stacks/uptime
+
+# AutoKuma creates the ntfy notification and the monitors below in Uptime
+# Kuma, and deletes the ones removed from this list. Monitors added by hand in
+# the UI are left alone. It logs in as the admin account (swarm/uptime.sops.yaml).
+uptime_kuma_autokuma_image: ghcr.io/bigboot/autokuma:2.0.0
+
+# ntfy, like healthchecks: priority 5 when a monitor goes down, 3 when it is
+# back up. The token is alerting_ntfy_token_uptime (swarm/alerting.sops.yaml).
+uptime_kuma_ntfy_url: "https://ntfy.{{ uptime_kuma_domain }}"
+uptime_kuma_ntfy_topic: alerts
+
+# Applied to every monitor; a monitor's own value wins. Two retries: a service
+# must fail three checks in a row (about three minutes) before the phone hears.
+uptime_kuma_monitor_defaults:
+  interval: 60
+  max_retries: 2
+  retry_interval: 60
+  notification_name_list: [ntfy-alerts]  # the notification created by the role
+
+# One entry per monitor. The key is AutoKuma's ID: renaming it deletes the
+# monitor and its history and creates a new one. Fields: the AutoKuma entity
+# types (https://github.com/BigBoot/AutoKuma/blob/master/ENTITY_TYPES.md).
+uptime_kuma_monitors:
+  k8s-api:
+    type: keyword
+    name: Kubernetes API
+    # Anonymous on purpose: kubeadm allows /readyz, and the audit policy drops
+    # health checks, so it doesn't trip KubeAuditAnonymousRequest.
+    url: "https://k8s-api.{{ uptime_kuma_domain }}:6443/readyz"
+    keyword: ok
+    ignore_tls: true  # cluster CA
+  argocd:
+    type: http
+    name: Argo CD
+    url: "https://argocd.{{ uptime_kuma_domain }}/healthz"
+  grafana:
+    type: keyword
+    name: Grafana
+    url: "https://grafana.{{ uptime_kuma_domain }}/api/health"
+    keyword: ok
+  ntfy:
+    type: keyword
+    name: ntfy
+    url: "https://ntfy.{{ uptime_kuma_domain }}/v1/health"
+    keyword: '"healthy":true'
+  healthchecks:
+    type: http
+    name: healthchecks
+    url: "https://hc.{{ uptime_kuma_domain }}/"
+  dns-01:
+    type: dns
+    name: DNS dns-01
+    hostname: "k8s-api.{{ uptime_kuma_domain }}"
+    dns_resolve_server: "{{ lab_dns_servers[0] }}"
+    dns_resolve_type: A
+    port: 53
+  dns-02:
+    type: dns
+    name: DNS dns-02
+    hostname: "k8s-api.{{ uptime_kuma_domain }}"
+    dns_resolve_server: "{{ lab_dns_servers[1] }}"
+    dns_resolve_type: A
+    port: 53
+  proxmox:
+    type: http
+    name: Proxmox
+    url: "https://pve.{{ uptime_kuma_domain }}:8006/"
+    ignore_tls: true  # self-signed

@@ -1,4 +1,25 @@
 ---
+# AutoKuma needs the admin account, which exists only after the first visit
+# (docs/uptime.md). Until swarm/uptime.sops.yaml exists, Uptime Kuma runs alone.
+- name: Decide whether AutoKuma runs
+  ansible.builtin.set_fact:
+    uptime_kuma_autokuma: "{{ uptime_kuma_username is defined and uptime_kuma_password is defined }}"
+  no_log: true
+
+- name: Check the ntfy token
+  ansible.builtin.assert:
+    that: alerting_ntfy_token_uptime is match('^tk_[a-z0-9]{29}$')
+    quiet: true
+  when: uptime_kuma_autokuma
+  no_log: true
+
+- name: Say that AutoKuma is skipped
+  ansible.builtin.debug:
+    msg: >-
+      swarm/uptime.sops.yaml not found: deploying Uptime Kuma without AutoKuma.
+      Create the admin account, then the file (docs/uptime.md), then run make uptime again.
+  when: not uptime_kuma_autokuma
+
 - name: Install the Python libraries for docker_stack
   ansible.builtin.apt:
     name: [python3-jsondiff, python3-yaml]
@@ -23,6 +44,73 @@
       homelab.uptime: "true"
     labels_state: merge
 
+# AutoKuma's login, and one JSON file per entity (notification, monitors).
+# They all become Swarm secrets in /run/secrets of the AutoKuma container.
+# AutoKuma reads the *.json files there; the file name without .json is the
+# entity's ID. Files without that extension (the login) are skipped.
+- name: Build AutoKuma's files
+  when: uptime_kuma_autokuma
+  block:
+    - name: Collect AutoKuma's login
+      ansible.builtin.set_fact:
+        uptime_kuma_files: >-
+          {{ {'kuma_username': uptime_kuma_username, 'kuma_password': uptime_kuma_password}
+             | combine({'kuma_mfa_secret': uptime_kuma_mfa_secret}
+                       if uptime_kuma_mfa_secret | default('') | length > 0 else {}) }}
+      no_log: true
+
+    - name: Add the ntfy notification
+      ansible.builtin.set_fact:
+        uptime_kuma_files: >-
+          {{ uptime_kuma_files | combine({'ntfy-alerts.json': {
+               'type': 'notification',
+               'name': 'ntfy alerts',
+               'active': true,
+               'is_default': true,
+               'config': {
+                 'type': 'ntfy',
+                 'name': 'ntfy alerts',
+                 'ntfyserverurl': uptime_kuma_ntfy_url,
+                 'ntfytopic': uptime_kuma_ntfy_topic,
+                 'ntfyPriority': 3,
+                 'ntfyPriorityDown': 5,
+                 'ntfyAuthenticationMethod': 'accessToken',
+                 'ntfyaccesstoken': alerting_ntfy_token_uptime}} | to_nice_json(indent=2)}) }}
+      no_log: true
+
+    - name: Add the monitors, merged with the defaults
+      ansible.builtin.set_fact:
+        uptime_kuma_files: >-
+          {{ uptime_kuma_files | combine({item.key ~ '.json':
+               uptime_kuma_monitor_defaults | combine(item.value) | to_nice_json(indent=2)}) }}
+      loop: "{{ uptime_kuma_monitors | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    # Swarm secrets are immutable. The name carries a hash of the content, so a
+    # changed file becomes a new secret and the stack update restarts AutoKuma.
+    - name: Name the Swarm secrets after their content
+      ansible.builtin.set_fact:
+        uptime_kuma_secrets: >-
+          {{ uptime_kuma_secrets | default({}) | combine({item.key: {
+               'name': 'uptime_' ~ (item.key | regex_replace('\.json$', ''))
+                       ~ '_' ~ (item.value | hash('sha256'))[:10],
+               'data': item.value}}) }}
+      loop: "{{ uptime_kuma_files | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      no_log: true
+
+    - name: Create the Swarm secrets
+      community.docker.docker_secret:
+        name: "{{ item.value.name }}"
+        data: "{{ item.value.data }}"
+        state: present
+      loop: "{{ uptime_kuma_secrets | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      no_log: true
+
 - name: Create the stack directory
   ansible.builtin.file:
     path: "{{ uptime_kuma_stack_dir }}"
@@ -46,3 +134,20 @@
       - "{{ uptime_kuma_stack_dir }}/compose.yml"
     prune: true
     state: present
+
+# Old secrets stay behind after a change; remove the ones no service uses.
+- name: List the stack's Swarm secrets
+  ansible.builtin.command: docker secret ls --filter name=uptime_ --format '{{ "{{" }} .Name {{ "}}" }}'
+  register: uptime_kuma_secret_list
+  changed_when: false
+
+- name: Remove unused Swarm secrets of the stack
+  community.docker.docker_secret:
+    name: "{{ item }}"
+    state: absent
+  loop: >-
+    {{ uptime_kuma_secret_list.stdout_lines
+       | difference((uptime_kuma_secrets | default({})).values() | map(attribute='name') | list) }}
+  # A secret still attached to a running task can't be removed yet; the next
+  # run cleans it up.
+  failed_when: false

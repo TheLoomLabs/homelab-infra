@@ -1,0 +1,18 @@
+uptime_kuma_username: ENC[AES256_GCM,data:k/bHXXye,iv:5d0czvfabTtp/WCek7CCEBAhsWxZGy7TyJZi9jX6QXE=,tag:ok54TWuA7ZYZMB5MaqMmGw==,type:str]
+uptime_kuma_password: ENC[AES256_GCM,data:zctuof0Cl8lKpdwfkQ==,iv:31BFws79+xGAljNOPvkCKgjsY8advPZ2gcAkYnNIGsk=,tag:Z1ONQtq9qdqIR18zLodM2w==,type:str]
+uptime_kuma_mfa_secret: ""
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBhc0VzVVRoZUpGTW40emhP
+            Qjl2eVp6bW9XSzJvdDZBVEVxVFYvRTNwU1F3CjF3MWk3VTR0SmtTYzh3LzdhQkxZ
+            bkl5L0t5Yjh4NXhTRTgxNEpEbHYvT00KLS0tIFhvNE5KV0JKazJDRnFBUkovWTRZ
+            VzB3ZU9lcm1LWVVrMEZvQllBSXNzSGsKcwkkPmAFL+WsJWIFR1x6I7sZuPYdAoUG
+            CvyzAkzcYwvE8i6aaTl4hvYjnJj8Kq+d6I5BA15ZLq3C6MoxmNFV/A==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1fjsagzw9yzjhd5p6n4fmjstjvud9ucdp383mwe2gqn0k7rfaffrsa3asek
+    lastmodified: "2026-10-20T16:09:28Z"
+    mac: ENC[AES256_GCM,data:4n6BqfiOhhpuzfoJLWJRa68xzyWHQ+zdPjBqyW67euE6d5WoRMCGAkGvkPCwSCPsSwyeZz4ZxUzBHj1vpONRGUoIr9K/Yu7m8hKdqfeRsexcGL4FwRwrXwkfWXQwPUKw4if6KzeOXuVxV203zgavCB6YvmNA8h73FaKZBKzlans=,iv:gz0nSJpIbwsNYoziP4KU4Da6AT5zVAaYI5JW/H43ehQ=,tag:3CCOWEQuyNd06YXCOWPJew==,type:str]
+    unencrypted_suffix: _unencrypted
+    version: 3.13.3

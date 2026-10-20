@@ -179,10 +179,11 @@
     },
     {
       "matchDepNames": [
-        "louislam/uptime-kuma"
+        "louislam/uptime-kuma",
+        "ghcr.io/bigboot/autokuma"
       ],
       "prBodyNotes": [
-        "Swarm stack: after merging run `make uptime`. Major versions migrate the database at start (docs/uptime.md)."
+        "Swarm stack: after merging run `make uptime`. Uptime Kuma major versions migrate the database at start; AutoKuma must match the Uptime Kuma major (docs/uptime.md)."
       ]
     },
     {

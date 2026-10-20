@@ -1,5 +1,5 @@
 # {{ ansible_managed }}
-# Stack "{{ uptime_kuma_stack_name }}": Uptime Kuma (docs/uptime.md).
+# Stack "{{ uptime_kuma_stack_name }}": Uptime Kuma and AutoKuma (docs/uptime.md).
 services:
   kuma:
     image: {{ uptime_kuma_image }}
@@ -11,6 +11,7 @@ services:
       - kuma-data:/app/data
     networks:
       - {{ uptime_kuma_edge_network }}
+      - internal
     # The image has its own healthcheck (extra/healthcheck, every 60s).
     deploy:
       replicas: 1
@@ -29,9 +30,66 @@ services:
         - traefik.http.routers.uptime.entrypoints=websecure
         - traefik.http.services.uptime.loadbalancer.server.port=3001
 
+{% if uptime_kuma_autokuma %}
+  # Creates the notification and monitors from the files in /run/secrets
+  # (role defaults: uptime_kuma_monitors). Keeps its ID → Uptime Kuma ID map
+  # in /data, so it runs next to Uptime Kuma.
+  autokuma:
+    image: {{ uptime_kuma_autokuma_image }}
+    # AutoKuma 2.0 reads its login only from the environment.
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        export
+        AUTOKUMA__KUMA__USERNAME="$$(cat /run/secrets/kuma_username)"
+        AUTOKUMA__KUMA__PASSWORD="$$(cat /run/secrets/kuma_password)"
+{% if 'kuma_mfa_secret' in uptime_kuma_secrets %}
+        AUTOKUMA__KUMA__MFA_SECRET="$$(cat /run/secrets/kuma_mfa_secret)"
+{% endif %}
+        && exec autokuma
+    environment:
+      AUTOKUMA__KUMA__URL: http://kuma:3001
+      AUTOKUMA__STATIC_MONITORS: /run/secrets
+      AUTOKUMA__DOCKER__ENABLED: "false"
+      AUTOKUMA__ON_DELETE: delete
+    volumes:
+      - autokuma-data:/data
+    secrets:
+{% for key in uptime_kuma_secrets | sort %}
+      - source: {{ key | regex_replace('\.json$', '') }}
+        target: {{ key }}
+{% endfor %}
+    networks:
+      - internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.homelab.uptime == true
+      resources:
+        limits:
+          memory: 128M
+{% endif %}
+
 volumes:
   kuma-data:
+{% if uptime_kuma_autokuma %}
+  autokuma-data:
+{% endif %}
 
 networks:
   {{ uptime_kuma_edge_network }}:
     external: true
+  internal:
+    driver: overlay
+
+{% if uptime_kuma_autokuma %}
+
+secrets:
+{% for key, secret in uptime_kuma_secrets | dictsort %}
+  {{ key | regex_replace('\.json$', '') }}:
+    external: true
+    name: {{ secret.name }}
+{% endfor %}
+{% endif %}

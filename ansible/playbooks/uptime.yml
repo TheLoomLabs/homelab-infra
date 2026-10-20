@@ -1,10 +1,31 @@
 ---
-# Swarm stack "uptime": Uptime Kuma (docs/uptime.md). Needs the alerting stack
-# (Traefik, edge network, ntfy). Runs on the first Swarm manager, which
-# deploys the stack for the whole swarm; the service itself runs on
-# uptime_kuma_node.
+# Swarm stack "uptime": Uptime Kuma and AutoKuma (docs/uptime.md). Needs the
+# alerting stack (Traefik, edge network, ntfy). Runs on the first Swarm
+# manager, which deploys the stack for the whole swarm; the services
+# themselves run on uptime_kuma_node.
 - name: Docker Swarm | Uptime Kuma
   hosts: swarm_managers[0]
   become: true
+  pre_tasks:
+    - name: Load the ntfy token (swarm/alerting.sops.yaml, decrypted with the age key)
+      community.sops.load_vars:
+        file: "{{ playbook_dir }}/../../swarm/alerting.sops.yaml"
+      no_log: true
+
+    # Missing on a fresh install: the admin account is created in the UI after
+    # the first deploy, and only then the file (docs/uptime.md). Without it
+    # the stack runs Uptime Kuma alone.
+    - name: Look for the Uptime Kuma login
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../../swarm/uptime.sops.yaml"
+      delegate_to: localhost
+      become: false
+      register: uptime_login_file
+
+    - name: Load the Uptime Kuma login for AutoKuma (swarm/uptime.sops.yaml)
+      community.sops.load_vars:
+        file: "{{ playbook_dir }}/../../swarm/uptime.sops.yaml"
+      when: uptime_login_file.stat.exists
+      no_log: true
   roles:
     - uptime_kuma
