@@ -8,7 +8,7 @@ A single Proxmox VE node with 64 GB+ RAM. Every VM uses the same Ubuntu 24.04 LT
 |---|---|---|---|---|---|
 | dns-01, dns-02 | Lab and house DNS (BIND primary, secondary) | 1 | 1 GB | 16 GB | .11–.12 |
 | k8s-cp-01..03 | Kubernetes control plane + etcd | 2 | 4 GB | 40 GB | .21–.23 |
-| k8s-wk-01..02 | Kubernetes workers, Longhorn storage | 4 | 8 GB | 80 GB + 100 GB data disk | .31–.32 |
+| k8s-wk-01..02 | Kubernetes workers, Longhorn storage | 4 | 12 GB | 80 GB + 100 GB data disk | .31–.32 |
 | swarm-m-01..03 | Swarm managers (also run workloads) | 2 | 4 GB | 40 GB | .41–.43 |
 | — | Kubernetes API VIP (kube-vip) | | | | .20 |
 
