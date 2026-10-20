@@ -85,6 +85,12 @@ uptime_kuma_monitors:
     dns_resolve_server: "{{ lab_dns_servers[1] }}"
     dns_resolve_type: A
     port: 53
+  portainer:
+    type: keyword
+    name: Portainer
+    # Public endpoint, no login: {"Version":"2.45.1",...}
+    url: "https://portainer.{{ uptime_kuma_domain }}/api/system/status"
+    keyword: '"Version"'
   proxmox:
     type: http
     name: Proxmox

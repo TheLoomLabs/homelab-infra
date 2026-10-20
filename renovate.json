@@ -187,6 +187,18 @@
       ]
     },
     {
+      "description": "Portainer CE stays on 2.x (3.x is the Business Edition); server and agent move together",
+      "matchDepNames": [
+        "portainer/portainer-ce",
+        "portainer/agent"
+      ],
+      "allowedVersions": "<3",
+      "groupName": "Portainer",
+      "prBodyNotes": [
+        "Swarm stack: after merging run `make portainer`. Keep the server and the agent on the same version (docs/portainer.md)."
+      ]
+    },
+    {
       "matchDepNames": [
         "argo-cd"
       ],

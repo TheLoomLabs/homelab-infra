@@ -26,5 +26,8 @@
 - name: Uptime Kuma on Swarm
   ansible.builtin.import_playbook: uptime.yml
 
+- name: Portainer on Swarm
+  ansible.builtin.import_playbook: portainer.yml
+
 - name: Log shipping from the VMs
   ansible.builtin.import_playbook: logs.yml

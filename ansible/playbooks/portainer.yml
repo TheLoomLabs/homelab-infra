@@ -1,0 +1,35 @@
+---
+# Swarm stack "portainer": Portainer CE and its agent (docs/portainer.md).
+# Needs the alerting stack (Traefik, edge network) and the admin password in
+# swarm/portainer.sops.yaml. Runs on the first Swarm manager, which deploys
+# the stack for the whole swarm; the server runs on portainer_node, the agent
+# on every node.
+- name: Docker Swarm | Portainer
+  hosts: swarm_managers[0]
+  become: true
+  tasks:
+    # Without the file (fresh clone), make site goes on without Portainer.
+    - name: Look for the admin password
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../../swarm/portainer.sops.yaml"
+      delegate_to: localhost
+      become: false
+      register: portainer_password_file
+
+    - name: Say that Portainer is skipped
+      ansible.builtin.debug:
+        msg: >-
+          swarm/portainer.sops.yaml not found: Portainer is not deployed.
+          Create it (docs/portainer.md), then run make portainer.
+      when: not portainer_password_file.stat.exists
+
+    - name: Load the admin password (swarm/portainer.sops.yaml, decrypted with the age key)
+      community.sops.load_vars:
+        file: "{{ playbook_dir }}/../../swarm/portainer.sops.yaml"
+      when: portainer_password_file.stat.exists
+      no_log: true
+
+    - name: Deploy Portainer
+      ansible.builtin.include_role:
+        name: portainer
+      when: portainer_password_file.stat.exists

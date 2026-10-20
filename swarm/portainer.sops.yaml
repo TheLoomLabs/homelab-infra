@@ -1,0 +1,16 @@
+portainer_admin_password: ENC[AES256_GCM,data:OYEjVXDaYlavBncavg==,iv:wEeOqLcBWexDrR48G3Z38YyiWtSAAvdWQl2Y9qSXeaA=,tag:Hy4RA8kg2OyQm9uqO5+AJQ==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBSNCtlUGtoTFRLWk00bGht
+            d3BPWHkvSnJKdWlpOUx0K0xUak43TFBxMmtRCi9KRUZwMmxvRmlOcXN2TDJ3U3gy
+            dHoxa25OQUZTdDlPMUJkQzVBR2xFSUEKLS0tIExwczN4Vzg1L0VDZVVHTUhUVDVm
+            b1lzeVJBZE11cC8wam4zdzhCSkRwaTAKz9bikz5EUsm9TkeXbLDD0v8EFr/NpUW+
+            /wsrltJwiN3otoF9BGfn3ERPcesTvINDLKsTptLYNIKIfiLEiA+YEg==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1fjsagzw9yzjhd5p6n4fmjstjvud9ucdp383mwe2gqn0k7rfaffrsa3asek
+    lastmodified: "2026-10-20T16:43:57Z"
+    mac: ENC[AES256_GCM,data:mmE6AgruK//Rsm9UNwKY9RwR/zJIaaJwIJm/p/Obe8fN/O8S8BDDBN4XymXa8hBD/ig1i6M+d/1ps4dLjrH6r3ctRGJr1aEQXPWSn+D8V05p6Lv4E7Yek0eINnBrUb/wrDrF/+dzXCidbHy+b0XSP6hFOci3uB6zwNwZkZcsXBQ=,iv:T84llEq9He60CKUG1+mrWuOIu5aokwhu2xagX6ZFles=,tag:bYbW8tbPK5XfZvwp7NwrDg==,type:str]
+    unencrypted_suffix: _unencrypted
+    version: 3.13.3

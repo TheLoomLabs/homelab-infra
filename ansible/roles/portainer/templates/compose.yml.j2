@@ -1,0 +1,76 @@
+# {{ ansible_managed }}
+# Stack "{{ portainer_stack_name }}": Portainer CE and its agent (docs/portainer.md).
+services:
+  # On every node: gives the server that node's containers, volumes and logs.
+  # Reachable only on the stack's own overlay network; port 9001 is not
+  # published.
+  agent:
+    image: {{ portainer_agent_image }}
+    environment:
+      AGENT_CLUSTER_ADDR: tasks.agent
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
+    networks:
+      - agent
+    deploy:
+      mode: global
+      placement:
+        constraints:
+          - node.platform.os == linux
+      resources:
+        limits:
+          memory: 256M
+
+  portainer:
+    image: {{ portainer_image }}
+    command:
+      - -H
+      - tcp://tasks.agent:9001
+      # The agent's certificate is self-signed.
+      - --tlsskipverify
+      # Plain HTTP on 9000 for Traefik, which terminates TLS. No ports are
+      # published: no 9443, and no 8000 (Edge agents are not used).
+      - --http-enabled
+      # Creates the admin user "admin" at the first start, so there is no
+      # setup page and no setup token in the logs.
+      - --admin-password-file
+      - /run/secrets/portainer_admin_password
+    volumes:
+      - portainer-data:/data
+    secrets:
+      - portainer_admin_password
+    networks:
+      - agent
+      - {{ portainer_edge_network }}
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+          - node.labels.homelab.portainer == true
+      # Never two servers on the same BoltDB file.
+      update_config:
+        order: stop-first
+      resources:
+        limits:
+          memory: 512M
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.portainer.rule=Host(`{{ portainer_host }}`)
+        - traefik.http.routers.portainer.entrypoints=websecure
+        - traefik.http.services.portainer.loadbalancer.server.port=9000
+
+volumes:
+  portainer-data:
+
+networks:
+  {{ portainer_edge_network }}:
+    external: true
+  agent:
+    driver: overlay
+
+secrets:
+  portainer_admin_password:
+    external: true
+    name: {{ portainer_secret_name }}

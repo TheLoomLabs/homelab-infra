@@ -1,0 +1,29 @@
+---
+# Swarm stack "portainer": Portainer CE (web UI for the swarm) and its agent
+# on every node (docs/portainer.md).
+
+portainer_domain: lab.theloomlabs.org
+portainer_host: "portainer.{{ portainer_domain }}"
+
+# Portainer keeps its database (settings, users, stacks deployed from the UI
+# and their compose files) in a local Docker volume, so the server runs on
+# this one node (label homelab.portainer=true). Left to the scheduler it could
+# start on another node with an empty volume after a restart. Not the
+# alerting node (Traefik, ntfy, hc) nor Uptime Kuma's; Mattermost will join it.
+portainer_node: "{{ groups['swarm_managers'][1] }}"
+
+# CE stays on 2.x: 2.45 is the last 2.x LTS and gets fixes only; 3.x is the
+# Business Edition (renovate.json keeps CE below 3). Server and agent move
+# together.
+portainer_image: portainer/portainer-ce:2.45.1
+portainer_agent_image: portainer/agent:2.45.1
+
+# Traefik's overlay network (role alerting, alerting_edge_network).
+portainer_edge_network: edge
+
+portainer_stack_name: portainer
+portainer_stack_dir: /opt/stacks/portainer
+
+# From swarm/portainer.sops.yaml (playbooks/portainer.yml loads it):
+# portainer_admin_password. The admin user "admin" gets it at the very first
+# start only; later changes are made in the UI (docs/portainer.md).

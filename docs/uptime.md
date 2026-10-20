@@ -112,6 +112,7 @@ Defined in `uptime_kuma_monitors` (role defaults). Each key is AutoKuma's ID: re
 | `ntfy` | keyword | `https://ntfy…/v1/health` contains `"healthy":true` |
 | `healthchecks` | http | `https://hc…/` (follows the redirect to the login page) |
 | `dns-01`, `dns-02` | dns | each BIND server answers `k8s-api.lab.theloomlabs.org` |
+| `portainer` | keyword | `https://portainer…/api/system/status` contains `"Version"` (no login) |
 | `proxmox` | http | `https://pve…:8006/` (TLS not verified: self-signed) |
 
 The `/readyz` probe is anonymous on purpose: kubeadm allows it, and the audit policy drops health checks, so it doesn't trip `KubeAuditAnonymousRequest`.

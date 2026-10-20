@@ -1,0 +1,89 @@
+---
+# Portainer refuses passwords under 12 characters and would then wait for the
+# setup page instead of creating the admin.
+- name: Check the admin password
+  ansible.builtin.assert:
+    that:
+      - portainer_admin_password is defined
+      - portainer_admin_password | length >= 12
+    fail_msg: "portainer_admin_password missing or shorter than 12 characters: create swarm/portainer.sops.yaml (docs/portainer.md)."
+    quiet: true
+  no_log: true
+
+- name: Install the Python libraries for docker_stack
+  ansible.builtin.apt:
+    name: [python3-jsondiff, python3-yaml]
+    state: present
+
+# Traefik and the edge network come from the alerting stack (make alerting).
+- name: Look up the edge network
+  community.docker.docker_network_info:
+    name: "{{ portainer_edge_network }}"
+  register: portainer_edge
+
+- name: Check that the edge network exists
+  ansible.builtin.assert:
+    that: portainer_edge.exists
+    fail_msg: "Overlay network {{ portainer_edge_network }} not found: deploy the alerting stack first (make alerting)."
+    quiet: true
+
+- name: Pin the server to its node
+  community.docker.docker_node:
+    hostname: "{{ portainer_node }}"
+    labels:
+      homelab.portainer: "true"
+    labels_state: merge
+
+# Swarm secrets are immutable. The name carries a hash of the content, so a
+# new password becomes a new secret (Portainer reads it only at its first
+# start, so that changes nothing in a running Portainer).
+- name: Name the admin password secret after its content
+  ansible.builtin.set_fact:
+    portainer_secret_name: "portainer_admin_password_{{ (portainer_admin_password | hash('sha256'))[:10] }}"
+  no_log: true
+
+- name: Create the admin password secret
+  community.docker.docker_secret:
+    name: "{{ portainer_secret_name }}"
+    data: "{{ portainer_admin_password }}"
+    state: present
+  no_log: true
+
+- name: Create the stack directory
+  ansible.builtin.file:
+    path: "{{ portainer_stack_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Render the stack file
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ portainer_stack_dir }}/compose.yml"
+    owner: root
+    group: root
+    mode: "0640"
+
+- name: Deploy the stack
+  community.docker.docker_stack:
+    name: "{{ portainer_stack_name }}"
+    compose:
+      - "{{ portainer_stack_dir }}/compose.yml"
+    prune: true
+    state: present
+
+# Old secrets stay behind after a change; remove the ones no service uses.
+- name: List the stack's Swarm secrets
+  ansible.builtin.command: docker secret ls --filter name=portainer_admin_password_ --format '{{ "{{" }} .Name {{ "}}" }}'
+  register: portainer_secret_list
+  changed_when: false
+
+- name: Remove unused Swarm secrets of the stack
+  community.docker.docker_secret:
+    name: "{{ item }}"
+    state: absent
+  loop: "{{ portainer_secret_list.stdout_lines | difference([portainer_secret_name]) }}"
+  # A secret still attached to a running task can't be removed yet; the next
+  # run cleans it up.
+  failed_when: false

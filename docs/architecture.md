@@ -166,3 +166,5 @@ Runbook: [logging.md](logging.md).
 ## Why two orchestrators?
 
 Many companies still run Docker Swarm or plain Docker hosts and are moving to Kubernetes. Running both lets me practise that move end to end: run a service on Swarm, then migrate it to Kubernetes with a written plan, data migration, cutover and rollback.
+
+On Swarm, Ansible deploys the lab's own stacks (`alerting`, `uptime`, `portainer`, later Mattermost). **Portainer CE** (Swarm stack `portainer`, role `portainer`) is the web UI for the swarm: an agent on every node gives it all containers, volumes and logs, and it also deploys test stacks, preferably from Git. Ansible's stacks show as limited there and are changed only through Ansible ([portainer.md](portainer.md)).
