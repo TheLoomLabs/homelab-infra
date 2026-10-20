@@ -1,0 +1,10 @@
+---
+# Swarm stack "uptime": Uptime Kuma (docs/uptime.md). Needs the alerting stack
+# (Traefik, edge network, ntfy). Runs on the first Swarm manager, which
+# deploys the stack for the whole swarm; the service itself runs on
+# uptime_kuma_node.
+- name: Docker Swarm | Uptime Kuma
+  hosts: swarm_managers[0]
+  become: true
+  roles:
+    - uptime_kuma

@@ -15,6 +15,10 @@ bind_records:
   - {name: ntfy, type: CNAME, value: swarm-m-01}
   - {name: hc, type: CNAME, value: swarm-m-01}
 
+  # Other Swarm stacks behind the same Traefik. Its ports are published on
+  # every Swarm node (ingress mode), so these follow the alerting names.
+  - {name: status, type: CNAME, value: swarm-m-01}  # stack uptime (Uptime Kuma)
+
   # Infrastructure outside the inventory.
   - {name: pve, type: A, value: 192.168.1.200}
   - {name: k8s-api, type: A, value: 192.168.1.20}

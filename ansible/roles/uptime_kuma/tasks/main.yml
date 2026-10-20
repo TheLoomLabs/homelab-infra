@@ -1,0 +1,48 @@
+---
+- name: Install the Python libraries for docker_stack
+  ansible.builtin.apt:
+    name: [python3-jsondiff, python3-yaml]
+    state: present
+
+# Traefik and the edge network come from the alerting stack (make alerting).
+- name: Look up the edge network
+  community.docker.docker_network_info:
+    name: "{{ uptime_kuma_edge_network }}"
+  register: uptime_kuma_edge
+
+- name: Check that the edge network exists
+  ansible.builtin.assert:
+    that: uptime_kuma_edge.exists
+    fail_msg: "Overlay network {{ uptime_kuma_edge_network }} not found: deploy the alerting stack first (make alerting)."
+    quiet: true
+
+- name: Pin the stack to its node
+  community.docker.docker_node:
+    hostname: "{{ uptime_kuma_node }}"
+    labels:
+      homelab.uptime: "true"
+    labels_state: merge
+
+- name: Create the stack directory
+  ansible.builtin.file:
+    path: "{{ uptime_kuma_stack_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Render the stack file
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ uptime_kuma_stack_dir }}/compose.yml"
+    owner: root
+    group: root
+    mode: "0640"
+
+- name: Deploy the stack
+  community.docker.docker_stack:
+    name: "{{ uptime_kuma_stack_name }}"
+    compose:
+      - "{{ uptime_kuma_stack_dir }}/compose.yml"
+    prune: true
+    state: present

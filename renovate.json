@@ -179,6 +179,14 @@
     },
     {
       "matchDepNames": [
+        "louislam/uptime-kuma"
+      ],
+      "prBodyNotes": [
+        "Swarm stack: after merging run `make uptime`. Major versions migrate the database at start (docs/uptime.md)."
+      ]
+    },
+    {
+      "matchDepNames": [
         "argo-cd"
       ],
       "prBodyNotes": [

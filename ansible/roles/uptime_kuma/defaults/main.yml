@@ -1,0 +1,23 @@
+---
+# Swarm stack "uptime": Uptime Kuma, the lab seen from outside Kubernetes.
+# Checks are set up in its UI (docs/uptime.md); notifications go to ntfy.
+
+uptime_kuma_domain: lab.theloomlabs.org
+uptime_kuma_host: "status.{{ uptime_kuma_domain }}"
+
+# Monitors, history and settings live in SQLite in a local Docker volume, so
+# the service runs on this one node (label homelab.uptime=true). Not the node
+# the lab names of the alerting stack point at (dns/records.yml): a container
+# can't reach its own node's published ports, so its checks of ntfy and hc
+# would fail there.
+uptime_kuma_node: "{{ groups['swarm_managers'] | last }}"
+
+# slim: no embedded MariaDB, no Chromium (no browser checks); rootless: runs
+# as the image's `node` user.
+uptime_kuma_image: louislam/uptime-kuma:2.5.6-slim-rootless
+
+# Traefik's overlay network (role alerting, alerting_edge_network).
+uptime_kuma_edge_network: edge
+
+uptime_kuma_stack_name: uptime
+uptime_kuma_stack_dir: /opt/stacks/uptime
