@@ -86,7 +86,7 @@ For a stack in Portainer:
 
 - Prefer **Repository** (Git) over the web editor: the compose file lives in Git and Portainer can redeploy on changes (polling or webhook). Web-editor stacks exist only in Portainer's database.
 - Names must not collide with Ansible's stacks.
-- Behind Traefik: join the external network `edge` and add the Traefik labels under `deploy.labels`, like `ansible/roles/uptime_kuma/templates/compose.yml.j2`. A new name needs a CNAME in `dns/records.yml` (or uses the Kubernetes wildcard by mistake).
+- Behind Traefik: join the external network `edge` and add the Traefik labels under `deploy.labels`, like `ansible/roles/uptime_kuma/templates/compose.yml.j2`. A new name needs a CNAME to `swarm` in `dns/records.yml` (or uses the Kubernetes wildcard by mistake), and for calls from other containers an entry in `edge_hosts` (role edge, [edge.md](edge.md)).
 - A stack with state in a local volume needs a placement constraint, or it starts empty on another node after a restart.
 - Renovate doesn't see these images. Anything that turns out to be kept becomes an Ansible role (or moves to Kubernetes).
 - Their compose files and settings are in `portainer_portainer-data`: Swarm stack backups (Phase 3, `swarm_backup`) include that volume.

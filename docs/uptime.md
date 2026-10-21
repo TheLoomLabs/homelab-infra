@@ -9,7 +9,7 @@ The checks and the ntfy notification are code: **AutoKuma**, a second service in
 | Stack definition | `ansible/roles/uptime_kuma` (`templates/compose.yml.j2`), `ansible/playbooks/uptime.yml`, `make uptime` |
 | Monitors, defaults, ntfy settings | `uptime_kuma_monitors`, `uptime_kuma_monitor_defaults`, `uptime_kuma_ntfy_*` in `ansible/roles/uptime_kuma/defaults/main.yml` |
 | Images | `uptime_kuma_image` (slim, rootless), `uptime_kuma_autokuma_image` in the same file |
-| DNS name | `status` in `dns/records.yml`, CNAME like the alerting names |
+| DNS name | `status` in `dns/records.yml`, CNAME to the Swarm VIP like the other Swarm names ([edge.md](edge.md)) |
 | ntfy token | `alerting_ntfy_token_uptime` in `swarm/alerting.sops.yaml` (ntfy reads its tokens from the alerting stack's config) |
 | AutoKuma's login (the admin account) | `swarm/uptime.sops.yaml` |
 
@@ -17,9 +17,9 @@ The checks and the ntfy notification are code: **AutoKuma**, a second service in
 |---|---|
 | https://status.lab.theloomlabs.org | the admin account created at the first visit |
 
-Monitors, history and settings are in SQLite in the local volume `uptime_kuma-data`; AutoKuma keeps the map from its IDs to Uptime Kuma's in `uptime_autokuma-data`. Both services run on one node: `uptime_kuma_node`, the last Swarm manager by default, labelled `homelab.uptime=true`. It must not be the node the `ntfy`/`hc` CNAMEs point at: a container can't reach its own node's published ports, so its checks of ntfy and hc (and its notifications) would fail there.
+Monitors, history and settings are in SQLite in the local volume `uptime_kuma-data`; AutoKuma keeps the map from its IDs to Uptime Kuma's in `uptime_autokuma-data`. Both services run on one node: `uptime_kuma_node`, the last Swarm manager by default, labelled `homelab.uptime=true`. Its checks of the Swarm names (ntfy, hc, portainer) and its notifications reach Traefik over the `edge` network: those names are network aliases of Traefik there (`edge_hosts`, role edge). Only the `swarm-vip` monitor goes through the VIP, like a browser on the LAN.
 
-There is no backup of the volumes yet (Swarm stack backups come later in Phase 3). Losing them costs the history only: a new admin account and `make uptime` bring back every monitor.
+Both volumes are backed up every night ([swarm-backup.md](swarm-backup.md)). Even without the backup, losing them costs the history only: a new admin account and `make uptime` bring back every monitor.
 
 ## Who watches whom
 
@@ -112,6 +112,7 @@ Defined in `uptime_kuma_monitors` (role defaults). Each key is AutoKuma's ID: re
 | `ntfy` | keyword | `https://ntfy…/v1/health` contains `"healthy":true` |
 | `healthchecks` | http | `https://hc…/` (follows the redirect to the login page) |
 | `dns-01`, `dns-02` | dns | each BIND server answers `k8s-api.lab.theloomlabs.org` |
+| `swarm-vip` | keyword | `http://swarm…:8082/ping` returns `OK`: Traefik on whichever manager holds the Swarm VIP. When that is swarm-m-03, this also tests that a container can reach the VIP on its own node ([edge.md](edge.md)) |
 | `portainer` | keyword | `https://portainer…/api/system/status` contains `"Version"` (no login) |
 | `proxmox` | http | `https://pve…:8006/` (TLS not verified: self-signed) |
 
@@ -142,5 +143,6 @@ ssh -t ops@swarm-m-03.lab.theloomlabs.org 'docker exec -it $(docker ps -q -f nam
 - **Notification test fails with 403:** ntfy doesn't know `alerting_ntfy_token_uptime` yet: `make alerting`.
 - **A monitor changed in the UI changes back:** AutoKuma owns it. Change it in `uptime_kuma_monitors` instead, or create your own monitor in the UI.
 - **Monitors missing:** `docker service logs uptime_autokuma`. A file it can't parse is logged with its name (`/run/secrets/<id>.json`) and skipped.
-- **ntfy/hc checks fail but the sites work from the workstation:** the service runs on the node the CNAMEs point at (hairpin). Check the `NODE` column of `docker stack ps uptime`.
+- **ntfy/hc/portainer checks fail but the sites work from the workstation:** the name is missing from `edge_hosts` (role edge), so Uptime Kuma goes through the VIP instead of the `edge` network. `make edge` after adding it.
+- **`swarm-vip` fails only while swarm-m-03 holds the VIP:** UFW drops containers calling their own node (`edge_container_cidrs`, "Hairpin" in [edge.md](edge.md)).
 - **Task stays `Pending`:** no node has the `homelab.uptime=true` label: `docker node ls --filter node.label=homelab.uptime=true`.

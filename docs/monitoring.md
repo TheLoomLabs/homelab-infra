@@ -198,7 +198,7 @@ Prometheus on Kubernetes also scrapes the five VMs outside the cluster (dns-01, 
 | `alloy-vm` | all five | Alloy itself | 12345, `/metrics` |
 | `docker-cadvisor` | Swarm | Alloy's built-in cAdvisor (`prometheus.exporter.cadvisor`), Docker containers only | 12345, `/api/v0/component/prometheus.exporter.cadvisor.containers/metrics` |
 | `docker-engine` | Swarm | dockerd (`metrics-addr` in daemon.json, role `docker`): engine, and on managers the Swarm (`swarm_manager_*`, Raft) | 9323, `/metrics` |
-| `traefik` | alerting node | Traefik of the alerting stack, own entrypoint, host-mode port | 8082, `/metrics` |
+| `traefik` | Swarm managers | Traefik of the edge stack (global service), own entrypoint, host-mode port | 8082, `/metrics` |
 
 - **Targets are static** (`scrapeconfig-vms.yaml`, ScrapeConfig CRD): the VMs' LAN addresses, with the labels `host` (VM name, also used as `instance`) and `group` (`dns`, `swarm`). A new or re-addressed VM means changing that file and the `prometheus` network policy (egress `toCIDR` per address and port).
 - **Host metrics use job `node-exporter`**, like the cluster nodes. kube-prometheus-stack's node alerts (disk filling up, memory, clock, network errors), its recording rules and the *Node Exporter / Nodes* and *USE Method* dashboards cover the VMs without new rules. Pick the VM as instance there.
@@ -218,7 +218,11 @@ Alerts (`vms-prometheusrule.yaml`):
 | SwarmServiceReplicasMismatch | warning | A service (not a job) runs fewer tasks than desired for 5 minutes |
 | SwarmServiceMetricsStale | warning | A manager's replica file is older than 5 minutes, or no manager writes one |
 | DockerContainerOOMKilled | warning | A container hit its memory limit |
-| TraefikCertificateExpiringSoon | warning | The wildcard certificate has under 14 days left (Traefik renews at 30) |
+| SwarmVipDown, SwarmVipSplitBrain | critical | No manager holds the Swarm VIP for 2 minutes, or more than one does for 1 minute (keepalived textfile metrics, [edge.md](edge.md)) |
+| SwarmVipNodeFault | warning | A manager's Traefik fails keepalived's check for 5 minutes: the VIP can't move there |
+| EdgeCertRenewalFailing | warning | edge-cert hasn't succeeded anywhere for two days, or never reported |
+| TraefikCertificateExpiringSoon | warning | The wildcard certificate has under 14 days left (edge-cert renews with a third of the lifetime left, 30 of 90 days) |
+| TraefikCertificateMismatch | warning | The Traefik instances serve different certificates for 2 hours (a renewal's rolling update stopped) |
 
 ### Roll out
 
@@ -228,10 +232,10 @@ Alerts (`vms-prometheusrule.yaml`):
 make swarm
 ```
 
-2. Traefik's metrics entrypoint (redeploys the alerting stack):
+2. Traefik's metrics entrypoint (since Swarm HA: the edge stack, [edge.md](edge.md)):
 
 ```bash
-make alerting
+make edge
 ```
 
 3. Alloy on the VMs: listens on the VM address, host and container metrics, replica timer on the managers.
@@ -249,7 +253,7 @@ for h in dns-01 dns-02 swarm-m-01 swarm-m-02 swarm-m-03; do \
   http://$h.lab.theloomlabs.org:12345/api/v0/component/prometheus.exporter.unix.node/metrics; \
 done
 curl -s http://swarm-m-01.lab.theloomlabs.org:9323/metrics | grep -E '^swarm_manager_(leader|nodes)'
-curl -s http://swarm-m-01.lab.theloomlabs.org:8082/metrics | grep -c '^traefik_'
+curl -s http://swarm.lab.theloomlabs.org:8082/metrics | grep -c '^traefik_'   # Traefik behind the VIP
 curl -s http://swarm-m-01.lab.theloomlabs.org:12345/api/v0/component/prometheus.exporter.unix.node/metrics \
   | grep '^swarm_service_replicas'
 ```
@@ -263,8 +267,8 @@ Expected: `200` five times; one manager with `swarm_manager_leader 1`, `swarm_ma
 ```bash
 kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 19090:9090 &
 # http://localhost:19090/targets → scrapeConfig/monitoring/vm-node 5/5, vm-alloy 5/5,
-#                                  docker-cadvisor 3/3, docker-engine 3/3, traefik 1/1 UP
-# http://localhost:19090/rules   → groups vms, swarm, traefik
+#                                  docker-cadvisor 3/3, docker-engine 3/3, traefik 3/3 UP
+# http://localhost:19090/rules   → groups vms, swarm, swarm-backup, swarm-edge
 kill $!
 ```
 

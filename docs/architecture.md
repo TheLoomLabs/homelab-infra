@@ -11,6 +11,7 @@ A single Proxmox VE node with 64 GB+ RAM. Every VM uses the same Ubuntu 24.04 LT
 | k8s-wk-01..02 | Kubernetes workers, Longhorn storage | 4 | 12 GB | 80 GB + 100 GB data disk | .31–.32 |
 | swarm-m-01..03 | Swarm managers (also run workloads) | 2 | 4 GB | 40 GB | .41–.43 |
 | — | Kubernetes API VIP (kube-vip) | | | | .20 |
+| — | Swarm VIP (keepalived): Traefik for the Swarm stacks | | | | .40 |
 
 That adds up to about 42 GB of RAM. The rest stays free for the Proxmox host and for later additions such as more workers. Each node is one entry in the `nodes` map in `terraform/envs/homelab/variables.tf`.
 
@@ -147,7 +148,7 @@ kube-prometheus-stack runs in the namespace `monitoring` (ADR 0011). The receive
 - **Prometheus** scrapes nodes, workloads and every ServiceMonitor in the cluster. Components ship their own ServiceMonitors and PrometheusRules next to their manifests: Longhorn (failed backups, unreachable backup target, degraded or faulted volumes, disk usage) and Velero (failed or missing nightly backup, unreachable R2). Metrics are kept 15 days on the plain `longhorn` class; Velero skips the namespace. Outside the cluster it scrapes the DNS and Swarm VMs: host and container metrics from Alloy, the Docker engines (Swarm Raft, nodes, tasks), replicas per Swarm service and Traefik ([monitoring.md](monitoring.md#vms-outside-kubernetes-dns-and-swarm)).
 - **Grafana** is at `https://grafana.lab.theloomlabs.org`. Prometheus and Alertmanager have no authentication and are reached with `kubectl port-forward` until SSO exists.
 - **Alertmanager** posts warnings and critical alerts to **ntfy** (`ntfy.lab.theloomlabs.org`); the phone subscribes with the ntfy app. The always-firing `Watchdog` alert pings **healthchecks** (`hc.lab.theloomlabs.org`) every minute; when the pings stop, healthchecks alerts through ntfy. That is the dead man's switch for the cluster.
-- ntfy, healthchecks and **Traefik** (TLS, wildcard certificate via Cloudflare DNS-01) are the Swarm stack `alerting`, deployed by Ansible (role `alerting`). Their state is in local volumes on one Swarm node.
+- ntfy and healthchecks are the Swarm stack `alerting`, deployed by Ansible (role `alerting`). Their state is in local volumes on one Swarm node.
 - **Uptime Kuma** (Swarm stack `uptime`, role `uptime_kuma`) checks the lab from outside Kubernetes: the API VIP, web UIs through the Gateway and Traefik, both DNS servers, the Proxmox UI. It notifies through ntfy, so a dead Gateway or app is reported even when Prometheus can't see it. The monitors and the notification are a list in the role, applied by AutoKuma next to it; Prometheus in turn alerts when Uptime Kuma's replica or node is down ([uptime.md](uptime.md)).
 - Not covered: the whole Proxmox host, power or the Starlink link going down. Nothing on the host can report that; the stack moves to a second machine later.
 
@@ -169,4 +170,10 @@ Runbook: [logging.md](logging.md).
 
 Many companies still run Docker Swarm or plain Docker hosts and are moving to Kubernetes. Running both lets me practise that move end to end: run a service on Swarm, then migrate it to Kubernetes with a written plan, data migration, cutover and rollback.
 
-On Swarm, Ansible deploys the lab's own stacks (`alerting`, `uptime`, `portainer`, later Mattermost). **Portainer CE** (Swarm stack `portainer`, role `portainer`) is the web UI for the swarm: an agent on every node gives it all containers, volumes and logs, and it also deploys test stacks, preferably from Git. Ansible's stacks show as limited there and are changed only through Ansible ([portainer.md](portainer.md)).
+On Swarm, Ansible deploys the lab's own stacks (`edge`, `alerting`, `uptime`, `portainer`, later Mattermost). **Portainer CE** (Swarm stack `portainer`, role `portainer`) is the web UI for the swarm: an agent on every node gives it all containers, volumes and logs, and it also deploys test stacks, preferably from Git. Ansible's stacks show as limited there and are changed only through Ansible ([portainer.md](portainer.md)).
+
+### The way into the Swarm stacks
+
+Every Swarm app name (`ntfy`, `hc`, `status`, `portainer`) is a CNAME to `swarm.lab.theloomlabs.org`, the Swarm VIP (`.40`, ADR 0017, [edge.md](edge.md)). keepalived on the three managers holds it on one node whose Traefik answers, and moves it within seconds when that Traefik or node fails. **Traefik** runs on every manager (stack `edge`, global service, host-mode ports) and routes over the `edge` overlay network to the node the app runs on. Its wildcard certificate (Let's Encrypt, Cloudflare DNS-01) is kept in the Swarm by `edge-cert`, a timer on every manager that only acts on the Raft leader: one issuer, no shared storage.
+
+So the entry point survives the loss of any one manager. The apps themselves don't: ntfy, healthchecks, Uptime Kuma and Portainer keep SQLite or BoltDB files in local volumes and stay pinned to one node each. Losing a node takes down only what is pinned there; it comes back with the node, or on another node from the nightly backup ([swarm-backup.md](swarm-backup.md)). Shared storage would remove that step but adds a new single point of failure on one physical host, and SQLite over NFS is unsafe.

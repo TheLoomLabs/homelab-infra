@@ -1,6 +1,6 @@
 # Swarm volume backups (restic → R2)
 
-The Swarm stacks keep their state in local Docker volumes on the node they are pinned to (SQLite for ntfy, healthchecks and Uptime Kuma, BoltDB for Portainer, Traefik's `acme.json`). Kubernetes data is covered by Longhorn and Velero ([backup.md](backup.md)); this covers the Swarm side.
+The Swarm stacks keep their state in local Docker volumes on the node they are pinned to (SQLite for ntfy, healthchecks and Uptime Kuma, BoltDB for Portainer). Traefik has no volume: its certificate lives in the Swarm itself ([edge.md](edge.md)). Kubernetes data is covered by Longhorn and Velero ([backup.md](backup.md)); this covers the Swarm side.
 
 Every night a systemd timer on each Swarm node backs up, with restic, the volumes whose service runs on that node, to the Cloudflare R2 bucket `theloomlabs-swarm-backup`. An R2 bucket lock with no expiry keeps every snapshot: the nodes can add backups but can't delete or overwrite them, even with their own token. Old snapshots are removed by hand once a quarter ([Maintenance](#maintenance-quarterly)).
 
@@ -16,13 +16,12 @@ Every night a systemd timer on each Swarm node backs up, with restic, the volume
 
 | Group | Volumes | Node | Stopped during backup |
 |---|---|---|---|
-| traefik | `alerting_traefik-acme` | swarm-m-01 | no (Traefik writes it only on renewal) |
 | ntfy | `alerting_ntfy-data` | swarm-m-01 | yes |
 | healthchecks | `alerting_healthchecks-data` | swarm-m-01 | yes |
 | uptime | `uptime_kuma-data`, `uptime_autokuma-data` | swarm-m-03 | yes (AutoKuma, then Uptime Kuma) |
 | portainer | `portainer_portainer-data` (includes the compose files of stacks deployed from Portainer) | swarm-m-02 | yes |
 
-Not backed up: the stacks themselves (they are in Git and redeployed by Ansible), the Swarm secrets (from SOPS), Portainer's agent (no state).
+Not backed up: the stacks themselves (they are in Git and redeployed by Ansible), the Swarm secrets (from SOPS), Portainer's agent (no state), Traefik's certificate (a Swarm config and secret; edge-cert gets a new one if the Swarm is rebuilt). Snapshots of the old `alerting_traefik-acme` volume (before Swarm HA) stay in the repository until the quarterly prune.
 
 ## How it works
 

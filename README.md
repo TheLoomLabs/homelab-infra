@@ -26,8 +26,8 @@ Proxmox VE ──Terraform──▶ 10 Ubuntu VMs ──Ansible──▶ hardene
 | Backups | Velero + CSI snapshots, restic (role `swarm_backup`) | Nightly cluster backups to R2 (objects **SSE-C encrypted**), volumes backed up by Longhorn through CSI VolumeSnapshots; restore tested end to end. **Swarm volumes**: nightly restic snapshots to R2 behind a **bucket lock with no expiry** (the nodes can't delete their own backups), weekly `restic check`, stale-backup alerts |
 | Monitoring | kube-prometheus-stack (Argo CD), roles `alloy`, `docker` | Prometheus, Alertmanager, Grafana; components ship their own ServiceMonitors and rules, **alerts on failed or missing backups**, degraded volumes and the usual cluster health; **the DNS and Swarm VMs too**: host and container metrics, Swarm Raft and service replicas, Traefik |
 | Logs | Loki + Grafana Alloy (Argo CD), role `alloy` | Pod logs, node journals and Kubernetes events from the cluster, **journal and Swarm container logs from the VMs**; 15 days in Loki, queried in Grafana |
-| Alerting | Swarm stack: Traefik, ntfy, healthchecks (role `alerting`) | **Self-hosted, no SaaS:** push to the phone via ntfy, **dead man's switch** on healthchecks outside Kubernetes, so a dead cluster is still reported |
-| Swarm | Ansible roles `docker`, `swarm`, `alerting`, `uptime_kuma`, `portainer` | Docker CE, 3-manager Raft quorum, node labels; Traefik with a wildcard cert for Swarm stacks; **Uptime Kuma** checks the lab from outside Kubernetes and reports through ntfy, its monitors defined in Ansible (AutoKuma); **Portainer CE** with an agent on every node, admin created from SOPS |
+| Alerting | Swarm stack: ntfy, healthchecks (role `alerting`) | **Self-hosted, no SaaS:** push to the phone via ntfy, **dead man's switch** on healthchecks outside Kubernetes, so a dead cluster is still reported |
+| Swarm | Ansible roles `docker`, `swarm`, `edge`, `alerting`, `uptime_kuma`, `portainer` | Docker CE, 3-manager Raft quorum, node labels; **HA entry point: keepalived VIP + Traefik on every manager**, one wildcard cert issued by the Raft leader and kept in the Swarm (lego, Cloudflare DNS-01); **Uptime Kuma** checks the lab from outside Kubernetes and reports through ntfy, its monitors defined in Ansible (AutoKuma); **Portainer CE** with an agent on every node, admin created from SOPS |
 | Quality | GitHub Actions, pre-commit | `terraform fmt/validate`, tflint, yamllint, ansible-lint (production profile), gitleaks, SOPS encryption check; **every Argo CD app rendered and validated** with kubeconform against schemas generated from the pinned CRDs, plus `promtool check rules`, AppProject limits, Pod Security labels and a default-deny network policy per namespace; actions pinned to commit SHAs, self-hosted Renovate, weekly Trivy image scan to code scanning ([docs/ci.md](docs/ci.md)) |
 
 ## Architecture
@@ -51,10 +51,11 @@ flowchart LR
       D1[dns-01<br/>primary] -- AXFR + TSIG --> D2[dns-02<br/>secondary]
     end
     subgraph SW[Docker Swarm]
-      M1[swarm-m-01]
-      M2[swarm-m-02]
-      M3[swarm-m-03]
-      AL[alerting stack<br/>Traefik · ntfy · healthchecks]
+      SVIP((Swarm VIP<br/>.40))
+      M1[swarm-m-01<br/>Traefik] --- SVIP
+      M2[swarm-m-02<br/>Traefik] --- SVIP
+      M3[swarm-m-03<br/>Traefik] --- SVIP
+      AL[alerting stack<br/>ntfy · healthchecks]
       UK[Uptime Kuma]
       PT[Portainer<br/>+ agent per node]
     end
@@ -66,7 +67,8 @@ flowchart LR
   DB -- Ansible SSH --> SW
   DB -- kubectl --> VIP
   RT[Starlink router<br/>Custom DNS] -- DNS --> DNS
-  K8S -- alerts + Watchdog --> AL
+  K8S -- alerts + Watchdog --> SVIP
+  SVIP -- edge network --> AL
   K8S -. logs .-> LK
   SW -. logs .-> LK
   DNS -. logs .-> LK
@@ -86,7 +88,8 @@ More detail is in [docs/architecture.md](docs/architecture.md). The design decis
 | [backup.md](docs/backup.md) | Velero: schedule, restores, disaster recovery |
 | [swarm-backup.md](docs/swarm-backup.md) | Swarm volumes: restic to R2, bucket lock, restores, quarterly maintenance |
 | [monitoring.md](docs/monitoring.md) | Prometheus, Alertmanager, Grafana: alert routing, checks, testing the alert path |
-| [alerting.md](docs/alerting.md) | Swarm alerting stack: ntfy, healthchecks, Traefik; phone setup, rebuild |
+| [edge.md](docs/edge.md) | Swarm entry point: VIP (keepalived), Traefik on every manager, the shared certificate, failover tests |
+| [alerting.md](docs/alerting.md) | Swarm alerting stack: ntfy, healthchecks; phone setup, rebuild |
 | [uptime.md](docs/uptime.md) | Uptime Kuma on Swarm: setup, monitors as code (AutoKuma), ntfy notification |
 | [portainer.md](docs/portainer.md) | Portainer on Swarm: setup, admin password, stacks from the UI next to Ansible's |
 | [logging.md](docs/logging.md) | Loki and Alloy: labels, push secret, checks, example queries |
@@ -115,7 +118,7 @@ make tf-plan && make tf-apply     # also writes ansible/inventory/hosts.yml
 make ping
 age-keygen -o .artifacts/age.key  # once, then back it up (docs/secrets.md)
 # once: k8s/encryption.sops.yaml, the etcd encryption key (docs/encryption.md)
-make site                         # base + DNS + Kubernetes + Longhorn node prep + age key + Argo CD + Swarm + alerting stack + Uptime Kuma + Portainer + log shipping + Swarm volume backups
+make site                         # base + DNS + Kubernetes + Longhorn node prep + age key + Argo CD + Swarm + log shipping + edge (VIP, Traefik) + alerting stack + Uptime Kuma + Portainer + Swarm volume backups
 
 # 5. Use it
 kubectl get nodes -o wide         # KUBECONFIG is set by devbox
@@ -145,11 +148,11 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 │   ├── modules/proxmox-vm/     # one VM: disk import, cloud-init snippet, network
 │   └── envs/homelab/           # the lab: node map → VMs → Ansible inventory
 ├── ansible/
-│   ├── playbooks/              # site, base, dns, kubernetes, encryption, pod-security, audit, cilium, longhorn, sops, argocd, swarm, alerting, uptime, portainer, logs, swarm-backup, reboot
+│   ├── playbooks/              # site, base, dns, kubernetes, encryption, pod-security, audit, cilium, longhorn, sops, argocd, swarm, logs, edge, alerting, uptime, portainer, swarm-backup, reboot
 │   ├── roles/                  # common, hardening, bind, docker, swarm, k8s_prereqs,
 │   │                           # k8s_control_plane, k8s_worker, cilium, longhorn_node,
-│   │                           # sops_age, argocd, alerting, uptime_kuma, portainer, alloy,
-│   │                           # swarm_backup
+│   │                           # sops_age, argocd, edge, alerting, uptime_kuma, portainer,
+│   │                           # alloy, swarm_backup
 │   └── inventory/group_vars/   # versions and CIDRs
 ├── dns/                        # lab zone records + SOPS-encrypted TSIG key
 ├── swarm/                      # SOPS-encrypted secrets of the Swarm stacks
@@ -160,7 +163,7 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 │   └── platform/               # Helm values, manifests and *.sops.yaml secrets per component
 ├── scripts/                    # check-manifests.py (make manifests), scan-images.py (make images), hubble-flows.py, swarm-restic.sh
 └── docs/                       # architecture, bootstrap, runbooks (dns, secrets, storage,
-                                # backup, swarm-backup, monitoring, alerting, uptime, portainer, logging, ci, maintenance, encryption,
+                                # backup, swarm-backup, monitoring, edge, alerting, uptime, portainer, logging, ci, maintenance, encryption,
                                 # pod-security, network-policy, audit-logging), ADRs, roadmap
 ```
 

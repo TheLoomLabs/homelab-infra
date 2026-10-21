@@ -36,7 +36,7 @@ Notes:
 
 - A full run takes about 20–30 minutes. Most of it is the workers: Longhorn rebuilds the replicas of a returning worker before the next one is drained.
 - Alerts can fire while a node is down (targets down, etcd member down, Longhorn volume degraded). They resolve on their own. For a quiet run, add a silence in Alertmanager first.
-- Rebooting `swarm-m-01` restarts the alerting stack (ntfy, healthchecks, Traefik are pinned there), so notifications pause for a minute or two.
+- Rebooting `swarm-m-01` restarts the alerting stack (ntfy and healthchecks are pinned there), so notifications pause for a minute or two. Rebooting the node that holds the Swarm VIP moves the VIP to another manager within a few seconds; the other Swarm UIs stay reachable ([edge.md](edge.md)).
 - The Proxmox host itself is not part of this play.
 
 ## Resizing a VM
