@@ -28,6 +28,7 @@ Proxmox VE ──Terraform──▶ 10 Ubuntu VMs ──Ansible──▶ hardene
 | Logs | Loki + Grafana Alloy (Argo CD), role `alloy` | Pod logs, node journals and Kubernetes events from the cluster, **journal and Swarm container logs from the VMs**; 15 days in Loki, queried in Grafana |
 | Alerting | Swarm stack: ntfy, healthchecks (role `alerting`) | **Self-hosted, no SaaS:** push to the phone via ntfy, **dead man's switch** on healthchecks outside Kubernetes, so a dead cluster is still reported |
 | Swarm | Ansible roles `docker`, `swarm`, `edge`, `alerting`, `uptime_kuma`, `portainer` | Docker CE, 3-manager Raft quorum, node labels; **HA entry point: keepalived VIP + Traefik on every manager**, one wildcard cert issued by the Raft leader and kept in the Swarm (lego, Cloudflare DNS-01); **Uptime Kuma** checks the lab from outside Kubernetes and reports through ntfy, its monitors defined in Ansible (AutoKuma); **Portainer CE** with an agent on every node, admin created from SOPS |
+| Apps (Phase 3) | Argo CD project `apps` | **Vaultwarden** (password manager) on Kubernetes: SQLite on an encrypted Longhorn volume, no egress, signups off; nightly consistent dump + **restic to its own locked R2 bucket**, independent of the Longhorn key |
 | Quality | GitHub Actions, pre-commit | `terraform fmt/validate`, tflint, yamllint, ansible-lint (production profile), gitleaks, SOPS encryption check; **every Argo CD app rendered and validated** with kubeconform against schemas generated from the pinned CRDs, plus `promtool check rules`, AppProject limits, Pod Security labels and a default-deny network policy per namespace; actions pinned to commit SHAs, self-hosted Renovate, weekly Trivy image scan to code scanning ([docs/ci.md](docs/ci.md)) |
 
 ## Architecture
@@ -92,6 +93,7 @@ More detail is in [docs/architecture.md](docs/architecture.md). The design decis
 | [alerting.md](docs/alerting.md) | Swarm alerting stack: ntfy, healthchecks; phone setup, rebuild |
 | [uptime.md](docs/uptime.md) | Uptime Kuma on Swarm: setup, monitors as code (AutoKuma), ntfy notification |
 | [portainer.md](docs/portainer.md) | Portainer on Swarm: setup, admin password, stacks from the UI next to Ansible's |
+| [vaultwarden.md](docs/vaultwarden.md) | Vaultwarden on Kubernetes: setup, users, clients, backups (dump + restic), restores |
 | [logging.md](docs/logging.md) | Loki and Alloy: labels, push secret, checks, example queries |
 | [maintenance.md](docs/maintenance.md) | Rolling reboots (kernel updates, network changes) |
 | [encryption.md](docs/encryption.md) | Encryption at rest for Secrets and ConfigMaps: rollout, checks, key rotation |
@@ -160,10 +162,11 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 ├── k8s/                        # SOPS-encrypted key for encryption at rest in etcd
 ├── kubernetes/
 │   ├── apps/                   # Argo CD Applications + AppProjects (app of apps, synced from main)
-│   └── platform/               # Helm values, manifests and *.sops.yaml secrets per component
-├── scripts/                    # check-manifests.py (make manifests), scan-images.py (make images), hubble-flows.py, swarm-restic.sh
+│   ├── platform/               # Helm values, manifests and *.sops.yaml secrets per component
+│   └── services/               # Phase 3 apps (project apps): plain manifests per app
+├── scripts/                    # check-manifests.py (make manifests), scan-images.py (make images), hubble-flows.py, swarm-restic.sh, vaultwarden-restic.sh
 └── docs/                       # architecture, bootstrap, runbooks (dns, secrets, storage,
-                                # backup, swarm-backup, monitoring, edge, alerting, uptime, portainer, logging, ci, maintenance, encryption,
+                                # backup, swarm-backup, monitoring, edge, alerting, uptime, portainer, vaultwarden, logging, ci, maintenance, encryption,
                                 # pod-security, network-policy, audit-logging), ADRs, roadmap
 ```
 

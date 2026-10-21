@@ -1,6 +1,6 @@
 # Backups (Velero)
 
-Swarm volumes are covered separately: [swarm-backup.md](swarm-backup.md).
+Swarm volumes are covered separately: [swarm-backup.md](swarm-backup.md). Vaultwarden adds its own app-level backup (consistent dump + restic to R2) on top of this: [vaultwarden.md](vaultwarden.md#backups).
 
 Velero backs up the Kubernetes objects of the cluster to Cloudflare R2 every night and, through CSI VolumeSnapshots, has Longhorn back up every volume at the same time (ADR 0010). One Velero backup can restore a whole namespace: objects, PVCs and the data behind them.
 
@@ -21,7 +21,7 @@ Velero backs up the Kubernetes objects of the cluster to Cloudflare R2 every nig
 
 Each bucket has its own R2 token, limited to that bucket. The R2 account ID only exists inside the encrypted Secrets.
 
-**Keys to keep offline**, next to the age key: the SSE-C key, the Longhorn key and the restic password of the Swarm backups ([swarm-backup.md](swarm-backup.md)). Without them, the backups can't be read.
+**Keys to keep offline**, next to the age key: the SSE-C key, the Longhorn key and the restic passwords of the Swarm backups ([swarm-backup.md](swarm-backup.md)) and the Vaultwarden backup ([vaultwarden.md](vaultwarden.md)). Without them, the backups can't be read.
 
 ```bash
 sops decrypt kubernetes/platform/velero/r2-credentials.sops.yaml | grep customer-key
