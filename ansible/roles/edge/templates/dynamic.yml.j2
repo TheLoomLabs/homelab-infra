@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+# Traefik file provider (role edge): the wildcard certificate from edge-cert,
+# for every router on websecure and for clients without SNI.
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/traefik/tls/tls.crt
+        keyFile: /run/secrets/tls.key
+  options:
+    default:
+      minVersion: VersionTLS12

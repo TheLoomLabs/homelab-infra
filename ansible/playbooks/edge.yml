@@ -1,0 +1,15 @@
+---
+# Swarm stack "edge": keepalived VIP, Traefik on every manager, one shared
+# wildcard certificate (docs/edge.md, ADR 0017). Needs Alloy on the nodes
+# (make logs: textfile directory), swarm_vip in the inventory (terraform apply)
+# and swarm/edge.sops.yaml.
+- name: Docker Swarm | Edge (VIP, Traefik, certificate)
+  hosts: swarm_managers
+  become: true
+  pre_tasks:
+    - name: Load the Cloudflare token (swarm/edge.sops.yaml, decrypted with the age key)
+      community.sops.load_vars:
+        file: "{{ playbook_dir }}/../../swarm/edge.sops.yaml"
+      no_log: true
+  roles:
+    - edge

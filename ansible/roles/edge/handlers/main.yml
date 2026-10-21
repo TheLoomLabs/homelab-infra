@@ -1,0 +1,6 @@
+---
+# Reload keeps the VIP where it is unless the new config moves it.
+- name: Reload keepalived
+  ansible.builtin.systemd_service:
+    name: keepalived
+    state: reloaded

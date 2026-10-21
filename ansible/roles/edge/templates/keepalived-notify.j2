@@ -1,0 +1,28 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# keepalived calls this on every state change: notify TYPE NAME STATE PRIORITY.
+# Writes the state as Prometheus metrics for Alloy (SwarmVip* alerts).
+set -eu
+[ "$1" = INSTANCE ] || exit 0
+name=$2
+state=$3
+dir={{ edge_textfile_dir }}
+[ -d "$dir" ] || exit 0
+master=0; fault=0
+[ "$state" = MASTER ] && master=1
+[ "$state" = FAULT ] && fault=1
+tmp=$(mktemp "$dir/.keepalived.XXXXXX")
+cat > "$tmp" <<EOF
+# HELP keepalived_vrrp_master 1 if this node holds the VRRP instance's VIP.
+# TYPE keepalived_vrrp_master gauge
+keepalived_vrrp_master{vrrp_instance="$name"} $master
+# HELP keepalived_vrrp_fault 1 if this node can't hold the VIP (its check fails).
+# TYPE keepalived_vrrp_fault gauge
+keepalived_vrrp_fault{vrrp_instance="$name"} $fault
+# HELP keepalived_vrrp_state_change_timestamp_seconds When the state last changed.
+# TYPE keepalived_vrrp_state_change_timestamp_seconds gauge
+keepalived_vrrp_state_change_timestamp_seconds{vrrp_instance="$name",state="$state"} $(date +%s)
+EOF
+chmod 0644 "$tmp"
+mv "$tmp" "$dir/keepalived.prom"
+logger -t keepalived-notify "$name is now $state"

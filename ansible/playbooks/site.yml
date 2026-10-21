@@ -20,6 +20,13 @@
 - name: Docker Swarm
   ansible.builtin.import_playbook: swarm.yml
 
+# Before the Swarm stacks: edge needs Alloy's textfile directory.
+- name: Log shipping from the VMs
+  ansible.builtin.import_playbook: logs.yml
+
+- name: Edge on Swarm (VIP, Traefik, certificate)
+  ansible.builtin.import_playbook: edge.yml
+
 - name: Alerting stack on Swarm
   ansible.builtin.import_playbook: alerting.yml
 
@@ -28,9 +35,6 @@
 
 - name: Portainer on Swarm
   ansible.builtin.import_playbook: portainer.yml
-
-- name: Log shipping from the VMs
-  ansible.builtin.import_playbook: logs.yml
 
 # After logs.yml: the backup metrics go to Alloy's textfile directory.
 - name: Swarm volume backups

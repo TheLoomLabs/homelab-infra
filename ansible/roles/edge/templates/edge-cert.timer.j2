@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Check the Swarm edge certificate twice a day
+
+[Timer]
+OnCalendar={{ edge_cert_on_calendar }}
+Persistent=true
+RandomizedDelaySec=20min
+
+[Install]
+WantedBy=timers.target

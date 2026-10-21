@@ -1,0 +1,92 @@
+---
+# Swarm stack "edge": the way into every Swarm web UI (docs/edge.md, ADR 0017).
+#   - keepalived on every manager holds the Swarm VIP (swarm_vip, from the
+#     Terraform inventory) on one node whose Traefik answers.
+#   - Traefik runs on every manager (global service, host-mode ports).
+#   - edge-cert, a systemd timer on every manager, keeps one wildcard
+#     certificate in the Swarm (cert as a Swarm config, key as a Swarm secret).
+#     Only the Raft leader acts, so there is one issuer whichever manager is up.
+
+edge_domain: lab.theloomlabs.org
+
+# The VIP and its DNS name (dns/records.yml: swarm A <vip>, the stack names
+# CNAME to it).
+edge_vip: "{{ swarm_vip }}"
+edge_vip_name: "swarm.{{ edge_domain }}"
+
+# VRRP: unicast between the managers' LAN addresses (no multicast on the
+# bridge needed). The ID must be unique among VRRP routers on the LAN; kube-vip
+# (Kubernetes API VIP) uses ARP leader election, not VRRP.
+edge_keepalived_router_id: 41
+edge_keepalived_interface: "{{ ansible_facts['default_ipv4']['interface'] }}"
+# Higher wins when several start at once. nopreempt: a node that comes back
+# doesn't take the VIP away again.
+edge_keepalived_priority: "{{ 150 - groups['swarm_managers'].index(inventory_hostname) * 10 }}"
+# The VIP moves when the local Traefik fails `fall` pings in a row (one every
+# `interval` seconds).
+edge_keepalived_check_interval: 2
+edge_keepalived_check_fall: 2
+edge_keepalived_check_rise: 2
+
+edge_traefik_image: traefik:v3.7.15
+
+# Traefik's Prometheus metrics and /ping (keepalived's check), host mode on
+# every manager.
+edge_traefik_metrics_port: 8082
+
+edge_stack_name: edge
+edge_stack_dir: /opt/stacks/edge
+
+# Overlay network that Traefik routes on. The other Swarm stacks join it.
+edge_network: edge
+
+# Lab names served by this Traefik. They become network aliases of Traefik on
+# the edge network, so a container that calls one reaches Traefik over the
+# overlay, never through the VIP or a published port. Add a new Swarm app's
+# name here and in dns/records.yml.
+edge_hosts:
+  - "ntfy.{{ edge_domain }}"
+  - "hc.{{ edge_domain }}"
+  - "status.{{ edge_domain }}"
+  - "portainer.{{ edge_domain }}"
+
+# A container that calls the VIP or its own node's address arrives at the
+# host from a Docker bridge (docker_gwbridge), not from the LAN, and UFW drops
+# it (role hardening trusts only the LAN). These sources may reach the edge
+# ports. 172.16.0.0/12 holds Docker's default bridge pools.
+edge_container_cidrs:
+  - 172.16.0.0/12
+
+# --- Certificate (edge-cert) -------------------------------------------------
+
+# lego from the GitHub release, checked against the release's checksums.
+# renovate: datasource=github-releases depName=go-acme/lego extractVersion=^v(?<version>.+)$
+edge_lego_version: 5.4.1
+
+# Let's Encrypt (account without e-mail). The DNS-01 propagation check must
+# use public resolvers: BIND answers lab.theloomlabs.org itself (ADR 0007).
+edge_acme_server: https://acme-v02.api.letsencrypt.org/directory
+edge_acme_resolvers: ["1.1.1.1:53", "9.9.9.9:53"]
+
+# One wildcard certificate, like the Kubernetes Gateway: no lab hostnames in
+# the public certificate transparency logs.
+edge_cert_domains:
+  - "{{ edge_domain }}"
+  - "*.{{ edge_domain }}"
+
+# Renew when less than this part of the certificate's lifetime is left: 1/3 is
+# Let's Encrypt's advice (30 days of a 90-day certificate) and follows shorter
+# lifetimes on its own.
+edge_cert_renew_fraction: 0.33
+
+# Twice a day on every manager; only the Raft leader does anything.
+edge_cert_on_calendar: "*-*-* 04,16:20:00 UTC"
+
+# Swarm config/secret name prefix (edge_tls_crt_<sha10>, edge_tls_key_<sha10>).
+edge_cert_prefix: edge_tls
+
+# node_exporter textfile directory of Alloy (role alloy, alloy_textfile_dir).
+edge_textfile_dir: /var/lib/alloy/textfile
+
+# From swarm/edge.sops.yaml (playbooks/edge.yml loads it):
+# edge_cloudflare_api_token (Zone:DNS:Edit on the zone only).

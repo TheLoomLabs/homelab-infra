@@ -1,0 +1,13 @@
+{{ {
+  "domains": edge_cert_domains,
+  "renew_fraction": edge_cert_renew_fraction | float,
+  "acme_server": edge_acme_server,
+  "resolvers": edge_acme_resolvers,
+  "lego_path": "/var/lib/edge-cert/lego",
+  "cloudflare_token_file": "/etc/edge-cert/cloudflare-token",
+  "prefix": edge_cert_prefix,
+  "service": edge_stack_name ~ "_traefik",
+  "crt_target": "/etc/traefik/tls/tls.crt",
+  "key_target": "tls.key",
+  "textfile_dir": edge_textfile_dir,
+} | to_nice_json }}

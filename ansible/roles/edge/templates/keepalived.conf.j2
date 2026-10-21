@@ -1,0 +1,54 @@
+# {{ ansible_managed }}
+# Swarm VIP {{ edge_vip }} ({{ edge_vip_name }}) on one manager whose Traefik
+# answers (role edge, docs/edge.md).
+
+global_defs {
+    router_id {{ inventory_hostname }}
+    vrrp_version 3
+    # Check scripts run as this unprivileged user; scripts must not be
+    # writable by it.
+    enable_script_security
+    script_user keepalived_script
+}
+
+# Traefik's /ping on this node (host-mode port). Failing it puts this node in
+# FAULT: it gives up the VIP and can't take it.
+vrrp_script traefik {
+    script "/usr/bin/curl -fsS -o /dev/null --max-time 2 http://{{ ansible_host }}:{{ edge_traefik_metrics_port }}/ping"
+    interval {{ edge_keepalived_check_interval }}
+    timeout 3
+    fall {{ edge_keepalived_check_fall }}
+    rise {{ edge_keepalived_check_rise }}
+}
+
+vrrp_instance swarm_vip {
+    # All BACKUP with nopreempt: the VIP stays where it is until that node
+    # fails, so a node coming back doesn't cause a second switch.
+    state BACKUP
+    nopreempt
+    interface {{ edge_keepalived_interface }}
+    virtual_router_id {{ edge_keepalived_router_id }}
+    priority {{ edge_keepalived_priority }}
+    advert_int 1
+
+    # Unicast to the other managers. UFW trusts the LAN (role hardening), so
+    # VRRP (IP protocol 112) passes.
+    unicast_src_ip {{ ansible_host }}
+    unicast_peer {
+{% for host in groups['swarm_managers'] if host != inventory_hostname %}
+        {{ hostvars[host].ansible_host }}
+{% endfor %}
+    }
+
+    # /32 like kube-vip: no second prefix route for the LAN.
+    virtual_ipaddress {
+        {{ edge_vip }}/32 dev {{ edge_keepalived_interface }}
+    }
+
+    track_script {
+        traefik
+    }
+
+    # As root: writes Alloy's textfile directory.
+    notify /usr/local/bin/keepalived-notify root
+}

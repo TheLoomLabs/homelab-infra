@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+# Keeps Traefik's wildcard certificate in the Swarm (role edge, docs/edge.md).
+[Unit]
+Description=Renew the Swarm edge certificate (Raft leader only)
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Root: reads the Cloudflare token, creates Swarm configs and secrets,
+# updates the Traefik service.
+ExecStart=/usr/local/bin/edge-cert /etc/edge-cert/config.json run
+ProtectHome=true
+PrivateTmp=true
+TimeoutStartSec=45min

@@ -1,0 +1,279 @@
+---
+- name: Check the inputs
+  ansible.builtin.assert:
+    that:
+      - edge_cloudflare_api_token is defined
+      - edge_cloudflare_api_token | length > 0
+      - swarm_vip is defined
+      - "'swarm_managers' in group_names"
+    fail_msg: >-
+      Needs edge_cloudflare_api_token from swarm/edge.sops.yaml and swarm_vip in the
+      inventory (terraform apply writes it), and runs on the Swarm managers only (docs/edge.md).
+    quiet: true
+  no_log: true
+
+- name: Look up Alloy's textfile directory
+  ansible.builtin.stat:
+    path: "{{ edge_textfile_dir }}"
+  register: edge_textfile
+
+- name: Check that Alloy's textfile directory exists
+  ansible.builtin.assert:
+    that: edge_textfile.stat.isdir | default(false)
+    fail_msg: "{{ edge_textfile_dir }} not found: run make logs first (role alloy)."
+    quiet: true
+
+- name: Install keepalived and the Python libraries for docker_stack
+  ansible.builtin.apt:
+    name: [keepalived, curl, python3-jsondiff, python3-yaml]
+    state: present
+
+# --- VIP (keepalived) ------------------------------------------------------------
+
+# keepalived runs its check script as this user (enable_script_security).
+- name: Create the user for keepalived's check script
+  ansible.builtin.user:
+    name: keepalived_script
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: Install the state change script
+  ansible.builtin.template:
+    src: keepalived-notify.j2
+    dest: /usr/local/bin/keepalived-notify
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure keepalived
+  ansible.builtin.template:
+    src: keepalived.conf.j2
+    dest: /etc/keepalived/keepalived.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload keepalived
+
+- name: Enable keepalived
+  ansible.builtin.systemd_service:
+    name: keepalived
+    enabled: true
+    state: started
+
+# Containers on this node that call the VIP (when this node holds it) or the
+# node's own address come from a Docker bridge, not the LAN.
+- name: Let local containers reach the edge ports
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ item.0 }}"
+    to_port: "{{ item.1 }}"
+    proto: tcp
+    comment: edge from containers
+  loop: "{{ edge_container_cidrs | product(['80', '443', edge_traefik_metrics_port | string]) | list }}"
+  loop_control:
+    label: "{{ item.0 }} -> {{ item.1 }}"
+
+# --- Certificate (edge-cert) -----------------------------------------------------
+
+- name: Create the lego directory
+  ansible.builtin.file:
+    path: "/usr/local/lib/lego/{{ edge_lego_version }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download lego
+  ansible.builtin.get_url:
+    url: "{{ edge_lego_release }}/lego_v{{ edge_lego_version }}_linux_amd64.tar.gz"
+    checksum: "sha256:{{ edge_lego_release }}/lego_{{ edge_lego_version }}_checksums.txt"
+    dest: "/usr/local/lib/lego/lego_v{{ edge_lego_version }}_linux_amd64.tar.gz"
+    mode: "0644"
+  vars:
+    edge_lego_release: "https://github.com/go-acme/lego/releases/download/v{{ edge_lego_version }}"
+
+- name: Unpack lego
+  ansible.builtin.unarchive:
+    src: "/usr/local/lib/lego/lego_v{{ edge_lego_version }}_linux_amd64.tar.gz"
+    dest: "/usr/local/lib/lego/{{ edge_lego_version }}"
+    remote_src: true
+    include: [lego]
+    creates: "/usr/local/lib/lego/{{ edge_lego_version }}/lego"
+
+- name: Link the lego version in use
+  ansible.builtin.file:
+    src: "/usr/local/lib/lego/{{ edge_lego_version }}/lego"
+    dest: /usr/local/bin/lego
+    state: link
+    owner: root
+    group: root
+
+- name: Create the config and state directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - /etc/edge-cert
+    - /var/lib/edge-cert
+    - /var/lib/edge-cert/lego
+
+- name: Write the Cloudflare token
+  ansible.builtin.copy:
+    dest: /etc/edge-cert/cloudflare-token
+    content: "{{ edge_cloudflare_api_token }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Write the edge-cert settings
+  ansible.builtin.template:
+    src: edge-cert.json.j2
+    dest: /etc/edge-cert/config.json
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install edge-cert
+  ansible.builtin.copy:
+    src: edge-cert.py
+    dest: /usr/local/bin/edge-cert
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the systemd units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - edge-cert.service
+    - edge-cert.timer
+
+- name: Enable the certificate timer
+  ansible.builtin.systemd_service:
+    name: edge-cert.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# --- Stack (from the first manager, for the whole swarm) ------------------------
+
+- name: Create the edge overlay network
+  community.docker.docker_network:
+    name: "{{ edge_network }}"
+    driver: overlay
+    attachable: true
+  run_once: true
+
+# The first run gets the certificate (a minute or two: DNS-01). Later runs
+# change nothing unless it is due; the timer does the renewals.
+- name: Make sure a current certificate is in the Swarm
+  ansible.builtin.command: /usr/local/bin/edge-cert /etc/edge-cert/config.json run --here
+  register: edge_cert_run
+  changed_when: "'new certificate needed' in edge_cert_run.stdout"
+  run_once: true
+
+- name: Look up the certificate pair in use
+  ansible.builtin.command: /usr/local/bin/edge-cert /etc/edge-cert/config.json current
+  register: edge_cert_lookup
+  changed_when: false
+  run_once: true
+
+- name: Remember the certificate pair
+  ansible.builtin.set_fact:
+    edge_cert_current: "{{ edge_cert_lookup.stdout | from_json }}"
+  run_once: true
+
+- name: Check that there is a certificate
+  ansible.builtin.assert:
+    that: edge_cert_current.crt is defined
+    fail_msg: "edge-cert stored no certificate: see the output of the task before."
+    quiet: true
+  run_once: true
+
+- name: Render Traefik's dynamic config
+  ansible.builtin.set_fact:
+    edge_dynamic_config: "{{ lookup('ansible.builtin.template', 'dynamic.yml.j2') }}"
+  run_once: true
+
+# Swarm configs are immutable: the name carries a hash of the content.
+- name: Name the dynamic config after its content
+  ansible.builtin.set_fact:
+    edge_dynamic_config_name: "edge_traefik_dynamic_{{ (edge_dynamic_config | hash('sha256'))[:10] }}"
+  run_once: true
+
+- name: Create the dynamic config
+  community.docker.docker_config:
+    name: "{{ edge_dynamic_config_name }}"
+    data: "{{ edge_dynamic_config }}"
+    state: present
+  run_once: true
+
+# Until Swarm HA, Traefik was part of the alerting stack, with ingress-mode
+# ports 80/443 that the host-mode ports below can't share.
+- name: Remove the old Traefik of the alerting stack
+  community.docker.docker_swarm_service:
+    name: alerting_traefik
+    state: absent
+  run_once: true
+
+- name: Create the stack directory
+  ansible.builtin.file:
+    path: "{{ edge_stack_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  run_once: true
+
+- name: Render the stack file
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ edge_stack_dir }}/compose.yml"
+    owner: root
+    group: root
+    mode: "0640"
+  run_once: true
+
+- name: Deploy the stack
+  community.docker.docker_stack:
+    name: "{{ edge_stack_name }}"
+    compose:
+      - "{{ edge_stack_dir }}/compose.yml"
+    prune: true
+    state: present
+  run_once: true
+
+- name: List the dynamic configs
+  ansible.builtin.command: docker config ls --filter name=edge_traefik_dynamic_ --format '{{ "{{" }} .Name {{ "}}" }}'
+  register: edge_dynamic_list
+  changed_when: false
+  run_once: true
+
+- name: Remove unused dynamic configs
+  community.docker.docker_config:
+    name: "{{ item }}"
+    state: absent
+  loop: "{{ edge_dynamic_list.stdout_lines | difference([edge_dynamic_config_name]) }}"
+  # Still attached to a stopping task: the next run removes it.
+  failed_when: false
+  run_once: true
+
+# keepalived takes the VIP once a Traefik answers on its node.
+- name: Wait for Traefik behind the VIP
+  ansible.builtin.uri:
+    url: "http://{{ edge_vip }}:{{ edge_traefik_metrics_port }}/ping"
+    return_content: true
+  register: edge_vip_ping
+  until: edge_vip_ping.status == 200
+  retries: 36
+  delay: 5
+  run_once: true

@@ -1,0 +1,102 @@
+# {{ ansible_managed }}
+# Stack "{{ edge_stack_name }}": Traefik on every Swarm manager (docs/edge.md,
+# ADR 0017). keepalived (on the hosts) holds the VIP on a node whose Traefik
+# answers.
+services:
+  traefik:
+    image: {{ edge_traefik_image }}
+    command:
+      - --providers.swarm.endpoint=unix:///var/run/docker.sock
+      - --providers.swarm.exposedByDefault=false
+      - --providers.swarm.network={{ edge_network }}
+      # The certificate (edge-cert keeps it in the Swarm). Traefik does no
+      # ACME itself: several instances would each get their own certificate.
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls=true
+      # Prometheus metrics and /ping (keepalived's check) on their own
+      # entrypoint, scraped from Kubernetes (scrapeconfig-vms.yaml).
+      - --entrypoints.metrics.address=:{{ edge_traefik_metrics_port }}
+      - --ping=true
+      - --ping.entryPoint=metrics
+      - --metrics.prometheus=true
+      - --metrics.prometheus.entryPoint=metrics
+      - --metrics.prometheus.addRoutersLabels=true
+      - --log.level=INFO
+      - --global.checknewversion=false
+      - --global.sendanonymoususage=false
+    ports:
+      # Host mode on every manager: no routing-mesh hop, Traefik sees the
+      # client address, and each node answers only if its own Traefik runs
+      # (what keepalived checks). Published ports bypass UFW; the LAN is
+      # trusted on the Swarm VMs anyway.
+      - {target: 80, published: 80, protocol: tcp, mode: host}
+      - {target: 443, published: 443, protocol: tcp, mode: host}
+      - {target: {{ edge_traefik_metrics_port }}, published: {{ edge_traefik_metrics_port }}, protocol: tcp, mode: host}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    configs:
+      - source: dynamic
+        target: /etc/traefik/dynamic.yml
+      # edge-cert swaps these two (service update) when it renews; Ansible
+      # renders the current pair, so a redeploy changes nothing.
+      - source: tls_crt
+        target: /etc/traefik/tls/tls.crt
+    secrets:
+      - source: tls_key
+        target: tls.key
+    networks:
+      {{ edge_network }}:
+        # Containers on the edge network reach the lab names through Traefik
+        # over the overlay, never through the VIP or a published port.
+        aliases:
+{% for host in edge_hosts %}
+          - {{ host }}
+{% endfor %}
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping", "--ping.entryPoint=metrics", "--entrypoints.metrics.address=:{{ edge_traefik_metrics_port }}"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      mode: global
+      placement:
+        constraints:
+          # The Swarm provider needs a manager's Docker socket, and keepalived
+          # runs on the managers.
+          - node.role == manager
+      # One node at a time; host-mode ports can't run two tasks on a node, so
+      # the old one stops first. keepalived moves the VIP off a node while
+      # its Traefik restarts.
+      update_config:
+        parallelism: 1
+        delay: 20s
+        order: stop-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+      resources:
+        limits:
+          memory: 256M
+
+networks:
+  {{ edge_network }}:
+    external: true
+
+configs:
+  dynamic:
+    external: true
+    name: {{ edge_dynamic_config_name }}
+  tls_crt:
+    external: true
+    name: {{ edge_cert_current.crt }}
+
+secrets:
+  tls_key:
+    external: true
+    name: {{ edge_cert_current.key }}

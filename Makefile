@@ -34,7 +34,7 @@ tf-destroy: ## Destroy all lab VMs
 
 ## --- Ansible -----------------------------------------------------------------
 
-.PHONY: ping base dns k8s encryption pod-security audit cilium longhorn sops-key argocd swarm alerting uptime portainer logs swarm-backup reboot site
+.PHONY: ping base dns k8s encryption pod-security audit cilium longhorn sops-key argocd swarm edge alerting uptime portainer logs swarm-backup reboot site
 ping: ## Check SSH to every node
 	cd $(ANSIBLE_DIR) && ansible all -m ansible.builtin.ping
 
@@ -71,7 +71,10 @@ argocd: ## Bootstrap Argo CD and the root app (push kubernetes/ first)
 swarm: ## Build the Docker Swarm cluster
 	$(PLAYBOOK) playbooks/swarm.yml
 
-alerting: ## Deploy the Swarm alerting stack (Traefik, ntfy, healthchecks)
+edge: ## Swarm VIP (keepalived), Traefik on every manager, shared certificate (needs make logs, swarm/edge.sops.yaml)
+	$(PLAYBOOK) playbooks/edge.yml
+
+alerting: ## Deploy the Swarm alerting stack (ntfy, healthchecks; needs make edge)
 	$(PLAYBOOK) playbooks/alerting.yml
 
 uptime: ## Deploy Uptime Kuma on Swarm (needs the alerting stack)
