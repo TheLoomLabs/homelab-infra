@@ -200,6 +200,14 @@
     },
     {
       "matchDepNames": [
+        "restic/restic"
+      ],
+      "prBodyNotes": [
+        "restic on the Swarm nodes (role swarm_backup, checked against the release's SHA256SUMS): after merging run `make swarm-backup`. Read the changelog for repository format changes before merging."
+      ]
+    },
+    {
+      "matchDepNames": [
         "argo-cd"
       ],
       "prBodyNotes": [
