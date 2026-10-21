@@ -15,6 +15,17 @@ configs:
           - CiliumIdentity
         clusters:
           - "*"
+    # Local account for the Homepage widget (docs/homepage.md): API tokens
+    # only, no UI login. Its token is in Homepage's SOPS secret.
+    accounts.homepage: apiKey
+  # Nobody gets anything by default (policy.default stays empty). homepage may
+  # list and read Applications (sync and health status), nothing more: not
+  # role:readonly, which also covers logs, clusters, repositories and
+  # accounts.
+  rbac:
+    policy.csv: |
+      p, role:homepage, applications, get, */*, allow
+      g, homepage, role:homepage
   params:
     # TLS ends at the shared Gateway (wildcard cert), which forwards plain HTTP.
     server.insecure: true

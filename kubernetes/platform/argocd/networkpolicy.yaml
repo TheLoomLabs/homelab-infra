@@ -122,3 +122,24 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
+---
+# Homepage's Argo CD widget reads the Applications through the API with its
+# own token (account homepage, role:homepage in values.yaml).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: server-from-homepage
+  namespace: argocd
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-server
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: homepage
+            k8s:app.kubernetes.io/name: homepage
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
