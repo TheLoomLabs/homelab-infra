@@ -102,6 +102,11 @@ uptime_kuma_monitors:
     name: Vaultwarden
     # Health endpoint, no login (Kubernetes, through the Gateway).
     url: "https://vault.{{ uptime_kuma_domain }}/alive"
+  homepage:
+    type: http
+    name: Homepage
+    # The one path without login (Kubernetes, through the Gateway).
+    url: "https://home.{{ uptime_kuma_domain }}/api/healthcheck"
   proxmox:
     type: http
     name: Proxmox
