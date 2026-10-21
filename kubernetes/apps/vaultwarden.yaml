@@ -1,0 +1,37 @@
+---
+# Vaultwarden, the lab's password manager (Bitwarden-compatible server), at
+# vault.lab.theloomlabs.org. First Phase 3 app in the `apps` project: plain
+# manifests in kubernetes/services/vaultwarden, SQLite on an encrypted Longhorn
+# volume, a nightly app-level backup (local dumps + restic to R2) next to
+# Longhorn's and Velero's. docs/vaultwarden.md, ADR 0018.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vaultwarden
+  namespace: argocd
+spec:
+  project: apps
+  source:
+    repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+    targetRevision: main
+    path: kubernetes/services/vaultwarden
+  destination:
+    server: https://kubernetes.default.svc
+    # Created with its Pod Security labels by the namespaces app
+    # (kubernetes/platform/namespaces/), not here: the apps project can't.
+    namespace: vaultwarden
+  syncPolicy:
+    automated:
+      # The PVC also says Prune=false,Delete=false, and its StorageClass
+      # retains the volume: removing a manifest never deletes vault data.
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # The SopsSecret and CiliumNetworkPolicy CRDs come from platform apps.
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

@@ -1,0 +1,39 @@
+---
+# Vaultwarden settings (https://github.com/dani-garcia/vaultwarden/blob/main/.env.template).
+# Shared by the server and the backup job, which runs the same binary.
+# Secrets are in secrets.sops.yaml. Settings saved on the /admin page land in
+# /data/config.json and override these: use /admin for users and invitations
+# only, change settings here (docs/vaultwarden.md).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vaultwarden-env
+  namespace: vaultwarden
+data:
+  DOMAIN: https://vault.lab.theloomlabs.org
+  DATA_FOLDER: /data
+  # Non-root (the pod's UID 1000) can't bind 80.
+  ROCKET_PORT: "8080"
+
+  # No self-registration. New accounts: invite on /admin, the person then
+  # registers with that address. Without SMTP no mail is sent; the invitation
+  # is accepted by registering (docs/vaultwarden.md, "Add a user").
+  SIGNUPS_ALLOWED: "false"
+  INVITATIONS_ALLOWED: "true"
+  # Hints are a way around the master password.
+  PASSWORD_HINTS_ALLOWED: "false"
+  SHOW_PASSWORD_HINT: "false"
+
+  # No egress at all (networkpolicy.yaml): no icon downloads, no push relay,
+  # no SMTP, no HIBP. Turn "Show website icons" off in the clients.
+  DISABLE_ICON_DOWNLOAD: "true"
+  PUSH_ENABLED: "false"
+
+  # The Gateway's Envoy appends the client address to X-Forwarded-For;
+  # Vaultwarden takes the rightmost one (1.37.4+). The address shows in
+  # failed-login log lines.
+  IP_HEADER: X-Forwarded-For
+
+  # Deleted items stay in the trash for 30 days, then go for good.
+  TRASH_AUTO_DELETE_DAYS: "30"
+  LOG_LEVEL: info

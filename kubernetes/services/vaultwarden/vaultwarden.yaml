@@ -1,0 +1,160 @@
+---
+# Vault data: SQLite database, attachments, sends, the RSA key that signs
+# login tokens. Encrypted Longhorn volume (default class longhorn-encrypted,
+# 2 replicas, hourly snapshots, daily + weekly backups to R2), also in the
+# nightly Velero backup. ReadWriteOnce: one Vaultwarden pod, and the backup
+# job runs on the same node (backup.yaml).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vaultwarden-data
+  namespace: vaultwarden
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  storageClassName: longhorn-encrypted
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vaultwarden
+  namespace: vaultwarden
+  labels:
+    app.kubernetes.io/name: vaultwarden
+spec:
+  replicas: 1
+  # SQLite and a ReadWriteOnce volume: never two pods at once.
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vaultwarden
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vaultwarden
+    spec:
+      automountServiceAccountToken: false
+      # A Service named vaultwarden would add VAULTWARDEN_* variables.
+      enableServiceLinks: false
+      # Pod Security `restricted`. The image runs as root by default; any UID
+      # works with ROCKET_PORT above 1024 and a writable /data.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: vaultwarden
+          # Debian image; the backup job uses the same one (backup.yaml).
+          image: vaultwarden/server:1.37.4
+          envFrom:
+            - configMapRef:
+                name: vaultwarden-env
+          env:
+            # Argon2id PHC string (docs/vaultwarden.md, "Secrets").
+            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vaultwarden-admin
+                  key: ADMIN_TOKEN
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /alive
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet:
+              path: /alive
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /alive
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            # Uploads (attachments, sends) are staged here first.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: vaultwarden-data
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vaultwarden
+  namespace: vaultwarden
+  labels:
+    app.kubernetes.io/name: vaultwarden
+spec:
+  selector:
+    app.kubernetes.io/name: vaultwarden
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# Through the shared Gateway (ADR 0007): LAN and Tailscale only, TLS with the
+# wildcard certificate. The *.lab record already points at the Gateway, so no
+# DNS change. WebSocket notifications use the same port and path prefix.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: vaultwarden
+  namespace: vaultwarden
+spec:
+  parentRefs:
+    # group and kind spelled out: the API server defaults them, and Argo CD
+    # would otherwise show the route as OutOfSync.
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: lab
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - vault.lab.theloomlabs.org
+  # Defaults spelled out (match, group, kind, weight), same reason.
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: vaultwarden
+          port: 80
+          weight: 1

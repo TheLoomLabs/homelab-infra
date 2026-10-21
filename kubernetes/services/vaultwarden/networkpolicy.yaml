@@ -1,0 +1,67 @@
+---
+# Default deny for every pod in vaultwarden (docs/network-policy.md): DNS
+# through Cilium's DNS proxy and scrapes from Prometheus, nothing else unless
+# a policy below allows it.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  namespace: vaultwarden
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+            k8s:app.kubernetes.io/name: prometheus
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# Vaultwarden: only the shared Gateway reaches it, and it reaches nothing
+# (icons, push, SMTP and HIBP are off in config.yaml). A compromised server
+# can't send the vault anywhere.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: vaultwarden
+  namespace: vaultwarden
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: vaultwarden
+  ingress:
+    - fromEntities:
+        - ingress
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+---
+# The backup jobs: restic to R2. Any R2 endpoint, because the hostname holds
+# the account ID, which stays out of Git (same as Velero).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: backup-to-r2
+  namespace: vaultwarden
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: vaultwarden-backup
+  egress:
+    - toFQDNs:
+        - matchPattern: "*.r2.cloudflarestorage.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
