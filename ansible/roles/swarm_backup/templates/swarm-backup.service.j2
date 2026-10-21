@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+# Nightly restic backup of this node's Swarm volumes (role swarm_backup).
+[Unit]
+Description=Back up the Swarm volumes on this node with restic
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Root: reads every volume under /var/lib/docker/volumes and scales services.
+EnvironmentFile=/etc/swarm-backup/env
+ExecStart=/usr/local/bin/swarm-backup /etc/swarm-backup/config.json backup
+Nice=10
+IOSchedulingClass=idle
+ProtectHome=true
+PrivateTmp=true
+TimeoutStartSec=2h

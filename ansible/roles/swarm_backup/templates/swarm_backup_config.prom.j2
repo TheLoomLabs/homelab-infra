@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+# The volumes swarm-backup should back up (swarm_backup_groups). Written by
+# Ansible, so SwarmBackupNeverRan sees a volume before its first backup.
+# HELP swarm_backup_volume_configured A volume in swarm_backup_groups.
+# TYPE swarm_backup_volume_configured gauge
+{% for group in swarm_backup_groups %}
+{% for volume in group.volumes %}
+swarm_backup_volume_configured{volume="{{ volume }}",group="{{ group.name }}"} 1
+{% endfor %}
+{% endfor %}

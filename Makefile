@@ -34,7 +34,7 @@ tf-destroy: ## Destroy all lab VMs
 
 ## --- Ansible -----------------------------------------------------------------
 
-.PHONY: ping base dns k8s encryption pod-security audit cilium longhorn sops-key argocd swarm alerting uptime portainer logs reboot site
+.PHONY: ping base dns k8s encryption pod-security audit cilium longhorn sops-key argocd swarm alerting uptime portainer logs swarm-backup reboot site
 ping: ## Check SSH to every node
 	cd $(ANSIBLE_DIR) && ansible all -m ansible.builtin.ping
 
@@ -82,6 +82,9 @@ portainer: ## Deploy Portainer on Swarm (needs the alerting stack and swarm/port
 
 logs: ## Ship the DNS and Swarm VMs' logs to Loki (Alloy)
 	$(PLAYBOOK) playbooks/logs.yml
+
+swarm-backup: ## Nightly restic backups of the Swarm volumes to R2 (needs make logs and swarm/backup.sops.yaml)
+	$(PLAYBOOK) playbooks/swarm-backup.yml
 
 reboot: ## Rolling reboot, one VM at a time (ARGS="-e reboot_required_only=true")
 	$(PLAYBOOK) playbooks/reboot.yml $(ARGS)

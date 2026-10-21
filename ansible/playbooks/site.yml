@@ -31,3 +31,7 @@
 
 - name: Log shipping from the VMs
   ansible.builtin.import_playbook: logs.yml
+
+# After logs.yml: the backup metrics go to Alloy's textfile directory.
+- name: Swarm volume backups
+  ansible.builtin.import_playbook: swarm-backup.yml

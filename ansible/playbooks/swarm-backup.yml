@@ -1,0 +1,36 @@
+---
+# Nightly restic backups of the Swarm stacks' volumes to R2
+# (docs/swarm-backup.md). Needs Alloy on the nodes (make logs: textfile
+# directory) and swarm/backup.sops.yaml; the R2 bucket and its lock are set
+# up by hand first.
+- name: Docker Swarm | Volume backups
+  hosts: swarm_managers
+  become: true
+  tasks:
+    # Without the file (fresh clone), make site goes on without backups.
+    - name: Look for the backup secrets
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../../swarm/backup.sops.yaml"
+      delegate_to: localhost
+      become: false
+      run_once: true
+      register: swarm_backup_secrets_file
+
+    - name: Say that the backups are skipped
+      ansible.builtin.debug:
+        msg: >-
+          swarm/backup.sops.yaml not found: Swarm volume backups are not set up.
+          Create the bucket and the file (docs/swarm-backup.md), then run make swarm-backup.
+      run_once: true
+      when: not swarm_backup_secrets_file.stat.exists
+
+    - name: Load the R2 token and restic password (swarm/backup.sops.yaml, decrypted with the age key)
+      community.sops.load_vars:
+        file: "{{ playbook_dir }}/../../swarm/backup.sops.yaml"
+      when: swarm_backup_secrets_file.stat.exists
+      no_log: true
+
+    - name: Set up the backups
+      ansible.builtin.include_role:
+        name: swarm_backup
+      when: swarm_backup_secrets_file.stat.exists

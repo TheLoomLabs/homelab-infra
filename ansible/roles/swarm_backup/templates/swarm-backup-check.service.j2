@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+# Weekly restic check of the Swarm backup repository (role swarm_backup).
+[Unit]
+Description=Check the Swarm backup repository with restic
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/swarm-backup/env
+ExecStart=/usr/local/bin/swarm-backup /etc/swarm-backup/config.json check
+Nice=10
+IOSchedulingClass=idle
+ProtectHome=true
+PrivateTmp=true
+TimeoutStartSec=6h

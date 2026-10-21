@@ -1,0 +1,179 @@
+---
+- name: Check that the secrets are loaded
+  ansible.builtin.assert:
+    that:
+      - swarm_backup_r2_account_id is defined
+      - swarm_backup_r2_access_key_id is defined
+      - swarm_backup_r2_secret_access_key is defined
+      - swarm_backup_restic_password is defined
+      - swarm_backup_restic_password | length >= 32
+    fail_msg: >-
+      The R2 token and restic password must come from swarm/backup.sops.yaml
+      (docs/swarm-backup.md); the password needs 32+ characters.
+    quiet: true
+  no_log: true
+
+# The scale commands need a manager; the textfile directory comes from Alloy.
+- name: Check that this node is a Swarm manager
+  ansible.builtin.assert:
+    that: "'swarm_managers' in group_names"
+    fail_msg: "swarm-backup scales services and only runs on managers. Volumes on workers need a different approach (docs/swarm-backup.md)."
+    quiet: true
+
+- name: Look up Alloy's textfile directory
+  ansible.builtin.stat:
+    path: "{{ swarm_backup_textfile_dir }}"
+  register: swarm_backup_textfile
+
+- name: Check that Alloy's textfile directory exists
+  ansible.builtin.assert:
+    that: swarm_backup_textfile.stat.isdir | default(false)
+    fail_msg: "{{ swarm_backup_textfile_dir }} not found: run make logs first (role alloy)."
+    quiet: true
+
+- name: Install bzip2 for the restic release
+  ansible.builtin.apt:
+    name: bzip2
+    state: present
+
+- name: Create the restic directory
+  ansible.builtin.file:
+    path: /usr/local/lib/restic
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download restic
+  ansible.builtin.get_url:
+    url: "{{ swarm_backup_release }}/restic_{{ swarm_backup_restic_version }}_linux_amd64.bz2"
+    checksum: "sha256:{{ swarm_backup_release }}/SHA256SUMS"
+    dest: "/usr/local/lib/restic/restic_{{ swarm_backup_restic_version }}_linux_amd64.bz2"
+    mode: "0644"
+  vars:
+    swarm_backup_release: "https://github.com/restic/restic/releases/download/v{{ swarm_backup_restic_version }}"
+
+- name: Unpack restic
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail &&
+      bzip2 -dc restic_{{ swarm_backup_restic_version }}_linux_amd64.bz2 > restic-{{ swarm_backup_restic_version }}.tmp &&
+      chmod 0755 restic-{{ swarm_backup_restic_version }}.tmp &&
+      mv restic-{{ swarm_backup_restic_version }}.tmp restic-{{ swarm_backup_restic_version }}
+    chdir: /usr/local/lib/restic
+    creates: "/usr/local/lib/restic/restic-{{ swarm_backup_restic_version }}"
+    executable: /bin/bash
+
+- name: Link the restic version in use
+  ansible.builtin.file:
+    src: "/usr/local/lib/restic/restic-{{ swarm_backup_restic_version }}"
+    dest: /usr/local/bin/restic
+    state: link
+    owner: root
+    group: root
+
+- name: Create the config, cache and state directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - /etc/swarm-backup
+    - /var/cache/restic
+    - /var/lib/swarm-backup
+
+- name: Write the repository settings
+  ansible.builtin.template:
+    src: env.j2
+    dest: /etc/swarm-backup/env
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Write the restic password
+  ansible.builtin.copy:
+    dest: /etc/swarm-backup/restic-password
+    content: "{{ swarm_backup_restic_password }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Write the backup groups
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: /etc/swarm-backup/config.json
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Publish the list of volumes for the alerts
+  ansible.builtin.template:
+    src: swarm_backup_config.prom.j2
+    dest: "{{ swarm_backup_textfile_dir }}/swarm_backup_config.prom"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the backup script
+  ansible.builtin.copy:
+    src: swarm-backup.py
+    dest: /usr/local/bin/swarm-backup
+    owner: root
+    group: root
+    mode: "0755"
+
+# Exit code 10: the repository doesn't exist yet (restic 0.17+). Anything
+# else but 0 (wrong password, R2 unreachable) stops the play.
+- name: Look for the restic repository
+  ansible.builtin.command: restic cat config
+  environment: &swarm_backup_env
+    RESTIC_REPOSITORY: "s3:https://{{ swarm_backup_r2_account_id }}.r2.cloudflarestorage.com/{{ swarm_backup_bucket }}"
+    RESTIC_PASSWORD_FILE: /etc/swarm-backup/restic-password
+    RESTIC_CACHE_DIR: /var/cache/restic
+    AWS_ACCESS_KEY_ID: "{{ swarm_backup_r2_access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ swarm_backup_r2_secret_access_key }}"
+    AWS_DEFAULT_REGION: auto
+  register: swarm_backup_repo
+  changed_when: false
+  failed_when: swarm_backup_repo.rc not in [0, 10]
+  run_once: true
+  no_log: true
+
+- name: Create the restic repository
+  ansible.builtin.command: restic init
+  environment: *swarm_backup_env
+  when: swarm_backup_repo.rc == 10
+  changed_when: true
+  run_once: true
+  no_log: true
+
+- name: Write the systemd units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - swarm-backup.service
+    - swarm-backup.timer
+    - swarm-backup-check.service
+    - swarm-backup-check.timer
+
+- name: Enable the nightly backup
+  ansible.builtin.systemd_service:
+    name: swarm-backup.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# One node checks the shared repository.
+- name: Enable the weekly check on its node only
+  ansible.builtin.systemd_service:
+    name: swarm-backup-check.timer
+    enabled: "{{ inventory_hostname == swarm_backup_check_host }}"
+    state: "{{ 'started' if inventory_hostname == swarm_backup_check_host else 'stopped' }}"

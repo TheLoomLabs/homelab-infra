@@ -1,0 +1,4 @@
+{{ {"host": inventory_hostname,
+    "textfile_dir": swarm_backup_textfile_dir,
+    "check_read_data_subset": swarm_backup_check_read_data_subset,
+    "groups": swarm_backup_groups} | to_nice_json }}

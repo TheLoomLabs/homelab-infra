@@ -1,0 +1,71 @@
+---
+# Nightly backups of the Swarm stacks' local Docker volumes with restic to
+# Cloudflare R2 (docs/swarm-backup.md). A systemd timer on every Swarm node
+# backs up the volumes whose service runs on that node; the R2 bucket lock
+# keeps every snapshot, so the nodes never delete anything (no forget/prune
+# here, see "Maintenance" in the doc).
+
+# Installed from the GitHub release, checked against the release's SHA256SUMS.
+# renovate: datasource=github-releases depName=restic/restic extractVersion=^v(?<version>.+)$
+swarm_backup_restic_version: 0.19.1
+
+# Bucket with the R2 bucket lock (docs/swarm-backup.md, "Set up R2"). The
+# account ID comes from swarm/backup.sops.yaml.
+swarm_backup_bucket: theloomlabs-swarm-backup
+
+# When the backup runs (systemd OnCalendar, UTC): after Longhorn (02:00) and
+# Velero (03:00). Persistent: a run missed while the VM was off starts at boot.
+swarm_backup_on_calendar: "*-*-* 03:30:00 UTC"
+
+# Weekly `restic check` of the repository structure plus a random part of the
+# data, from one node only (swarm_backup_check_host). R2 has no egress fees.
+swarm_backup_check_on_calendar: "Sun *-*-* 05:00:00 UTC"
+swarm_backup_check_read_data_subset: 5%
+swarm_backup_check_host: "{{ groups['swarm_managers'] | first }}"
+
+# node_exporter textfile directory of Alloy (role alloy, alloy_textfile_dir).
+swarm_backup_textfile_dir: /var/lib/alloy/textfile
+
+# What is backed up. One entry per group of volumes that belong together:
+#   services: the Swarm services that use the volumes. The node where one of
+#             them has a running container backs the group up; other nodes
+#             skip it, so a stale copy of the volume left on a node the
+#             service moved away from is never backed up.
+#   stop:     scale the services to 0 (in the listed order) for the backup and
+#             back up afterwards (in reverse order). SQLite and BoltDB files
+#             are only consistent when nobody writes them. ~10-20 s downtime.
+#   volumes:  Docker volume names (<stack>_<volume>).
+# A new stateful stack adds an entry here. PostgreSQL (Mattermost) will get an
+# online pg_dump instead of stop.
+swarm_backup_groups:
+  # Traefik writes acme.json only when it renews the certificate. Traefik stays
+  # up: stopping it would take every Swarm web UI down.
+  - name: traefik
+    services: [alerting_traefik]
+    stop: false
+    volumes: [alerting_traefik-acme]
+  - name: ntfy
+    services: [alerting_ntfy]
+    stop: true
+    volumes: [alerting_ntfy-data]
+  - name: healthchecks
+    services: [alerting_healthchecks]
+    stop: true
+    volumes: [alerting_healthchecks-data]
+  # AutoKuma first, so it doesn't log in to a stopped Uptime Kuma.
+  - name: uptime
+    services: [uptime_autokuma, uptime_kuma]
+    stop: true
+    volumes: [uptime_kuma-data, uptime_autokuma-data]
+  # BoltDB is locked while Portainer runs. Includes the compose files of the
+  # stacks deployed from Portainer's UI.
+  - name: portainer
+    services: [portainer_portainer]
+    stop: true
+    volumes: [portainer_portainer-data]
+
+# From swarm/backup.sops.yaml (playbooks/swarm-backup.yml loads it):
+# swarm_backup_r2_account_id, swarm_backup_r2_access_key_id,
+# swarm_backup_r2_secret_access_key (token: Object Read & Write on
+# swarm_backup_bucket only), swarm_backup_restic_password (keep it offline
+# next to the age key: without it the backups can't be read).

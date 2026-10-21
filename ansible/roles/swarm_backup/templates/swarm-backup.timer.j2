@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Back up the Swarm volumes on this node every night
+
+[Timer]
+OnCalendar={{ swarm_backup_on_calendar }}
+Persistent=true
+RandomizedDelaySec=2min
+
+[Install]
+WantedBy=timers.target

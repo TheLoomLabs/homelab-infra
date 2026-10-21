@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Check the Swarm backup repository every week
+
+[Timer]
+OnCalendar={{ swarm_backup_check_on_calendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target
