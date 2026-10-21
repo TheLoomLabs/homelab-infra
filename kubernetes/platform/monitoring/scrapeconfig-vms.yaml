@@ -45,6 +45,7 @@ spec:
   relabelings:
     - sourceLabels: [host]
       targetLabel: instance
+      action: replace
 ---
 # Alloy itself (log shipping health: AlloyDroppingLogs, AlloyComponentUnhealthy).
 # Its `up` is the VM's: VMHostDown.
@@ -81,6 +82,7 @@ spec:
   relabelings:
     - sourceLabels: [host]
       targetLabel: instance
+      action: replace
 ---
 # Container metrics: Alloy's built-in cAdvisor on the Docker hosts.
 apiVersion: monitoring.coreos.com/v1alpha1
@@ -108,6 +110,7 @@ spec:
   relabelings:
     - sourceLabels: [host]
       targetLabel: instance
+      action: replace
 ---
 # Docker engine metrics (daemon.json metrics-addr, role docker). On the
 # managers they include the Swarm: swarm_manager_leader, swarm_manager_nodes,
@@ -137,6 +140,7 @@ spec:
   relabelings:
     - sourceLabels: [host]
       targetLabel: instance
+      action: replace
 ---
 # Traefik of the alerting stack: its metrics entrypoint, published in host
 # mode on the node it runs on (alerting_node, ansible/roles/alerting). Same
@@ -158,3 +162,4 @@ spec:
   relabelings:
     - sourceLabels: [host]
       targetLabel: instance
+      action: replace
