@@ -1,0 +1,152 @@
+---
+# Cards (https://gethomepage.dev/configs/services/), docs/homepage.md.
+#
+# Status:
+#   Kubernetes apps: `namespace` + `app` (or `podSelector`) → pod status and
+#   CPU/memory from the API and metrics-server. A new namespace needs a
+#   RoleBinding in kubernetes/platform/app-rbac/homepage.yaml.
+#   Swarm and the host: `siteMonitor`, an HTTP check from the Homepage pod.
+#   A new host needs an egress rule in networkpolicy.yaml.
+# Widgets call the in-cluster addresses, never the Gateway. Credentials are
+# {{HOMEPAGE_VAR_*}}, from the Secret homepage-env (secrets.sops.yaml).
+# Icons: names from https://github.com/homarr-labs/dashboard-icons, loaded by
+# the browser from jsDelivr.
+
+- Apps:
+    - Vaultwarden:
+        icon: vaultwarden.svg
+        href: https://vault.lab.theloomlabs.org
+        description: Passwords
+        namespace: vaultwarden
+        app: vaultwarden
+
+- Kubernetes:
+    - Argo CD:
+        icon: argo-cd.svg
+        href: https://argocd.lab.theloomlabs.org
+        description: GitOps
+        namespace: argocd
+        app: argocd-server
+        widget:
+          type: argocd
+          url: http://argocd-server.argocd.svc.cluster.local
+          # Account homepage, read-only (kubernetes/platform/argocd/values.yaml).
+          key: "{{HOMEPAGE_VAR_ARGOCD_TOKEN}}"
+          fields: [apps, synced, outOfSync, degraded]
+
+    - Grafana:
+        icon: grafana.svg
+        href: https://grafana.lab.theloomlabs.org
+        description: Dashboards and logs
+        namespace: monitoring
+        app: grafana
+
+    - Alerts:
+        icon: alertmanager.svg
+        description: Firing in Alertmanager (Watchdog and info not counted)
+        namespace: monitoring
+        app: alertmanager
+        widget:
+          type: prometheusmetric
+          url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          refreshInterval: 30000
+          metrics:
+            - label: Critical
+              query: count(ALERTS{alertstate="firing", severity="critical"}) or vector(0)
+            - label: Warning
+              query: count(ALERTS{alertstate="firing", severity="warning"}) or vector(0)
+
+    - Prometheus:
+        icon: prometheus.svg
+        description: Metrics (UI after SSO)
+        namespace: monitoring
+        app: prometheus
+        widget:
+          type: prometheus
+          url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+
+    # Read from Prometheus, not from Longhorn's API: that API has no login and
+    # can delete volumes.
+    - Longhorn:
+        icon: longhorn.svg
+        description: Storage (UI after SSO)
+        namespace: longhorn-system
+        podSelector: app=longhorn-manager
+        widget:
+          type: prometheusmetric
+          url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          refreshInterval: 60000
+          metrics:
+            - label: Used
+              query: sum(longhorn_node_storage_usage_bytes)
+              format:
+                type: bytes
+            - label: Capacity
+              query: sum(longhorn_node_storage_capacity_bytes)
+              format:
+                type: bytes
+            - label: Not healthy
+              query: count(longhorn_volume_robustness{state=~"degraded|faulted"} == 1) or vector(0)
+
+- Swarm:
+    - Uptime Kuma:
+        icon: uptime-kuma.svg
+        href: https://status.lab.theloomlabs.org
+        description: Checks from outside Kubernetes
+        siteMonitor: https://status.lab.theloomlabs.org
+        widget:
+          type: uptimekuma
+          url: https://status.lab.theloomlabs.org
+          # The status page "lab" (docs/homepage.md, set up once in the UI).
+          slug: lab
+
+    # Swarm services from Prometheus (Alloy's replica metrics), not from
+    # Portainer: a Portainer CE token can deploy containers.
+    - Portainer:
+        icon: portainer.svg
+        href: https://portainer.lab.theloomlabs.org
+        description: Swarm stacks
+        siteMonitor: https://portainer.lab.theloomlabs.org/api/system/status
+        widget:
+          type: prometheusmetric
+          url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          refreshInterval: 30000
+          metrics:
+            - label: Services
+              query: count(max by (stack, service) (swarm_service_replicas_desired{mode!~".*-job"}))
+            - label: Running
+              query: >-
+                count(max by (stack, service) (swarm_service_replicas_running{mode!~".*-job"})
+                >= max by (stack, service) (swarm_service_replicas_desired{mode!~".*-job"}))
+                or vector(0)
+
+    - ntfy:
+        icon: ntfy.svg
+        href: https://ntfy.lab.theloomlabs.org
+        description: Notifications
+        siteMonitor: https://ntfy.lab.theloomlabs.org/v1/health
+
+    - healthchecks:
+        icon: healthchecks.svg
+        href: https://hc.lab.theloomlabs.org
+        description: Dead man's switch
+        siteMonitor: https://hc.lab.theloomlabs.org
+        widget:
+          type: healthchecks
+          url: https://hc.lab.theloomlabs.org
+          # Read-only API key of the project.
+          key: "{{HOMEPAGE_VAR_HEALTHCHECKS_KEY}}"
+
+- Infrastructure:
+    - Proxmox:
+        icon: proxmox.svg
+        href: https://pve.lab.theloomlabs.org:8006
+        description: pve
+        siteMonitor: https://pve.lab.theloomlabs.org:8006
+        widget:
+          type: proxmox
+          url: https://pve.lab.theloomlabs.org:8006
+          # API token of homepage@pve, role PVEAuditor (read only).
+          username: "{{HOMEPAGE_VAR_PROXMOX_TOKEN_ID}}"
+          password: "{{HOMEPAGE_VAR_PROXMOX_TOKEN_SECRET}}"
+          node: pve

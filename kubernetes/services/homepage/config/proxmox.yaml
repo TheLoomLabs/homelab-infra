@@ -1,0 +1,3 @@
+---
+# Not used: the Proxmox card's widget carries its own token (services.yaml),
+# and no card shows a single VM's status.

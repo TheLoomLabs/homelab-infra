@@ -1,0 +1,95 @@
+---
+# Default deny for every pod in homepage (docs/network-policy.md): DNS through
+# Cilium's DNS proxy and scrapes from Prometheus, nothing else unless a policy
+# below allows it.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  namespace: homepage
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+            k8s:app.kubernetes.io/name: prometheus
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# Homepage: the browser reaches it through the shared Gateway; the server
+# side reaches exactly what services.yaml and widgets.yaml call. No internet:
+# the update check is off (settings.yaml), and the icons are loaded by the
+# browser, not by this pod. Homepage skips TLS verification for every widget
+# call, so the in-cluster targets are plain HTTP to the pods.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: homepage
+  namespace: homepage
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: homepage
+  ingress:
+    - fromEntities:
+        - ingress
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP
+  egress:
+    # Kubernetes widget and the app cards' pod status (app-rbac).
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+    # Argo CD widget (the argocd namespace allows it in: server-from-homepage).
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: argocd
+            k8s:app.kubernetes.io/name: argocd-server
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    # Prometheus widget and the prometheusmetric tiles (allowed in by the
+    # monitoring namespace's prometheus policy).
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+            k8s:app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+    # Swarm apps through the Swarm VIP and Traefik: status checks, the Uptime
+    # Kuma status page, the healthchecks API.
+    - toFQDNs:
+        - matchName: status.lab.theloomlabs.org
+        - matchName: portainer.lab.theloomlabs.org
+        - matchName: ntfy.lab.theloomlabs.org
+        - matchName: hc.lab.theloomlabs.org
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # Proxmox API (read-only token) and status check.
+    - toFQDNs:
+        - matchName: pve.lab.theloomlabs.org
+      toPorts:
+        - ports:
+            - port: "8006"
+              protocol: TCP

@@ -1,0 +1,10 @@
+---
+# Links only: the browser opens them, Homepage never calls them.
+- Code:
+    - homelab-infra:
+        - abbr: GH
+          href: https://github.com/TheLoomLabs/homelab-infra
+- Cloud:
+    - Cloudflare:
+        - abbr: CF
+          href: https://dash.cloudflare.com

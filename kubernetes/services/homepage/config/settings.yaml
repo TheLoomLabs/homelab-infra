@@ -1,0 +1,36 @@
+---
+# Homepage settings (https://gethomepage.dev/configs/settings/).
+title: TheLoomLabs
+description: Lab dashboard
+theme: dark
+color: slate
+headerStyle: clean
+statusStyle: dot
+hideVersion: true
+# No call to GitHub for new releases: the pod has no internet access, and
+# Renovate already reports new versions.
+disableUpdateCheck: true
+target: _blank
+useEqualHeights: true
+
+# The search box (type anywhere) searches the cards and bookmarks only: no
+# internet search provider, nothing typed leaves the browser.
+quicklaunch:
+  searchDescriptions: true
+  hideInternetSearch: true
+  showSearchSuggestions: false
+
+# Groups in services.yaml, top to bottom.
+layout:
+  Apps:
+    style: row
+    columns: 4
+  Kubernetes:
+    style: row
+    columns: 3
+  Swarm:
+    style: row
+    columns: 4
+  Infrastructure:
+    style: row
+    columns: 4

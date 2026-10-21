@@ -1,0 +1,24 @@
+---
+# Homepage, the lab's start page (docs/homepage.md). Kustomize only for the
+# ConfigMap: it is generated from the files in config/ with a hash in its name,
+# so every change to a file rolls the pod (subPath mounts never update in
+# place). Everything else is plain manifests, as for the other apps.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - homepage.yaml
+  - networkpolicy.yaml
+  - secrets.sops.yaml
+configMapGenerator:
+  - name: homepage-config
+    namespace: homepage
+    files:
+      - config/bookmarks.yaml
+      - config/custom.css
+      - config/custom.js
+      - config/docker.yaml
+      - config/kubernetes.yaml
+      - config/proxmox.yaml
+      - config/services.yaml
+      - config/settings.yaml
+      - config/widgets.yaml

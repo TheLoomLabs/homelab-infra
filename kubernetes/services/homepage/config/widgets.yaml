@@ -1,0 +1,24 @@
+---
+# Header widgets (https://gethomepage.dev/widgets/info/).
+# Nodes and their CPU/memory: the API server and metrics-server, through the
+# ServiceAccount (ClusterRole homepage-nodes).
+- kubernetes:
+    cluster:
+      show: true
+      cpu: true
+      memory: true
+      showLabel: true
+      label: homelab
+    nodes:
+      show: true
+      cpu: true
+      memory: true
+      showLabel: true
+
+- datetime:
+    text_size: md
+    locale: en-GB
+    format:
+      dateStyle: long
+      timeStyle: short
+      hour12: false

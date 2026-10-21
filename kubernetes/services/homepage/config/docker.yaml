@@ -1,0 +1,3 @@
+---
+# Not used: Homepage has no access to a Docker socket. The Swarm apps are
+# cards with HTTP checks and Prometheus tiles (services.yaml).

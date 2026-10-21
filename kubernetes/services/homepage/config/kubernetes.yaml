@@ -1,0 +1,9 @@
+---
+# The in-cluster ServiceAccount (homepage/homepage), read-only RBAC from
+# kubernetes/platform/app-rbac/homepage.yaml. No automatic discovery: the
+# cards are listed in services.yaml (Kubernetes, Swarm and the host in one
+# place), so Homepage needs no access to Ingresses, HTTPRoutes or Gateways.
+mode: cluster
+ingress: false
+traefik: false
+gateway: false

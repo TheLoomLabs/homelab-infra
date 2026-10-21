@@ -1,0 +1,36 @@
+---
+# Homepage, the lab's start page, at home.lab.theloomlabs.org: every lab app
+# with its status, cluster and node load, a few read-only widgets. Stateless:
+# configuration in kubernetes/services/homepage/config, built into a ConfigMap
+# by kustomize. Read access to the cluster from the app-rbac app.
+# docs/homepage.md, ADR 0019.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: homepage
+  namespace: argocd
+spec:
+  project: apps
+  source:
+    repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+    targetRevision: main
+    path: kubernetes/services/homepage
+  destination:
+    server: https://kubernetes.default.svc
+    # Created with its Pod Security labels by the namespaces app
+    # (kubernetes/platform/namespaces/), not here: the apps project can't.
+    namespace: homepage
+  syncPolicy:
+    automated:
+      # Nothing here holds data; old generated ConfigMaps are pruned.
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # The SopsSecret and CiliumNetworkPolicy CRDs come from platform apps.
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

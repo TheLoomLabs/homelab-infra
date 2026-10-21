@@ -1,0 +1,206 @@
+---
+# Read access to the cluster comes from the platform, not from this app:
+# ClusterRoles and RoleBindings in kubernetes/platform/app-rbac/homepage.yaml
+# (nodes cluster-wide; pods only in the namespaces with a card).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: homepage
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homepage
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+spec:
+  # Stateless: the configuration is in Git (ConfigMap), nothing on disk.
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homepage
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homepage
+    spec:
+      serviceAccountName: homepage
+      # mode: cluster in kubernetes.yaml: the in-cluster ServiceAccount token.
+      automountServiceAccountToken: true
+      enableServiceLinks: false
+      # Pod Security `restricted`. The image starts as root and drops to
+      # PUID/PGID; with runAsUser its entrypoint skips that and starts the
+      # server directly. The app files belong to 1000:1000.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: homepage
+          image: ghcr.io/gethomepage/homepage:v2.2.0
+          env:
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            # Requests with any other Host header are refused. The pod
+            # address is for the kubelet's probes.
+            - name: HOMEPAGE_ALLOWED_HOSTS
+              value: home.lab.theloomlabs.org,$(MY_POD_IP):3000
+            # Next.js listens on $HOSTNAME. IPv4 everywhere (the cluster has
+            # no IPv6), instead of the image's "::" or the pod name.
+            - name: HOSTNAME
+              value: 0.0.0.0
+            # Login (docs/homepage.md): password now, OIDC in the SSO step.
+            # The password and the cookie secret are in homepage-env.
+            - name: HOMEPAGE_AUTH_ENABLED
+              value: "true"
+            - name: HOMEPAGE_EXTERNAL_URL
+              value: https://home.lab.theloomlabs.org
+            # Logs to stdout only (Alloy → Loki), no log file.
+            - name: LOG_TARGETS
+              value: stdout
+          # HOMEPAGE_AUTH_SECRET, HOMEPAGE_AUTH_PASSWORD and the widget
+          # credentials (HOMEPAGE_VAR_*), from secrets.sops.yaml.
+          envFrom:
+            - secretRef:
+                name: homepage-env
+          ports:
+            - name: http
+              containerPort: 3000
+          # /api/healthcheck is the one API path that needs no login.
+          startupProbe:
+            httpGet:
+              path: /api/healthcheck
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet:
+              path: /api/healthcheck
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/healthcheck
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            # Homepage copies a default file into its config directory for
+            # any file it doesn't find there, and exits if it can't. A small
+            # writable directory with the files from Git mounted on top: a
+            # file a new version expects is created instead of crashing the pod.
+            - name: config-dir
+              mountPath: /app/config
+            - name: config
+              mountPath: /app/config/bookmarks.yaml
+              subPath: bookmarks.yaml
+            - name: config
+              mountPath: /app/config/custom.css
+              subPath: custom.css
+            - name: config
+              mountPath: /app/config/custom.js
+              subPath: custom.js
+            - name: config
+              mountPath: /app/config/docker.yaml
+              subPath: docker.yaml
+            - name: config
+              mountPath: /app/config/kubernetes.yaml
+              subPath: kubernetes.yaml
+            - name: config
+              mountPath: /app/config/proxmox.yaml
+              subPath: proxmox.yaml
+            - name: config
+              mountPath: /app/config/services.yaml
+              subPath: services.yaml
+            - name: config
+              mountPath: /app/config/settings.yaml
+              subPath: settings.yaml
+            - name: config
+              mountPath: /app/config/widgets.yaml
+              subPath: widgets.yaml
+            # Next.js caches here at runtime.
+            - name: next-cache
+              mountPath: /app/.next/cache
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            # kustomize appends the content hash (kustomization.yaml).
+            name: homepage-config
+        - name: config-dir
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: next-cache
+          emptyDir:
+            sizeLimit: 128Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homepage
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+spec:
+  selector:
+    app.kubernetes.io/name: homepage
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# Through the shared Gateway (ADR 0007): LAN and Tailscale only, TLS with the
+# wildcard certificate. The *.lab record already points at the Gateway.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: homepage
+  namespace: homepage
+spec:
+  parentRefs:
+    # Defaults spelled out (group, kind, match, weight): the API server sets
+    # them, and Argo CD would otherwise show the route as OutOfSync.
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: lab
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - home.lab.theloomlabs.org
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: homepage
+          port: 80
+          weight: 1
