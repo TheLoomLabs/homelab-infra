@@ -102,6 +102,17 @@ uptime_kuma_monitors:
     name: Vaultwarden
     # Health endpoint, no login (Kubernetes, through the Gateway).
     url: "https://vault.{{ uptime_kuma_domain }}/alive"
+  forgejo:
+    type: http
+    name: Forgejo
+    # Health endpoint, no login (Kubernetes, through the Gateway).
+    url: "https://git.{{ uptime_kuma_domain }}/api/healthz"
+  forgejo-ssh:
+    type: port
+    name: Forgejo SSH
+    # The LoadBalancer address (git-ssh → .62), port 22.
+    hostname: "git-ssh.{{ uptime_kuma_domain }}"
+    port: 22
   homepage:
     type: http
     name: Homepage
