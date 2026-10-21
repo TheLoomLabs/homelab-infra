@@ -168,13 +168,20 @@
     },
     {
       "matchDepNames": [
-        "traefik",
         "binwiederhier/ntfy",
         "healthchecks/healthchecks"
       ],
       "groupName": "alerting stack",
       "prBodyNotes": [
         "Swarm stack: after merging run `make alerting`."
+      ]
+    },
+    {
+      "matchDepNames": [
+        "traefik"
+      ],
+      "prBodyNotes": [
+        "Swarm stack edge: after merging run `make edge`. Traefik restarts one manager at a time; keepalived moves the VIP off each node while it restarts (docs/edge.md)."
       ]
     },
     {
@@ -204,6 +211,14 @@
       ],
       "prBodyNotes": [
         "restic on the Swarm nodes (role swarm_backup, checked against the release's SHA256SUMS): after merging run `make swarm-backup`. Read the changelog for repository format changes before merging."
+      ]
+    },
+    {
+      "matchDepNames": [
+        "go-acme/lego"
+      ],
+      "prBodyNotes": [
+        "lego on the Swarm managers (role edge, edge-cert; checked against the release's checksums file): after merging run `make edge`. Check the release notes for CLI changes (edge-cert calls `lego run`)."
       ]
     },
     {
