@@ -1,0 +1,103 @@
+---
+# Homepage (kubernetes/services/homepage, docs/homepage.md) reads the cluster
+# for two things, with its ServiceAccount homepage/homepage:
+#   - the Kubernetes widget at the top: nodes, and their CPU and memory from
+#     metrics-server (cluster-wide, so a ClusterRoleBinding);
+#   - the status dot and CPU/memory of each Kubernetes app card: pods and pod
+#     metrics, only in the namespaces with a card (RoleBindings below).
+# Read only, and nothing else: no Secrets, no ConfigMaps, no discovery of
+# Ingresses or HTTPRoutes (off in Homepage's kubernetes.yaml). A new app card
+# with `namespace:` needs a RoleBinding here.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: homepage-nodes
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list]
+  - apiGroups: [metrics.k8s.io]
+    resources: [nodes]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: homepage-nodes
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homepage-nodes
+subjects:
+  - kind: ServiceAccount
+    name: homepage
+    namespace: homepage
+---
+# Granted per namespace by the RoleBindings below, never cluster-wide.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: homepage-pods
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list]
+  - apiGroups: [metrics.k8s.io]
+    resources: [pods]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: homepage-pods
+  namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homepage-pods
+subjects:
+  - kind: ServiceAccount
+    name: homepage
+    namespace: homepage
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: homepage-pods
+  namespace: monitoring
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homepage-pods
+subjects:
+  - kind: ServiceAccount
+    name: homepage
+    namespace: homepage
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: homepage-pods
+  namespace: longhorn-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homepage-pods
+subjects:
+  - kind: ServiceAccount
+    name: homepage
+    namespace: homepage
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: homepage-pods
+  namespace: vaultwarden
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homepage-pods
+subjects:
+  - kind: ServiceAccount
+    name: homepage
+    namespace: homepage

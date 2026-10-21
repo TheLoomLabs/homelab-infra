@@ -1,0 +1,27 @@
+---
+# Cluster-wide RBAC for apps in the `apps` project. That project allows no
+# cluster-scoped resources and only the app's own namespace, so an app can't
+# grant itself access to the cluster. When an app needs to read it (Homepage:
+# nodes, pods, metrics), its ClusterRoles and RoleBindings live here, in the
+# platform project, one file per app.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-rbac
+  namespace: argocd
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+    targetRevision: main
+    path: kubernetes/platform/app-rbac
+  destination:
+    server: https://kubernetes.default.svc
+    # Every resource names its namespace (or is cluster-scoped); this one only
+    # ties the app to an existing, policed namespace for the CI checks.
+    namespace: homepage
+  syncPolicy:
+    automated:
+      # Removing a file here must remove the access too.
+      prune: true
+      selfHeal: true
