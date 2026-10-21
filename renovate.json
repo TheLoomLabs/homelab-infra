@@ -220,6 +220,16 @@
       ]
     },
     {
+      "description": "Forgejo stays on the 15.x LTS line (supported until July 2027); move to the next LTS by hand",
+      "matchDepNames": [
+        "codeberg.org/forgejo/forgejo"
+      ],
+      "allowedVersions": "/^15\\./",
+      "prBodyNotes": [
+        "Server and backup job (`kubernetes/services/forgejo/`) use the same image. Read the release notes (https://codeberg.org/forgejo/forgejo/releases) for changed settings. Argo CD deploys it on merge; the database migrates at start (the nightly dump and the Longhorn snapshot are the way back, docs/forgejo.md). Runner compatibility: docs/forgejo.md, \"Upgrades\"."
+      ]
+    },
+    {
       "matchDepNames": [
         "ghcr.io/gethomepage/homepage"
       ],
@@ -240,7 +250,7 @@
         "restic/restic"
       ],
       "prBodyNotes": [
-        "restic on the Swarm nodes (role swarm_backup, checked against the release's SHA256SUMS) and the restic image of the Vaultwarden backup jobs (`kubernetes/services/vaultwarden/backup.yaml`) move together: after merging run `make swarm-backup` (Argo CD updates the jobs). Read the changelog for repository format changes before merging."
+        "restic on the Swarm nodes (role swarm_backup, checked against the release's SHA256SUMS) and the restic image of the Vaultwarden and Forgejo backup jobs (`kubernetes/services/{vaultwarden,forgejo}/backup.yaml`) move together: after merging run `make swarm-backup` (Argo CD updates the jobs). Read the changelog for repository format changes before merging."
       ],
       "groupName": "restic"
     },
