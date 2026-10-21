@@ -55,6 +55,7 @@ spec:
     # binds roles there (kubernetes/platform/app-rbac/).
     - {server: https://kubernetes.default.svc, namespace: vaultwarden}
     - {server: https://kubernetes.default.svc, namespace: homepage}
+    - {server: https://kubernetes.default.svc, namespace: forgejo}
   clusterResourceWhitelist:
     - {group: "*", kind: "*"}
 ---
@@ -74,6 +75,7 @@ spec:
   destinations:
     - {server: https://kubernetes.default.svc, namespace: vaultwarden}
     - {server: https://kubernetes.default.svc, namespace: homepage}
+    - {server: https://kubernetes.default.svc, namespace: forgejo}
   # Nothing cluster-scoped, not even Namespace: the platform creates app
   # namespaces with their Pod Security labels. An app that needs to read the
   # cluster (Homepage) gets its ClusterRoles and bindings from the platform's
