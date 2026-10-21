@@ -31,6 +31,7 @@ spec:
     - https://grafana-community.github.io/helm-charts
     - https://grafana.github.io/helm-charts
     - https://isindir.github.io/sops-secrets-operator/
+    - https://kubernetes-sigs.github.io/metrics-server/
     - https://prometheus-community.github.io/helm-charts
     - https://vmware-tanzu.github.io/helm-charts
   destinations:
@@ -50,8 +51,10 @@ spec:
     - {server: https://kubernetes.default.svc, namespace: velero}
     # App namespaces: the namespaces app creates them with their Pod Security
     # labels (Argo CD checks a Namespace's name against the destinations).
-    # Their apps live in the `apps` project below.
+    # Their apps live in the `apps` project below. The app-rbac app also
+    # binds roles there (kubernetes/platform/app-rbac/).
     - {server: https://kubernetes.default.svc, namespace: vaultwarden}
+    - {server: https://kubernetes.default.svc, namespace: homepage}
   clusterResourceWhitelist:
     - {group: "*", kind: "*"}
 ---
@@ -70,8 +73,11 @@ spec:
   # namespaces above.
   destinations:
     - {server: https://kubernetes.default.svc, namespace: vaultwarden}
+    - {server: https://kubernetes.default.svc, namespace: homepage}
   # Nothing cluster-scoped, not even Namespace: the platform creates app
-  # namespaces with their Pod Security labels.
+  # namespaces with their Pod Security labels. An app that needs to read the
+  # cluster (Homepage) gets its ClusterRoles and bindings from the platform's
+  # app-rbac app, reviewed there.
   clusterResourceWhitelist: []
   # Quotas and limits are set by the platform, not by the app.
   namespaceResourceBlacklist:
