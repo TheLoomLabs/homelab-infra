@@ -50,7 +50,7 @@ Every Application names an AppProject from `kubernetes/apps/projects.yaml` (`def
 - every **cluster-scoped** resource (built-in kinds from a fixed list, custom kinds by the scope in their CRD) is in `clusterResourceWhitelist`
 - every `Namespace` object's name is in `destinations` (Argo CD checks that too)
 
-A new platform component needs its chart repo and namespace added to the `platform` project in the same commit; a Phase 3 app goes into `apps`, which allows namespaced resources only (no `Namespace`, see below).
+A new platform component needs its chart repo and namespace added to the `platform` project in the same commit; a Phase 3 app goes into `apps`, which allows namespaced resources only (no `Namespace`, see below). Its namespace goes into the destinations of both projects: `apps` for the app, `platform` for the namespaces app that creates it.
 
 ### Pod Security labels
 
@@ -115,6 +115,7 @@ Self-hosted: `.github/workflows/renovate.yml` runs the Renovate action every Mon
 |---|---|---|
 | Helm charts and external Git sources of the Argo CD apps | `kubernetes/apps/*.yaml` | `argocd` |
 | Images in Helm values | `kubernetes/platform/**/values*.yaml` | `helm-values` |
+| Images in plain manifests of the Phase 3 apps | `kubernetes/services/**` | `kubernetes` |
 | GitHub Actions (SHA + version comment) | `.github/workflows/` | `github-actions` |
 | Terraform providers (+ `.terraform.lock.hcl`) | `terraform/` | `terraform` |
 | Versions with a `# renovate:` comment on the line above (Cilium, cilium-cli, kube-vip, Helm, Gateway API, Alloy, tool versions in the workflows) | `ansible/inventory/group_vars/`, `ansible/roles/*/defaults/`, `.github/workflows/` | regex |
@@ -125,7 +126,7 @@ Policy:
 - **Nothing merges itself.** Argo CD deploys whatever reaches `main`, so every PR is reviewed and merged by hand (squash merge, so the commit on `main` is signed by GitHub). The `lint` checks run on every PR; `manifests` renders the bumped chart and validates it.
 - PRs are created Mondays before 08:00 (Europe/Zagreb), at most 10 open; a release must be **3 days old** before Renovate proposes it.
 - The **Dependency Dashboard** issue lists everything pending, rate-limited or failing.
-- Grouped: non-major GitHub Actions (one PR), kube-prometheus-stack with its CRD chart, the Alloy chart with the VM Alloy version, the Swarm alerting images. Majors always get their own PR.
+- Grouped: non-major GitHub Actions (one PR), kube-prometheus-stack with its CRD chart, the Alloy chart with the VM Alloy version, the Swarm alerting images, restic on the Swarm nodes with the restic image of the Vaultwarden backup. Majors always get their own PR.
 - PR notes tell what to do besides merging: run the playbook for things Ansible installs (Cilium, kube-vip, Helm on the first control-plane node, Swarm stacks), update the SHA-256 for checksum-pinned assets (CI fails until it matches), keep promtool at kube-prometheus-stack's Prometheus.
 
 To add a version Renovate should track in Ansible vars or a workflow, put a comment on the line above it:
@@ -163,7 +164,7 @@ Output in `.artifacts/images/`: `images.txt` (every image and the file that pins
 | `wrong yq` | Another `yq` (the Python one) is first in `PATH`; use the devbox shell |
 | `helm pull` fails | Chart version or repo URL wrong in the Application, or no network |
 | `not permitted by project` | The app's repo, namespace or a resource kind is outside its AppProject: add it to `kubernetes/apps/projects.yaml` (or fix the namespace) |
-| `destination namespace '<ns>' has no Namespace with Pod Security labels` | Add the namespace to `kubernetes/platform/namespaces/namespaces.yaml` (and to the project's `destinations`) |
+| `destination namespace '<ns>' has no Namespace with Pod Security labels` | Add the namespace to `kubernetes/platform/namespaces/namespaces.yaml` (and to the project's `destinations`; an app namespace also to `platform`'s) |
 | `no CiliumNetworkPolicy default-deny` | Add a `networkpolicy.yaml` with a `default-deny` to the app's namespace (copy one from `kubernetes/platform/`) |
 | `is not a level` / `unknown label` | Typo in a `pod-security.kubernetes.io/*` label |
 | `lokitool`: `could not parse expression for alert` / `field … not found in type rulefmt.Rule` | LogQL syntax error or a misspelled rule key in a `loki-rules-*` ConfigMap; try the expression in Grafana → Explore |

@@ -22,6 +22,7 @@
   "enabledManagers": [
     "argocd",
     "helm-values",
+    "kubernetes",
     "github-actions",
     "terraform",
     "custom.regex"
@@ -34,6 +35,11 @@
   "helm-values": {
     "managerFilePatterns": [
       "/^kubernetes/platform/.+/values[^/]*\\.ya?ml$/"
+    ]
+  },
+  "kubernetes": {
+    "managerFilePatterns": [
+      "/^kubernetes/services/.+\\.ya?ml$/"
     ]
   },
   "customManagers": [
@@ -207,11 +213,20 @@
     },
     {
       "matchDepNames": [
+        "vaultwarden/server"
+      ],
+      "prBodyNotes": [
+        "Server and backup job (`kubernetes/services/vaultwarden/`) use the same image. Read the release notes: new Bitwarden clients often need a minimum server version, and some releases change settings. Argo CD deploys it on merge; the database migrates at start (Longhorn snapshot and the nightly dump are the way back, docs/vaultwarden.md)."
+      ]
+    },
+    {
+      "matchDepNames": [
         "restic/restic"
       ],
       "prBodyNotes": [
-        "restic on the Swarm nodes (role swarm_backup, checked against the release's SHA256SUMS): after merging run `make swarm-backup`. Read the changelog for repository format changes before merging."
-      ]
+        "restic on the Swarm nodes (role swarm_backup, checked against the release's SHA256SUMS) and the restic image of the Vaultwarden backup jobs (`kubernetes/services/vaultwarden/backup.yaml`) move together: after merging run `make swarm-backup` (Argo CD updates the jobs). Read the changelog for repository format changes before merging."
+      ],
+      "groupName": "restic"
     },
     {
       "matchDepNames": [
