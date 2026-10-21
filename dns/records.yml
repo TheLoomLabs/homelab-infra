@@ -20,6 +20,12 @@ bind_records:
   - {name: status, type: CNAME, value: swarm}  # stack uptime (Uptime Kuma)
   - {name: portainer, type: CNAME, value: swarm}  # stack portainer
 
+  # LoadBalancer addresses for non-HTTP services on Kubernetes (pool .60-.79,
+  # kubernetes/platform/cilium-lb). Not under git.lab: a name below it would
+  # make git.lab an empty node, and the * record above would stop answering
+  # for git.lab itself.
+  - {name: git-ssh, type: A, value: 192.168.1.62}  # Forgejo SSH (forgejo/forgejo-ssh)
+
   # Infrastructure outside the inventory.
   - {name: pve, type: A, value: 192.168.1.200}
   - {name: k8s-api, type: A, value: 192.168.1.20}
