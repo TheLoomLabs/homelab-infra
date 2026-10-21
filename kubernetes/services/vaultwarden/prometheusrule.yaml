@@ -1,0 +1,62 @@
+---
+# Alerts for the vault's app-level backup (backup.yaml, docs/vaultwarden.md).
+# kube-state-metrics provides the CronJob and Job state; the app being down is
+# Uptime Kuma's job (monitor vaultwarden) and KubePodNotReady's.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vaultwarden
+  namespace: vaultwarden
+spec:
+  groups:
+    - name: vaultwarden-backup
+      rules:
+        - alert: VaultwardenBackupFailed
+          # Failed Jobs are removed after 20 h (ttlSecondsAfterFinished).
+          expr: kube_job_failed{namespace="vaultwarden", condition="true"} > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "Vaultwarden backup job {{ $labels.job_name }} failed"
+            description: >-
+              Check the job's logs: kubectl -n vaultwarden logs job/{{ $labels.job_name }} --all-containers, or in
+              Loki {namespace="vaultwarden"}. See docs/vaultwarden.md.
+        - alert: VaultwardenBackupStale
+          expr: |
+            time() - kube_cronjob_status_last_successful_time{namespace="vaultwarden", cronjob="vaultwarden-backup"}
+              > 26 * 3600
+          for: 1h
+          labels:
+            severity: critical
+          annotations:
+            summary: "No successful Vaultwarden backup in over 26 hours"
+            description: >-
+              The nightly dump + restic job (01:30 UTC) hasn't completed. It only runs on the node where Vaultwarden
+              runs. See docs/vaultwarden.md.
+        - alert: VaultwardenBackupNeverRan
+          # A new install before its first night, for longer than a night.
+          expr: absent(kube_cronjob_status_last_successful_time{namespace="vaultwarden", cronjob="vaultwarden-backup"})
+          for: 26h
+          labels:
+            severity: warning
+          annotations:
+            summary: "The Vaultwarden backup has never completed"
+            description: "CronJob vaultwarden/vaultwarden-backup has no successful run. See docs/vaultwarden.md."
+        - alert: VaultwardenBackupCheckStale
+          expr: |
+            time() - kube_cronjob_status_last_successful_time{namespace="vaultwarden", cronjob="vaultwarden-backup-check"}
+              > 8 * 86400
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "No passing restic check of the Vaultwarden repository in 8 days"
+            description: "The weekly check (Sunday 05:30 UTC) failed or didn't run. See docs/vaultwarden.md."
+        - alert: VaultwardenBackupCheckNeverRan
+          expr: absent(kube_cronjob_status_last_successful_time{namespace="vaultwarden", cronjob="vaultwarden-backup-check"})
+          for: 8d
+          labels:
+            severity: warning
+          annotations:
+            summary: "The restic check of the Vaultwarden repository has never passed"
+            description: "CronJob vaultwarden/vaultwarden-backup-check has no successful run. See docs/vaultwarden.md."

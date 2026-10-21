@@ -1,0 +1,232 @@
+---
+# App-level backup of the vault (docs/vaultwarden.md, ADR 0018), on top of
+# Longhorn's volume backups and Velero. Every night at 01:30 UTC:
+#
+#   1. dump    `/vaultwarden backup`: a consistent copy of the live SQLite
+#              database (VACUUM INTO), moved to /data/backups/; the newest 7
+#              are kept. Longhorn's backup at 02:00 and Velero's at 03:00
+#              carry them off-site with the volume.
+#   2. restic  /data (dumps, attachments, sends, RSA key, config.json; not the
+#              live database file) to the R2 bucket theloomlabs-vaultwarden-
+#              backup, encrypted with the restic password. Independent of the
+#              Longhorn key. The bucket lock keeps every snapshot, so the job
+#              never runs forget/prune (quarterly by hand, docs/vaultwarden.md).
+#
+# The volume is ReadWriteOnce, so the job runs next to the Vaultwarden pod
+# (podAffinity); while Vaultwarden isn't running, the job waits and fails
+# after activeDeadlineSeconds, and VaultwardenBackupStale fires the next day.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vaultwarden-backup
+  namespace: vaultwarden
+spec:
+  schedule: "30 1 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      # Failed jobs (and VaultwardenBackupFailed) go after 20 h; the logs stay
+      # in Loki.
+      ttlSecondsAfterFinished: 72000
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: vaultwarden-backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            fsGroupChangePolicy: OnRootMismatch
+            seccompProfile:
+              type: RuntimeDefault
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: vaultwarden
+                  topologyKey: kubernetes.io/hostname
+          initContainers:
+            - name: dump
+              image: vaultwarden/server:1.37.4
+              envFrom:
+                - configMapRef:
+                    name: vaultwarden-env
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  out=$(/vaultwarden backup)
+                  echo "$out"
+                  f=$(printf '%s\n' "$out" | sed -n "s/^Backup to '\(.*\)' was successful$/\1/p")
+                  if [ -z "$f" ] || [ ! -s "$f" ]; then
+                    echo "no backup file" >&2
+                    exit 1
+                  fi
+                  mkdir -p /data/backups
+                  mv "$f" /data/backups/
+                  ls -1t /data/backups/db_*.sqlite3 | tail -n +8 | xargs -r rm -f --
+                  ls -l /data/backups
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+          containers:
+            - name: restic
+              image: restic/restic:0.19.1
+              envFrom:
+                - secretRef:
+                    name: vaultwarden-restic
+              env:
+                - name: AWS_DEFAULT_REGION
+                  value: auto
+                - name: RESTIC_CACHE_DIR
+                  value: /cache
+                - name: HOME
+                  value: /tmp
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  # First run: create the repository. Any other error (wrong
+                  # password, no network) makes init fail too ("already exists").
+                  restic cat config >/dev/null 2>&1 || restic init
+                  # The live database is excluded: the dump is the consistent
+                  # copy. lost+found (ext4, root only) would make the snapshot
+                  # incomplete (exit 3).
+                  restic backup /data --host vaultwarden --tag vaultwarden \
+                    --exclude /data/lost+found \
+                    --exclude /data/db.sqlite3 \
+                    --exclude '/data/db.sqlite3-*' \
+                    --exclude /data/icon_cache \
+                    --exclude /data/tmp
+                  restic snapshots --host vaultwarden --latest 1
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                  readOnly: true
+                - name: cache
+                  mountPath: /cache
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: vaultwarden-data
+            - name: cache
+              emptyDir:
+                sizeLimit: 1Gi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 256Mi
+---
+# Weekly `restic check`: repository structure plus a random 5% of the data,
+# downloaded and verified (R2 has no egress fees). Doesn't need the volume.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vaultwarden-backup-check
+  namespace: vaultwarden
+spec:
+  schedule: "30 5 * * 0"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 72000
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: vaultwarden-backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: restic
+              image: restic/restic:0.19.1
+              envFrom:
+                - secretRef:
+                    name: vaultwarden-restic
+              env:
+                - name: AWS_DEFAULT_REGION
+                  value: auto
+                - name: RESTIC_CACHE_DIR
+                  value: /cache
+                - name: HOME
+                  value: /tmp
+              args:
+                - check
+                - --read-data-subset
+                - 5%
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - name: cache
+                  mountPath: /cache
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: cache
+              emptyDir:
+                sizeLimit: 1Gi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 256Mi
