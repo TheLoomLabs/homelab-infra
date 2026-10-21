@@ -21,7 +21,7 @@
      - {name: short-ttl, type: A, value: 192.168.1.51, ttl: 60}
    ```
 
-   Names are relative to the zone. Apps behind the Gateway need no record, because the `*` wildcard already points at `192.168.1.61`. A wildcard never matches a name that exists in the zone.
+   Names are relative to the zone. Apps behind the Gateway need no record, because the `*` wildcard already points at `192.168.1.61`. A wildcard never matches a name that exists in the zone, and that includes empty nodes: a record `ssh.git` would make `git` exist (with no data), and `git.lab.theloomlabs.org` would stop resolving. Non-HTTP names get a flat name instead (`git-ssh`).
 
 2. Deploy and check:
 

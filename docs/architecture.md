@@ -25,6 +25,7 @@ That adds up to about 42 GB of RAM. The rest stays free for the Proxmox host and
 | `10.20.0.0/16` | Swarm overlay networks (default address pool) |
 | `.60–.79` | `LoadBalancer` services (Cilium LB IPAM pool, announced with L2/ARP) |
 | `.61` | Shared Gateway for `*.lab.theloomlabs.org` (fixed, from the LB pool) |
+| `.62` | Forgejo SSH (`git-ssh.lab.theloomlabs.org`, port 22; fixed, from the LB pool) |
 
 UFW on each node denies incoming traffic by default. Traffic is accepted from the lab, pod and service ranges (`trusted_cidrs`). SSH accepts keys only and is rate-limited.
 
@@ -132,6 +133,7 @@ Velero backs up the cluster every night at 03:00 UTC, after Longhorn's own daily
 - One Velero restore brings back a namespace with its PVCs and data. This was tested by deleting and restoring a namespace with an encrypted volume.
 - The Swarm stacks' local volumes are backed up at 03:30 UTC by a systemd timer on each Swarm node (role `swarm_backup`): restic, encrypted on the node, to the R2 bucket `theloomlabs-swarm-backup`. Services with SQLite or BoltDB are stopped for the 10–20 seconds their backup takes. The bucket lock has no expiry, because restic deduplicates and recent snapshots depend on the oldest data; the nodes never delete, and old snapshots are pruned by hand every quarter with the lock rules lifted ([swarm-backup.md](swarm-backup.md)).
 - Vaultwarden, the most sensitive data, also gets an app-level backup at 01:30 UTC: a consistent SQLite dump on its volume (carried off-site by Longhorn and Velero) and a restic snapshot to its own locked bucket `theloomlabs-vaultwarden-backup`, readable without the cluster or the Longhorn key ([vaultwarden.md](vaultwarden.md), ADR 0018).
+- Forgejo gets the same treatment at 01:45 UTC: a SQL dump of its database (`forgejo dump` without repositories) on its volume and a restic snapshot of the whole volume (repositories, LFS, packages, dumps) to `theloomlabs-forgejo-backup` ([forgejo.md](forgejo.md), ADR 0020).
 
 | Lost | Comes back from |
 |---|---|
@@ -141,7 +143,7 @@ Velero backs up the cluster every night at 03:00 UTC, after Longhorn's own daily
 | The vault's database (bad upgrade, corruption) | Last night's dump on the volume, or restic |
 | The whole cluster or the Proxmox host | Git (Terraform, Ansible, Argo CD), then Velero and Longhorn restores from R2 |
 
-What must survive outside the lab: the age key, the Longhorn key, the SSE-C key and the two restic passwords. Runbooks: [backup.md](backup.md), [swarm-backup.md](swarm-backup.md), [vaultwarden.md](vaultwarden.md).
+What must survive outside the lab: the age key, the Longhorn key, the SSE-C key and the three restic passwords. Runbooks: [backup.md](backup.md), [swarm-backup.md](swarm-backup.md), [vaultwarden.md](vaultwarden.md), [forgejo.md](forgejo.md).
 
 ## Monitoring and alerting
 
@@ -153,6 +155,7 @@ kube-prometheus-stack runs in the namespace `monitoring` (ADR 0011). The receive
 - **Alertmanager** posts warnings and critical alerts to **ntfy** (`ntfy.lab.theloomlabs.org`); the phone subscribes with the ntfy app. The always-firing `Watchdog` alert pings **healthchecks** (`hc.lab.theloomlabs.org`) every minute; when the pings stop, healthchecks alerts through ntfy. That is the dead man's switch for the cluster.
 - ntfy and healthchecks are the Swarm stack `alerting`, deployed by Ansible (role `alerting`). Their state is in local volumes on one Swarm node.
 - **Uptime Kuma** (Swarm stack `uptime`, role `uptime_kuma`) checks the lab from outside Kubernetes: the API VIP, web UIs through the Gateway and Traefik, both DNS servers, the Proxmox UI. It notifies through ntfy, so a dead Gateway or app is reported even when Prometheus can't see it. The monitors and the notification are a list in the role, applied by AutoKuma next to it; Prometheus in turn alerts when Uptime Kuma's replica or node is down ([uptime.md](uptime.md)).
+- **Forgejo** (`https://git.lab.theloomlabs.org`, Kubernetes) hosts Git repositories, packages and Actions; Git over SSH on `git-ssh.lab.theloomlabs.org` (LoadBalancer `.62`). No egress: no mirrors or migrations from other hosts. GitHub stays the home of the public repos and of Argo CD's source ([forgejo.md](forgejo.md), ADR 0020).
 - **Homepage** (`https://home.lab.theloomlabs.org`, Kubernetes) is the start page: every app with a status dot, node and pod load from metrics-server, read-only widgets (Argo CD, Proxmox, healthchecks, Uptime Kuma) and Prometheus queries for Longhorn, Swarm services and firing alerts. Its read access to the cluster comes from the platform app `app-rbac` ([homepage.md](homepage.md), ADR 0019).
 - Not covered: the whole Proxmox host, power or the Starlink link going down. Nothing on the host can report that; the stack moves to a second machine later.
 

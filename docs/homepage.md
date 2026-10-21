@@ -28,7 +28,7 @@
 | Card / widget | Source | Access |
 |---|---|---|
 | Kubernetes (header): nodes, CPU, memory | API server + metrics-server | ClusterRole `homepage-nodes` |
-| Status and CPU/memory of Vaultwarden, Argo CD, Grafana, Alerts, Prometheus, Longhorn | pods in their namespaces | ClusterRole `homepage-pods` through a RoleBinding per namespace (argocd, monitoring, longhorn-system, vaultwarden) |
+| Status and CPU/memory of Vaultwarden, Forgejo, Argo CD, Grafana, Alerts, Prometheus, Longhorn | pods in their namespaces | ClusterRole `homepage-pods` through a RoleBinding per namespace (argocd, monitoring, longhorn-system, vaultwarden, forgejo) |
 | Argo CD: apps, synced, out of sync, degraded | `argocd-server` API | account `homepage`, `role:homepage` (get Applications only) |
 | Alerts: critical and warning alerts firing | Prometheus (`ALERTS`) | none (in-cluster) |
 | Prometheus: targets up/down | Prometheus | none |
@@ -39,7 +39,7 @@
 | Swarm managers, DNS: nodes up, CPU, memory | Prometheus (Alloy on the VMs) | none |
 | Traefik: instances up, requests/s, 5xx/s | Prometheus | none |
 | ntfy: failed notifications 24h | Prometheus (Alertmanager) | none |
-| Vaultwarden, Backups: last successful backup (Velero, Vaultwarden, oldest Swarm volume) | Prometheus | none |
+| Vaultwarden, Forgejo, Backups: last successful backup (Velero, Vaultwarden, Forgejo, oldest Swarm volume); Forgejo repo count (its /metrics) | Prometheus | none |
 | Uptime Kuma: up, down, uptime | status page `lab` | none (public page, LAN only) |
 | healthchecks: up, down | healthchecks API | read-only API key |
 | Proxmox: VMs, CPU, memory | Proxmox API | token `homepage@pve!dashboard`, role PVEAuditor |

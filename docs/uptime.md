@@ -115,6 +115,8 @@ Defined in `uptime_kuma_monitors` (role defaults). Each key is AutoKuma's ID: re
 | `swarm-vip` | keyword | `http://swarm…:8082/ping` returns `OK`: Traefik on whichever manager holds the Swarm VIP. When that is swarm-m-03, this also tests that a container can reach the VIP on its own node ([edge.md](edge.md)) |
 | `portainer` | keyword | `https://portainer…/api/system/status` contains `"Version"` (no login) |
 | `vaultwarden` | http | `https://vault…/alive` (Kubernetes, through the Gateway) |
+| `forgejo` | http | `https://git…/api/healthz` (Kubernetes, through the Gateway) |
+| `forgejo-ssh` | port | `git-ssh…:22` (Kubernetes, LoadBalancer .62) |
 | `homepage` | http | `https://home…/api/healthcheck` (Kubernetes, through the Gateway; the one path without login) |
 | `proxmox` | http | `https://pve…:8006/` (TLS not verified: self-signed) |
 

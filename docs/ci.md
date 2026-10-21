@@ -126,7 +126,7 @@ Policy:
 - **Nothing merges itself.** Argo CD deploys whatever reaches `main`, so every PR is reviewed and merged by hand (squash merge, so the commit on `main` is signed by GitHub). The `lint` checks run on every PR; `manifests` renders the bumped chart and validates it.
 - PRs are created Mondays before 08:00 (Europe/Zagreb), at most 10 open; a release must be **3 days old** before Renovate proposes it.
 - The **Dependency Dashboard** issue lists everything pending, rate-limited or failing.
-- Grouped: non-major GitHub Actions (one PR), kube-prometheus-stack with its CRD chart, the Alloy chart with the VM Alloy version, the Swarm alerting images, restic on the Swarm nodes with the restic image of the Vaultwarden backup. Majors always get their own PR.
+- Grouped: non-major GitHub Actions (one PR), kube-prometheus-stack with its CRD chart, the Alloy chart with the VM Alloy version, the Swarm alerting images, restic on the Swarm nodes with the restic image of the Vaultwarden and Forgejo backups. Forgejo is held to its LTS line (15.x). Majors always get their own PR.
 - PR notes tell what to do besides merging: run the playbook for things Ansible installs (Cilium, kube-vip, Helm on the first control-plane node, Swarm stacks), update the SHA-256 for checksum-pinned assets (CI fails until it matches), keep promtool at kube-prometheus-stack's Prometheus.
 
 To add a version Renovate should track in Ansible vars or a workflow, put a comment on the line above it:
