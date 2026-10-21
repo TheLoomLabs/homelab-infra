@@ -779,6 +779,70 @@
         }
       }
     },
+    "libargon2@latest": {
+      "last_modified": "2026-10-20T14:23:57Z",
+      "resolved": "github:NixOS/nixpkgs/5adc50831c259f87faeb09ddf930d43597197473#libargon2",
+      "source": "devbox-search",
+      "version": "20190702",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/a747xsyqn7j05x3jiscfklijwi130czx-libargon2-20190702",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/s31an248xx8shmr876aw11wwgh1gy6g1-libargon2-20190702-dev"
+            }
+          ],
+          "store_path": "/nix/store/a747xsyqn7j05x3jiscfklijwi130czx-libargon2-20190702"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/rja9qkbkilnjqrgqcvl9y06nd02xv1g5-libargon2-20190702",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/ixl89181ws0ywrvqjz6jara9gsg1jm1y-libargon2-20190702-dev"
+            }
+          ],
+          "store_path": "/nix/store/rja9qkbkilnjqrgqcvl9y06nd02xv1g5-libargon2-20190702"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/lam6y05visr99iz9612jviivs6rjcdwq-libargon2-20190702",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/xrfmrqmy73h2b7gv5ldqkh8kjlil594q-libargon2-20190702-dev"
+            }
+          ],
+          "store_path": "/nix/store/lam6y05visr99iz9612jviivs6rjcdwq-libargon2-20190702"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/j5r9gyy8s8373f6m5kyxaq0f97gzad07-libargon2-20190702",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/91grwa5yk0iiq2bmbrl9rbvhr6lvccxi-libargon2-20190702-dev"
+            }
+          ],
+          "store_path": "/nix/store/j5r9gyy8s8373f6m5kyxaq0f97gzad07-libargon2-20190702"
+        }
+      }
+    },
     "pre-commit@latest": {
       "last_modified": "2026-10-10T12:58:50Z",
       "resolved": "github:NixOS/nixpkgs/ca1659429c950a11a565b5764e37a1b704e17ec8#pre-commit",
