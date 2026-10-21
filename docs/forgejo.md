@@ -200,6 +200,8 @@ There are five copies of Forgejo's data:
 | **App-level: dump** | 01:45, newest 7 in `backups/` | `forgejo dump` without repositories, LFS, attachments, packages, logs, indexes: `forgejo-db.sql` (consistent SQL dump of the database), `app.ini`, small files from `data/` | with the two above | Longhorn key |
 | **App-level: restic** | 01:45, after the dump | `/var/lib/gitea` without the live database, indexes, queues, archives | R2 `theloomlabs-forgejo-backup`, bucket lock | restic password |
 
+**Inside a dump:** `forgejo-db.sql` (the consistent database dump, the only one to restore from), `app.ini`, and `data/` without attachments and packages: the SSH host key (`ssh/gitea.rsa`), the OAuth2 and Actions token signing keys (`jwt/private.pem`, `actions_id_token/private.pem`), avatars. `forgejo dump` also copies the live `data/forgejo.db` with its `-wal`/`-shm` files; that copy is taken mid-write, **don't restore from it**.
+
 The restic copy needs neither the cluster nor the Longhorn key, only the R2 token, the restic password and `restic` on any machine. Repositories are read while Forgejo runs. If someone pushes during the backup, that repository's refs can be one push behind, but its objects are never broken (Git writes objects before it moves refs).
 
 **The job** (`forgejo-backup`) has two containers:
