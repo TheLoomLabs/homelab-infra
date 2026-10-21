@@ -25,6 +25,7 @@
     "dig":                                                                          "latest",
     "restic":                                                                       "latest",
     "libargon2":                                                                    "latest",
+    "sqlite":                                                                       "latest",
     "github:NixOS/nixpkgs/f20cd90e28fe0403873f473b29e42662cd86e8c4#prometheus.cli": "",
     "github:NixOS/nixpkgs/f20cd90e28fe0403873f473b29e42662cd86e8c4#grafana-loki":   ""
   },

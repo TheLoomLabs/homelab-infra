@@ -1,0 +1,76 @@
+---
+# Alerts for the Forgejo app-level backup (backup.yaml, docs/forgejo.md).
+# kube-state-metrics provides the CronJob and Job state; the app being down is
+# Uptime Kuma's job (monitor forgejo) and KubePodNotReady's.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: forgejo
+  namespace: forgejo
+spec:
+  groups:
+    - name: forgejo-backup
+      rules:
+        - alert: ForgejoBackupFailed
+          # Failed Jobs are removed after 20 h (ttlSecondsAfterFinished).
+          expr: kube_job_failed{namespace="forgejo", condition="true"} > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "Forgejo backup job {{ $labels.job_name }} failed"
+            description: >-
+              Check the job's logs: kubectl -n forgejo logs job/{{ $labels.job_name }} --all-containers, or in
+              Loki {namespace="forgejo"}. See docs/forgejo.md.
+        - alert: ForgejoBackupStale
+          expr: |
+            time() - kube_cronjob_status_last_successful_time{namespace="forgejo", cronjob="forgejo-backup"}
+              > 26 * 3600
+          for: 1h
+          labels:
+            severity: critical
+          annotations:
+            summary: "No successful Forgejo backup in over 26 hours"
+            description: >-
+              The nightly dump + restic job (01:45 UTC) hasn't completed. It only runs on the node where Forgejo
+              runs. See docs/forgejo.md.
+        - alert: ForgejoBackupNeverRan
+          # A new install before its first night, for longer than a night.
+          expr: absent(kube_cronjob_status_last_successful_time{namespace="forgejo", cronjob="forgejo-backup"})
+          for: 26h
+          labels:
+            severity: warning
+          annotations:
+            summary: "The Forgejo backup has never completed"
+            description: "CronJob forgejo/forgejo-backup has no successful run. See docs/forgejo.md."
+        - alert: ForgejoBackupCheckStale
+          expr: |
+            time() - kube_cronjob_status_last_successful_time{namespace="forgejo", cronjob="forgejo-backup-check"}
+              > 8 * 86400
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "No passing restic check of the Forgejo repository in 8 days"
+            description: "The weekly check (Sunday 05:45 UTC) failed or didn't run. See docs/forgejo.md."
+        - alert: ForgejoBackupCheckNeverRan
+          expr: absent(kube_cronjob_status_last_successful_time{namespace="forgejo", cronjob="forgejo-backup-check"})
+          for: 8d
+          labels:
+            severity: warning
+          annotations:
+            summary: "The restic check of the Forgejo repository has never passed"
+            description: "CronJob forgejo/forgejo-backup-check has no successful run. See docs/forgejo.md."
+    - name: forgejo
+      rules:
+        - alert: ForgejoMetricsDown
+          # The pod can be Ready while Prometheus can't scrape it: wrong token
+          # (forgejo-metrics vs FORGEJO__metrics__TOKEN) or a network policy.
+          expr: up{namespace="forgejo", job="forgejo"} == 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Prometheus can't scrape Forgejo's /metrics"
+            description: >-
+              Target {{ $labels.instance }} is down. Check the token in secrets.sops.yaml (forgejo-metrics must equal
+              FORGEJO__metrics__TOKEN) and the Prometheus targets page. See docs/forgejo.md.
