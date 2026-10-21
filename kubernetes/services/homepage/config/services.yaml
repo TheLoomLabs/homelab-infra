@@ -70,6 +70,11 @@
               format:
                 type: relativeDate
                 scale: 1000
+            - label: Forgejo
+              query: max(kube_cronjob_status_last_successful_time{namespace="forgejo", cronjob="forgejo-backup"})
+              format:
+                type: relativeDate
+                scale: 1000
             - label: Swarm (oldest)
               query: min(swarm_backup_volume_last_success_timestamp_seconds)
               format:
@@ -118,6 +123,26 @@
                 scale: 1000
             - label: Last check
               query: max(kube_cronjob_status_last_successful_time{namespace="vaultwarden", cronjob="vaultwarden-backup-check"})
+              format:
+                type: relativeDate
+                scale: 1000
+
+    - Forgejo:
+        icon: forgejo.svg
+        href: https://git.lab.theloomlabs.org
+        description: Git, packages, Actions
+        namespace: forgejo
+        app: forgejo
+        widget:
+          type: prometheusmetric
+          url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          refreshInterval: 300000
+          metrics:
+            # Forgejo's /metrics (servicemonitor.yaml), gitea_* names.
+            - label: Repos
+              query: max(gitea_repositories{namespace="forgejo"})
+            - label: Last backup
+              query: max(kube_cronjob_status_last_successful_time{namespace="forgejo", cronjob="forgejo-backup"})
               format:
                 type: relativeDate
                 scale: 1000
