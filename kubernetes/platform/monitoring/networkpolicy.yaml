@@ -31,11 +31,11 @@ spec:
             dns:
               - matchPattern: "*"
 ---
-# Prometheus scrapes everything in the cluster: pods in every namespace, the
-# nodes (node-exporter, kubelet, etcd, scheduler, controller manager on the
-# node addresses) and the API server. Any port: targets come and go with
-# ServiceMonitors. Outside the cluster only the VM targets of
-# scrapeconfig-vms.yaml, on their ports.
+# Prometheus is queried by Grafana and Homepage, and scrapes everything in the
+# cluster: pods in every namespace, the nodes (node-exporter, kubelet, etcd,
+# scheduler, controller manager on the node addresses) and the API server.
+# Any port: targets come and go with ServiceMonitors. Outside the cluster only
+# the VM targets of scrapeconfig-vms.yaml, on their ports.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -49,6 +49,16 @@ spec:
     - fromEndpoints:
         - matchLabels:
             app.kubernetes.io/name: grafana
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+    # Homepage's Prometheus widgets: targets, and the queries of its
+    # prometheusmetric tiles (Longhorn, Swarm services, alerts; docs/homepage.md).
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: homepage
+            k8s:app.kubernetes.io/name: homepage
       toPorts:
         - ports:
             - port: "9090"
