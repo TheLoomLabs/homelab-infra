@@ -142,9 +142,8 @@ spec:
       targetLabel: instance
       action: replace
 ---
-# Traefik of the alerting stack: its metrics entrypoint, published in host
-# mode on the node it runs on (alerting_node, ansible/roles/alerting). Same
-# node as the ntfy/hc records in dns/records.yml.
+# Traefik of the edge stack (ansible/roles/edge): a global service on every
+# Swarm manager, metrics entrypoint published in host mode.
 apiVersion: monitoring.coreos.com/v1alpha1
 kind: ScrapeConfig
 metadata:
@@ -157,6 +156,14 @@ spec:
     - targets: ["192.168.1.41:8082"]
       labels:
         host: swarm-m-01
+        group: swarm
+    - targets: ["192.168.1.42:8082"]
+      labels:
+        host: swarm-m-02
+        group: swarm
+    - targets: ["192.168.1.43:8082"]
+      labels:
+        host: swarm-m-03
         group: swarm
   # instance = the VM name, like host. Readable in the node dashboards.
   relabelings:

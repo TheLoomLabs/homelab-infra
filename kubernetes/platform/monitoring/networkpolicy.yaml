@@ -67,7 +67,7 @@ spec:
         - ports:
             - port: "12345"
               protocol: TCP
-    # Docker engine on the Swarm VMs, Traefik on the alerting node.
+    # Docker engine and Traefik (edge stack) on the Swarm VMs.
     - toCIDR:
         - 192.168.1.41/32
         - 192.168.1.42/32

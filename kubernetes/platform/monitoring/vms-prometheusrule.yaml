@@ -179,15 +179,79 @@ spec:
               `journalctl -u swarm-backup-check` on the check node (swarm_backup_check_host). Errors there
               mean damaged or missing data in R2: see "Repository errors" in docs/swarm-backup.md.
 
-    - name: traefik
+    # Stack edge (ansible/roles/edge, docs/edge.md): the Swarm VIP (keepalived),
+    # Traefik on every manager, one certificate kept by edge-cert.
+    - name: swarm-edge
       rules:
-        - alert: TraefikCertificateExpiringSoon
-          # Traefik renews 30 days before expiry. Under 14 days left means
-          # renewals fail (Cloudflare token, DNS-01, Let's Encrypt).
-          expr: min by (cn) ((traefik_tls_certs_not_after{job="traefik"} - time()) / 86400) < 14
+        - alert: SwarmVipDown
+          # No manager holds the VIP: every Traefik fails its check, or
+          # keepalived is broken everywhere. Every Swarm web UI is down, ntfy
+          # included, so this alert may not reach the phone; the ntfy app shows
+          # the connection as lost.
+          expr: (sum(keepalived_vrrp_master{job="node-exporter", vrrp_instance="swarm_vip"}) or vector(0)) < 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "No Swarm manager holds the VIP (swarm.lab.theloomlabs.org)"
+            description: >-
+              `docker service ps edge_traefik` and `journalctl -u keepalived` on the managers.
+              See "Troubleshooting" in docs/edge.md.
+        - alert: SwarmVipSplitBrain
+          # Two managers think they hold the VIP: the VRRP adverts between
+          # them don't arrive (firewall, network), and clients flip between them.
+          expr: sum(keepalived_vrrp_master{job="node-exporter", vrrp_instance="swarm_vip"}) > 1
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $value }} Swarm managers hold the VIP at once"
+            description: >-
+              VRRP adverts don't get through between the managers (IP protocol 112, unicast).
+              `journalctl -u keepalived` on each; see docs/edge.md.
+        - alert: SwarmVipNodeFault
+          # This node's Traefik fails keepalived's check, so the VIP can't move
+          # there: one failure less is left before SwarmVipDown.
+          expr: max by (host) (keepalived_vrrp_fault{job="node-exporter", vrrp_instance="swarm_vip"}) == 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The Swarm VIP can't fail over to {{ $labels.host }}"
+            description: >-
+              Traefik on {{ $labels.host }} doesn't answer /ping on port 8082:
+              `docker service ps edge_traefik --filter node={{ $labels.host }} --no-trunc`.
+        - alert: EdgeCertRenewalFailing
+          # edge-cert runs twice a day on the Raft leader. No successful run
+          # anywhere for two days: renewals would fail too.
+          expr: |
+            (time() - max(edge_cert_last_success_timestamp_seconds{job="node-exporter"}) > 2 * 86400)
+            or absent(edge_cert_last_success_timestamp_seconds{job="node-exporter"})
           for: 1h
           labels:
             severity: warning
           annotations:
-            summary: "Traefik's certificate for {{ $labels.cn }} expires in {{ $value | humanize }} days"
-            description: "Traefik's log in Loki (source=docker, service=alerting_traefik) shows the ACME errors."
+            summary: "edge-cert hasn't succeeded for two days"
+            description: >-
+              `journalctl -u edge-cert` on the Raft leader (`docker node ls`): Cloudflare token, DNS-01 or
+              Let's Encrypt errors. See docs/edge.md.
+        - alert: TraefikCertificateExpiringSoon
+          # edge-cert renews when a third of the lifetime is left (30 days of
+          # 90). Under 14 days left means renewals fail.
+          expr: min by (sans) ((traefik_tls_certs_not_after{job="traefik"} - time()) / 86400) < 14
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Traefik's certificate for {{ $labels.sans }} expires in {{ $value | humanize }} days"
+            description: "`journalctl -u edge-cert` on the Raft leader shows why it isn't renewed (docs/edge.md)."
+        - alert: TraefikCertificateMismatch
+          # After a renewal edge-cert restarts Traefik node by node. Different
+          # certificates for longer means the rolling update stopped.
+          expr: count(count by (serial) (traefik_tls_certs_not_after{job="traefik"})) > 1
+          for: 2h
+          labels:
+            severity: warning
+          annotations:
+            summary: "The Traefik instances serve different certificates"
+            description: "`docker service ps edge_traefik` and `docker service inspect edge_traefik --pretty` (UpdateStatus)."

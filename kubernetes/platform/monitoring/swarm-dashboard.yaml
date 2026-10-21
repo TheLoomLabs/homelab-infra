@@ -1072,7 +1072,7 @@ data:
         {
           "id": 21,
           "type": "row",
-          "title": "Traefik (alerting stack)",
+          "title": "Traefik (edge stack)",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -1194,7 +1194,7 @@ data:
           "id": 24,
           "type": "stat",
           "title": "Certificate days left",
-          "description": "Wildcard certificate (Let's Encrypt, DNS-01). Renewed at 30 days; alert under 14.",
+          "description": "Wildcard certificate (Let's Encrypt, DNS-01, edge-cert), per Traefik node. Renewed with a third of its lifetime left; alert under 14 days.",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -1212,8 +1212,8 @@ data:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "min by (cn) ((traefik_tls_certs_not_after{job=\"traefik\"} - time()) / 86400)",
-              "legendFormat": "{{cn}}",
+              "expr": "min by (host) ((traefik_tls_certs_not_after{job=\"traefik\"} - time()) / 86400)",
+              "legendFormat": "{{host}}",
               "instant": true,
               "range": false
             }
