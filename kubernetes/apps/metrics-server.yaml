@@ -1,0 +1,43 @@
+---
+# metrics-server: the resource metrics API (metrics.k8s.io), CPU and memory of
+# nodes and pods from the kubelets. Used by `kubectl top`, Homepage's cluster
+# and per-app stats, and any future HorizontalPodAutoscaler. Prometheus keeps
+# its own copy of the same numbers (cAdvisor, node-exporter); this API is the
+# short-term, live view. docs/monitoring.md, "Resource metrics API".
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: metrics-server
+  namespace: argocd
+  annotations:
+    # After cert-manager (-7): the serving certificate of the APIService is a
+    # cert-manager Certificate.
+    argocd.argoproj.io/sync-wave: "-6"
+spec:
+  project: platform
+  sources:
+    - repoURL: https://kubernetes-sigs.github.io/metrics-server/
+      chart: metrics-server
+      targetRevision: 3.14.0
+      helm:
+        releaseName: metrics-server
+        valueFiles:
+          - $values/kubernetes/platform/metrics-server/values.yaml
+    - repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    # Where the upstream manifests put it; the APIService points here.
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      # Stateless; everything is rebuilt from the chart.
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
