@@ -115,6 +115,7 @@ Defined in `uptime_kuma_monitors` (role defaults). Each key is AutoKuma's ID: re
 | `swarm-vip` | keyword | `http://swarm…:8082/ping` returns `OK`: Traefik on whichever manager holds the Swarm VIP. When that is swarm-m-03, this also tests that a container can reach the VIP on its own node ([edge.md](edge.md)) |
 | `portainer` | keyword | `https://portainer…/api/system/status` contains `"Version"` (no login) |
 | `vaultwarden` | http | `https://vault…/alive` (Kubernetes, through the Gateway) |
+| `homepage` | http | `https://home…/api/healthcheck` (Kubernetes, through the Gateway; the one path without login) |
 | `proxmox` | http | `https://pve…:8006/` (TLS not verified: self-signed) |
 
 The `/readyz` probe is anonymous on purpose: kubeadm allows it, and the audit policy drops health checks, so it doesn't trip `KubeAuditAnonymousRequest`.

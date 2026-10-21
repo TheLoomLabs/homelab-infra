@@ -295,6 +295,38 @@ docker service rm replicas-test
 - **`SwarmServiceMetricsStale`:** `systemctl status swarm-services-metrics.service` and `journalctl -u swarm-services-metrics` on the manager; `sudo -u alloy docker service ls` must work there.
 - **Alloy upgrades:** the exporter paths (`/api/v0/component/...`) are Alloy's HTTP API. Check them after an Alloy upgrade (step 4).
 
+## Resource metrics API (metrics-server)
+
+metrics-server serves `metrics.k8s.io`: the current CPU and memory of every node and pod, read from the kubelets every 15 s. `kubectl top`, Homepage's cluster and app numbers ([homepage.md](homepage.md)) and any future HorizontalPodAutoscaler use it. It keeps nothing; history stays in Prometheus.
+
+| What | Where |
+|---|---|
+| Argo CD app (wave -6, after cert-manager) | `kubernetes/apps/metrics-server.yaml`, namespace `kube-system` |
+| Values | `kubernetes/platform/metrics-server/values.yaml` |
+
+- Two replicas on different workers with a PodDisruptionBudget: the API server sends every `metrics.k8s.io` request to it, and the aggregated API is down while no replica is ready.
+- **API server → metrics-server is verified.** The chart creates a self-signed Issuer and Certificate; cert-manager's cainjector writes the CA into the APIService (`insecureSkipTLSVerify: false`).
+- **metrics-server → kubelets is not.** The kubelets serve self-signed certificates (`serverTLSBootstrap: false`), so it runs with `--kubelet-insecure-tls`, like Prometheus' kubelet scrape. It connects to the node addresses only (`--kubelet-preferred-address-types=InternalIP`).
+- `kube-system` has no network policies, so nothing to allow. Alerts: kube-prometheus-stack's `KubeAggregatedAPIDown` and `KubeAggregatedAPIErrors` cover the APIService.
+
+Check:
+
+```bash
+kubectl -n argocd get app metrics-server              # Synced, Healthy
+kubectl -n kube-system get pods -l app.kubernetes.io/name=metrics-server -o wide
+kubectl -n kube-system get certificate                # metrics-server Ready
+kubectl get apiservice v1beta1.metrics.k8s.io         # AVAILABLE True
+kubectl top nodes
+kubectl top pods -A --sort-by=memory | head
+```
+
+| Symptom | Cause / fix |
+|---|---|
+| APIService `False (FailedDiscoveryCheck)` | Pods not ready, or the CA isn't injected yet: `kubectl get apiservice v1beta1.metrics.k8s.io -o yaml` (annotation `cert-manager.io/inject-ca-from`, non-empty `caBundle`), cert-manager cainjector logs |
+| `kubectl top` *metrics not available yet* | Normal for the first minute after a start |
+| Logs: *dial tcp …:10250: i/o timeout* | The host firewall drops pod → kubelet traffic: `trusted_cidrs` (pod CIDR) in group_vars/k8s.yml |
+| One pod `Pending` during a node drain | Expected with two workers and required anti-affinity; the PDB keeps the other one up |
+
 ## Troubleshooting
 
 - **No ntfy message:** `kubectl -n monitoring logs sts/alertmanager-kube-prometheus-stack-alertmanager -c alertmanager | grep -i -E 'notify|webhook'`. `401`/`403` means the token doesn't match the one in `swarm/alerting.sops.yaml`; a DNS or TLS error means the Swarm stack or its certificate isn't up ([alerting.md](alerting.md)).
