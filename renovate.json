@@ -221,6 +221,22 @@
     },
     {
       "matchDepNames": [
+        "ghcr.io/gethomepage/homepage"
+      ],
+      "prBodyNotes": [
+        "Argo CD deploys it on merge; nothing is stored, so rolling back is reverting the PR. Read the release notes for changed settings or widget fields and for new config files (`kubernetes/services/homepage/config/`, docs/homepage.md). A widget that calls a new host or path needs an egress rule in `networkpolicy.yaml`."
+      ]
+    },
+    {
+      "matchDepNames": [
+        "metrics-server"
+      ],
+      "prBodyNotes": [
+        "Check the chart's changed values (`kubernetes/platform/metrics-server/values.yaml`: `defaultArgs` replaces the chart's list, `tls.type: cert-manager`) and the supported Kubernetes versions. After the sync: `kubectl get apiservice v1beta1.metrics.k8s.io` is Available and `kubectl top nodes` works."
+      ]
+    },
+    {
+      "matchDepNames": [
         "restic/restic"
       ],
       "prBodyNotes": [
