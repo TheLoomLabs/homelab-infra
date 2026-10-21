@@ -129,14 +129,16 @@ Velero backs up the cluster every night at 03:00 UTC, after Longhorn's own daily
 - Volumes are not copied by Velero. Velero creates CSI VolumeSnapshots of class `longhorn-backup`, and each one becomes a Longhorn backup in `theloomlabs-longhorn`. The external-snapshotter CRDs and controller are their own Argo CD Application (`snapshot-controller`).
 - The schedule keeps 30 days and skips `longhorn-system` (Longhorn restores its own volumes) and Cilium's runtime objects.
 - One Velero restore brings back a namespace with its PVCs and data. This was tested by deleting and restoring a namespace with an encrypted volume.
+- The Swarm stacks' local volumes are backed up at 03:30 UTC by a systemd timer on each Swarm node (role `swarm_backup`): restic, encrypted on the node, to the R2 bucket `theloomlabs-swarm-backup`. Services with SQLite or BoltDB are stopped for the 10–20 seconds their backup takes. The bucket lock has no expiry, because restic deduplicates and recent snapshots depend on the oldest data; the nodes never delete, and old snapshots are pruned by hand every quarter with the lock rules lifted ([swarm-backup.md](swarm-backup.md)).
 
 | Lost | Comes back from |
 |---|---|
 | A pod, a node, one replica | Longhorn's second replica |
 | An app's data or namespace | Velero restore (objects + volumes), or a single Longhorn backup |
+| A Swarm stack's volume | restic restore of that volume's snapshot |
 | The whole cluster or the Proxmox host | Git (Terraform, Ansible, Argo CD), then Velero and Longhorn restores from R2 |
 
-What must survive outside the lab: the age key, the Longhorn key and the SSE-C key. Runbook: [backup.md](backup.md).
+What must survive outside the lab: the age key, the Longhorn key, the SSE-C key and the restic password. Runbooks: [backup.md](backup.md), [swarm-backup.md](swarm-backup.md).
 
 ## Monitoring and alerting
 
