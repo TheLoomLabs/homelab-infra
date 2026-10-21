@@ -18,7 +18,7 @@
 
 ## How it runs
 
-- Look: `settings.yaml` (theme, layout) and `custom.css` (a larger root font on big screens, so the page isn't a narrow strip; background). `custom.css` loads without login.
+- Look: "control room" style in `custom.css` (dark background with a grid, cyan and magenta glow, Orbitron / JetBrains Mono / Exo 2 fonts loaded by the browser from Google Fonts), page at full window width (`settings.yaml`). The first row, **Status**, holds the five cards that say whether anything needs attention: alerts, Argo CD, Uptime Kuma, backups, storage. `custom.css` loads without login; it only uses Homepage's class names, so an upgrade that renames them loses styling, nothing else.
 - One pod, image `ghcr.io/gethomepage/homepage`, as UID 1000 on port 3000, read-only root filesystem. Writable: an emptyDir under `/app/config` (Homepage copies a default file there for any file it doesn't find; the files from Git are mounted on top), `/app/.next/cache` and `/tmp`.
 - **Configuration from Git.** `config/*` becomes the ConfigMap `homepage-config-<hash>`; any change gives it a new name, so the pod restarts with the new files. Nothing is edited in the pod.
 - **Login.** Homepage's own login (`HOMEPAGE_AUTH_ENABLED`): one password, kept in Vaultwarden. Every page and API call needs a session, except `/api/healthcheck` (probes, Uptime Kuma). In the SSO step this becomes OIDC (`HOMEPAGE_OIDC_*`). Homepage doesn't rate-limit password attempts; it logs failed ones as warnings (Loki, `{namespace="homepage"}`). Acceptable on a LAN-only name; OIDC replaces it.
@@ -195,3 +195,4 @@ After any `sops set`: commit, push, wait for the sync, restart the pod.
 | A Swarm or Proxmox dot is red but the site works | Egress rule missing for that host, or the name doesn't resolve in the cluster |
 | Uptime Kuma widget *404* | No status page with slug `lab` ([step 3](#3-uptime-kuma-status-page)) |
 | Icons missing | The browser can't reach `cdn.jsdelivr.net` (off-line or blocked); the cards work without them |
+| Plain fonts, no glow after a change | Browser cache: `Ctrl+Shift+R`. Fonts need `fonts.googleapis.com` / `fonts.gstatic.com` from the browser |
