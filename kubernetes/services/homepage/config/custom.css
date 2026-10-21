@@ -1,0 +1,25 @@
+/* Homepage sizes everything in rem: a larger root font scales the whole page
+   (cards, text, page width) on big screens instead of a small strip in the
+   middle. */
+@media (min-width: 1920px) {
+  html { font-size: 18px; }
+}
+@media (min-width: 2560px) {
+  html { font-size: 22px; }
+}
+@media (min-width: 3400px) {
+  html { font-size: 28px; }
+}
+
+/* A quiet background without loading an image. */
+body {
+  background-image:
+    radial-gradient(ellipse at top left, rgba(56, 189, 248, 0.10), transparent 55%),
+    radial-gradient(ellipse at bottom right, rgba(129, 140, 248, 0.10), transparent 55%);
+  background-attachment: fixed;
+}
+
+/* Rounder cards with a little more room. */
+.service-card {
+  border-radius: 0.75rem;
+}

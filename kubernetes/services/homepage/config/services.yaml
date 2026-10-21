@@ -7,10 +7,10 @@
 #   RoleBinding in kubernetes/platform/app-rbac/homepage.yaml.
 #   Swarm and the host: `siteMonitor`, an HTTP check from the Homepage pod.
 #   A new host needs an egress rule in networkpolicy.yaml.
-# Widgets call the in-cluster addresses, never the Gateway. Credentials are
-# {{HOMEPAGE_VAR_*}}, from the Secret homepage-env (secrets.sops.yaml).
-# Icons: names from https://github.com/homarr-labs/dashboard-icons, loaded by
-# the browser from jsDelivr.
+# Numbers: native widgets with read-only credentials, everything else from
+# Prometheus (prometheusmetric). Widgets call in-cluster addresses, never the
+# Gateway. Credentials are {{HOMEPAGE_VAR_*}} from the Secret homepage-env.
+# Icons: dashboard-icons names (loaded by the browser from jsDelivr) or mdi-*.
 
 - Apps:
     - Vaultwarden:
@@ -19,6 +19,21 @@
         description: Passwords
         namespace: vaultwarden
         app: vaultwarden
+        widget:
+          type: prometheusmetric
+          url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          refreshInterval: 300000
+          metrics:
+            - label: Last backup
+              query: max(kube_cronjob_status_last_successful_time{namespace="vaultwarden", cronjob="vaultwarden-backup"})
+              format:
+                type: relativeDate
+                scale: 1000
+            - label: Last check
+              query: max(kube_cronjob_status_last_successful_time{namespace="vaultwarden", cronjob="vaultwarden-backup-check"})
+              format:
+                type: relativeDate
+                scale: 1000
 
 - Kubernetes:
     - Argo CD:
@@ -34,12 +49,22 @@
           key: "{{HOMEPAGE_VAR_ARGOCD_TOKEN}}"
           fields: [apps, synced, outOfSync, degraded]
 
-    - Grafana:
-        icon: grafana.svg
-        href: https://grafana.lab.theloomlabs.org
-        description: Dashboards and logs
-        namespace: monitoring
-        app: grafana
+    - Workloads:
+        icon: kubernetes.svg
+        description: Pods in the cluster (kube-state-metrics)
+        widget:
+          type: prometheusmetric
+          url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          refreshInterval: 30000
+          metrics:
+            - label: Running
+              query: sum(kube_pod_status_phase{phase="Running"})
+            - label: Pending
+              query: sum(kube_pod_status_phase{phase="Pending"})
+            - label: Failed
+              query: sum(kube_pod_status_phase{phase=~"Failed|Unknown"})
+            - label: Restarts 24h
+              query: round(sum(increase(kube_pod_container_status_restarts_total[24h])))
 
     - Alerts:
         icon: alertmanager.svg
@@ -55,6 +80,30 @@
               query: count(ALERTS{alertstate="firing", severity="critical"}) or vector(0)
             - label: Warning
               query: count(ALERTS{alertstate="firing", severity="warning"}) or vector(0)
+
+    - Grafana:
+        icon: grafana.svg
+        href: https://grafana.lab.theloomlabs.org
+        description: Dashboards, logs (Loki)
+        namespace: monitoring
+        app: grafana
+        widget:
+          type: prometheusmetric
+          url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          refreshInterval: 60000
+          metrics:
+            - label: Dashboards
+              query: max(grafana_stat_totals_dashboard)
+            - label: Log lines/s
+              query: sum(rate(loki_distributor_lines_received_total[5m]))
+              format:
+                type: number
+                options:
+                  maximumFractionDigits: 0
+            - label: Logs 24h
+              query: sum(increase(loki_distributor_bytes_received_total[24h]))
+              format:
+                type: bytes
 
     - Prometheus:
         icon: prometheus.svg
@@ -89,16 +138,32 @@
               query: count(longhorn_volume_robustness{state=~"degraded|faulted"} == 1) or vector(0)
 
 - Swarm:
-    - Uptime Kuma:
-        icon: uptime-kuma.svg
-        href: https://status.lab.theloomlabs.org
-        description: Checks from outside Kubernetes
-        siteMonitor: https://status.lab.theloomlabs.org
+    - Swarm managers:
+        icon: docker.svg
+        description: swarm-m-01..03 (Alloy on the VMs)
         widget:
-          type: uptimekuma
-          url: https://status.lab.theloomlabs.org
-          # The status page "lab" (docs/homepage.md, set up once in the UI).
-          slug: lab
+          type: prometheusmetric
+          url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          refreshInterval: 30000
+          metrics:
+            - label: Nodes up
+              query: count(up{job="node-exporter", group="swarm"} == 1) or vector(0)
+            - label: CPU
+              query: 100 * avg(1 - rate(node_cpu_seconds_total{group="swarm", mode="idle"}[5m]))
+              format:
+                type: number
+                suffix: "%"
+                options:
+                  maximumFractionDigits: 0
+            - label: Memory
+              query: >-
+                100 * (1 - sum(node_memory_MemAvailable_bytes{group="swarm"})
+                / sum(node_memory_MemTotal_bytes{group="swarm"}))
+              format:
+                type: number
+                suffix: "%"
+                options:
+                  maximumFractionDigits: 0
 
     # Swarm services from Prometheus (Alloy's replica metrics), not from
     # Portainer: a Portainer CE token can deploy containers.
@@ -120,11 +185,52 @@
                 >= max by (stack, service) (swarm_service_replicas_desired{mode!~".*-job"}))
                 or vector(0)
 
+    - Traefik:
+        icon: traefik.svg
+        description: Edge router on every manager (VIP)
+        widget:
+          type: prometheusmetric
+          url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          refreshInterval: 30000
+          metrics:
+            - label: Instances up
+              query: count(up{job="traefik"} == 1) or vector(0)
+            - label: Requests/s
+              query: sum(rate(traefik_entrypoint_requests_total[5m]))
+              format:
+                type: number
+                options:
+                  maximumFractionDigits: 1
+            - label: 5xx/s
+              query: sum(rate(traefik_entrypoint_requests_total{code=~"5.."}[5m])) or vector(0)
+              format:
+                type: number
+                options:
+                  maximumFractionDigits: 2
+
+    - Uptime Kuma:
+        icon: uptime-kuma.svg
+        href: https://status.lab.theloomlabs.org
+        description: Checks from outside Kubernetes
+        siteMonitor: https://status.lab.theloomlabs.org
+        widget:
+          type: uptimekuma
+          url: https://status.lab.theloomlabs.org
+          # The status page "lab" (docs/homepage.md, set up once in the UI).
+          slug: lab
+
     - ntfy:
         icon: ntfy.svg
         href: https://ntfy.lab.theloomlabs.org
-        description: Notifications
+        description: Notifications (from Alertmanager)
         siteMonitor: https://ntfy.lab.theloomlabs.org/v1/health
+        widget:
+          type: prometheusmetric
+          url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          refreshInterval: 300000
+          metrics:
+            - label: Failed sends 24h
+              query: round(sum(increase(alertmanager_notifications_failed_total[24h]))) or vector(0)
 
     - healthchecks:
         icon: healthchecks.svg
@@ -150,3 +256,54 @@
           username: "{{HOMEPAGE_VAR_PROXMOX_TOKEN_ID}}"
           password: "{{HOMEPAGE_VAR_PROXMOX_TOKEN_SECRET}}"
           node: pve
+
+    - DNS:
+        icon: mdi-dns
+        description: BIND on dns-01, dns-02
+        widget:
+          type: prometheusmetric
+          url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          refreshInterval: 30000
+          metrics:
+            - label: Servers up
+              query: count(up{job="node-exporter", group="dns"} == 1) or vector(0)
+            - label: CPU
+              query: 100 * avg(1 - rate(node_cpu_seconds_total{group="dns", mode="idle"}[5m]))
+              format:
+                type: number
+                suffix: "%"
+                options:
+                  maximumFractionDigits: 0
+            - label: Memory
+              query: >-
+                100 * (1 - sum(node_memory_MemAvailable_bytes{group="dns"})
+                / sum(node_memory_MemTotal_bytes{group="dns"}))
+              format:
+                type: number
+                suffix: "%"
+                options:
+                  maximumFractionDigits: 0
+
+    - Backups:
+        icon: mdi-backup-restore
+        description: Last successful run
+        widget:
+          type: prometheusmetric
+          url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          refreshInterval: 300000
+          metrics:
+            - label: Cluster (Velero)
+              query: max(velero_backup_last_successful_timestamp{schedule!=""})
+              format:
+                type: relativeDate
+                scale: 1000
+            - label: Vaultwarden
+              query: max(kube_cronjob_status_last_successful_time{namespace="vaultwarden", cronjob="vaultwarden-backup"})
+              format:
+                type: relativeDate
+                scale: 1000
+            - label: Swarm (oldest)
+              query: min(swarm_backup_volume_last_success_timestamp_seconds)
+              format:
+                type: relativeDate
+                scale: 1000

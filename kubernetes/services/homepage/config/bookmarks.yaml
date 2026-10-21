@@ -2,9 +2,18 @@
 # Links only: the browser opens them, Homepage never calls them.
 - Code:
     - homelab-infra:
-        - abbr: GH
+        - icon: github.svg
           href: https://github.com/TheLoomLabs/homelab-infra
+    - CI runs:
+        - icon: mdi-play-circle-outline
+          href: https://github.com/TheLoomLabs/homelab-infra/actions
+    - Renovate:
+        - icon: renovate.svg
+          href: https://github.com/TheLoomLabs/homelab-infra/issues?q=is%3Aissue+is%3Aopen+%22Dependency+Dashboard%22
 - Cloud:
     - Cloudflare:
-        - abbr: CF
+        - icon: cloudflare.svg
           href: https://dash.cloudflare.com
+    - Tailscale:
+        - icon: tailscale.svg
+          href: https://login.tailscale.com/admin/machines
