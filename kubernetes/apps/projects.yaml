@@ -48,6 +48,10 @@ spec:
     - {server: https://kubernetes.default.svc, namespace: monitoring}
     - {server: https://kubernetes.default.svc, namespace: sops}
     - {server: https://kubernetes.default.svc, namespace: velero}
+    # App namespaces: the namespaces app creates them with their Pod Security
+    # labels (Argo CD checks a Namespace's name against the destinations).
+    # Their apps live in the `apps` project below.
+    - {server: https://kubernetes.default.svc, namespace: vaultwarden}
   clusterResourceWhitelist:
     - {group: "*", kind: "*"}
 ---
@@ -64,7 +68,8 @@ spec:
     - https://github.com/TheLoomLabs/homelab-infra.git
   # One entry per app namespace, added with the app. Never the platform
   # namespaces above.
-  destinations: []
+  destinations:
+    - {server: https://kubernetes.default.svc, namespace: vaultwarden}
   # Nothing cluster-scoped, not even Namespace: the platform creates app
   # namespaces with their Pod Security labels.
   clusterResourceWhitelist: []

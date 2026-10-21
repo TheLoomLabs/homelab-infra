@@ -86,7 +86,7 @@ Expected: `Error from server (Forbidden): pods "psa-test" is forbidden: violates
 ## Adding a namespace
 
 1. Add a Namespace to `kubernetes/platform/namespaces/namespaces.yaml` with `audit` and `warn` set to `restricted`, and `enforce: restricted` + `enforce-version: v1.37` once the app's pods pass. Copy the annotations of the others.
-2. Add the namespace to the project's `destinations` in `kubernetes/apps/projects.yaml`.
+2. Add the namespace to the `destinations` in `kubernetes/apps/projects.yaml`: of the app's project, and, for a Phase 3 app, also of `platform` (the namespaces app, project `platform`, creates the Namespace object).
 3. `make manifests` fails if an Application's destination namespace has no labelled Namespace.
 
 A chart that needs more than `restricted` gets the lowest level that works, and a comment saying which pod needs what.
