@@ -79,19 +79,25 @@ spec:
                   set -euo pipefail
                   # Writes app.ini from the template and forgejo-env, as at
                   # the server's start.
+                  # chmod on /etc/gitea fails (emptyDir, not ours); harmless.
                   /usr/local/bin/docker-setup.sh
                   mkdir -p /var/lib/gitea/backups
-                  f=/var/lib/gitea/backups/forgejo-db-$(date -u +%Y%m%d_%H%M%S).tar.gz
+                  # Built in /tmp, moved in only when complete. The file name
+                  # must end in the type's extension, or `forgejo dump`
+                  # appends one (".part" became ".part.tar.gz").
+                  name=forgejo-db-$(date -u +%Y%m%d_%H%M%S).tar.gz
                   forgejo dump --config "$GITEA_APP_INI" --type tar.gz \
-                    --file "$f.part" --tempdir /tmp \
+                    --file "/tmp/$name" --tempdir /tmp \
                     --skip-repository --skip-lfs-data --skip-attachment-data \
                     --skip-package-data --skip-log --skip-index \
                     --skip-repo-archives --skip-custom-dir
                   # The SQL dump is forgejo-db.sql (gitea-db.sql in older
                   # releases); no SQL, no backup.
-                  tar -tzf "$f.part" | grep -Eqx '(forgejo|gitea)-db\.sql' \
-                    || { echo "no SQL dump in $f.part" >&2; exit 1; }
-                  mv "$f.part" "$f"
+                  tar -tzf "/tmp/$name" | grep -Eqx '(forgejo|gitea)-db\.sql' \
+                    || { echo "no SQL dump in /tmp/$name" >&2; exit 1; }
+                  mv "/tmp/$name" /var/lib/gitea/backups/
+                  # Leftovers of interrupted runs, then keep the newest 7.
+                  rm -f /var/lib/gitea/backups/*.part /var/lib/gitea/backups/*.part.tar.gz
                   ls -1t /var/lib/gitea/backups/forgejo-db-*.tar.gz | tail -n +8 | xargs -r rm -f --
                   ls -l /var/lib/gitea/backups
               resources:
