@@ -18,6 +18,7 @@
 
 ## How it runs
 
+- Look: `settings.yaml` (theme, layout) and `custom.css` (a larger root font on big screens, so the page isn't a narrow strip; background). `custom.css` loads without login.
 - One pod, image `ghcr.io/gethomepage/homepage`, as UID 1000 on port 3000, read-only root filesystem. Writable: an emptyDir under `/app/config` (Homepage copies a default file there for any file it doesn't find; the files from Git are mounted on top), `/app/.next/cache` and `/tmp`.
 - **Configuration from Git.** `config/*` becomes the ConfigMap `homepage-config-<hash>`; any change gives it a new name, so the pod restarts with the new files. Nothing is edited in the pod.
 - **Login.** Homepage's own login (`HOMEPAGE_AUTH_ENABLED`): one password, kept in Vaultwarden. Every page and API call needs a session, except `/api/healthcheck` (probes, Uptime Kuma). In the SSO step this becomes OIDC (`HOMEPAGE_OIDC_*`). Homepage doesn't rate-limit password attempts; it logs failed ones as warnings (Loki, `{namespace="homepage"}`). Acceptable on a LAN-only name; OIDC replaces it.
@@ -33,6 +34,12 @@
 | Prometheus: targets up/down | Prometheus | none |
 | Longhorn: used, capacity, volumes not healthy | Prometheus (Longhorn's metrics) | none |
 | Portainer: Swarm services running / total | Prometheus (Alloy's replica metrics) | none |
+| Workloads: pods running / pending / failed, restarts 24h | Prometheus (kube-state-metrics) | none |
+| Grafana: dashboards, log lines/s, log volume 24h | Prometheus (Grafana's and Loki's metrics) | none |
+| Swarm managers, DNS: nodes up, CPU, memory | Prometheus (Alloy on the VMs) | none |
+| Traefik: instances up, requests/s, 5xx/s | Prometheus | none |
+| ntfy: failed notifications 24h | Prometheus (Alertmanager) | none |
+| Vaultwarden, Backups: last successful backup (Velero, Vaultwarden, oldest Swarm volume) | Prometheus | none |
 | Uptime Kuma: up, down, uptime | status page `lab` | none (public page, LAN only) |
 | healthchecks: up, down | healthchecks API | read-only API key |
 | Proxmox: VMs, CPU, memory | Proxmox API | token `homepage@pve!dashboard`, role PVEAuditor |
