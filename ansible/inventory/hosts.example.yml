@@ -5,6 +5,7 @@ all:
   vars:
     ansible_user: ops
     k8s_api_vip: 192.168.10.20
+    swarm_vip: 192.168.10.40
     lab_network_cidr: 192.168.10.0/24
     lab_dns_domain: lab.example.internal
     lab_dns_servers: [192.168.10.11, 192.168.10.12]

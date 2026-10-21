@@ -107,6 +107,12 @@ variable "k8s_api_vip_offset" {
   default     = 20
 }
 
+variable "swarm_vip_offset" {
+  description = "Host offset in network_cidr for the Swarm virtual IP (keepalived, Ansible role edge): Traefik on the Swarm managers."
+  type        = number
+  default     = 40
+}
+
 variable "nodes" {
   description = <<-EOT
     Every VM in the lab. 'group' maps to the Ansible inventory group

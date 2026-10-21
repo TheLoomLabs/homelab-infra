@@ -8,6 +8,11 @@ output "k8s_api_endpoint" {
   value       = "https://${local.k8s_api_vip}:6443"
 }
 
+output "swarm_vip" {
+  description = "Swarm virtual IP (keepalived): the lab names of the Swarm stacks."
+  value       = local.swarm_vip
+}
+
 output "ansible_inventory" {
   description = "Path of the generated Ansible inventory."
   value       = abspath(local_file.ansible_inventory.filename)

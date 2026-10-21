@@ -8,6 +8,7 @@ locals {
   groups = distinct([for n in values(var.nodes) : n.group])
 
   k8s_api_vip = cidrhost(var.network_cidr, var.k8s_api_vip_offset)
+  swarm_vip   = cidrhost(var.network_cidr, var.swarm_vip_offset)
 
   # Second Proxmox tag per group: the platform the VM belongs to.
   platform_tag = {
@@ -73,6 +74,7 @@ resource "local_file" "ansible_inventory" {
     }
     admin_user   = var.admin_user
     k8s_api_vip  = local.k8s_api_vip
+    swarm_vip    = local.swarm_vip
     network_cidr = var.network_cidr
     dns_domain   = var.dns_domain
     dns_servers  = var.dns_servers
