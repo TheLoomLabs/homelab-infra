@@ -36,14 +36,9 @@ swarm_backup_textfile_dir: /var/lib/alloy/textfile
 #             are only consistent when nobody writes them. ~10-20 s downtime.
 #   volumes:  Docker volume names (<stack>_<volume>).
 # A new stateful stack adds an entry here. PostgreSQL (Mattermost) will get an
-# online pg_dump instead of stop.
+# online pg_dump instead of stop. Traefik has no volume: its certificate is a
+# Swarm config and secret (role edge), and edge-cert gets a new one if it's lost.
 swarm_backup_groups:
-  # Traefik writes acme.json only when it renews the certificate. Traefik stays
-  # up: stopping it would take every Swarm web UI down.
-  - name: traefik
-    services: [alerting_traefik]
-    stop: false
-    volumes: [alerting_traefik-acme]
   - name: ntfy
     services: [alerting_ntfy]
     stop: true

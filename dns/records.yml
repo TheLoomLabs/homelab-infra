@@ -10,15 +10,15 @@ bind_records:
   # below or in the inventory, e.g. argocd.lab.theloomlabs.org.
   - {name: "*", type: A, value: 192.168.1.61}
 
-  # Swarm stack "alerting" (ansible/roles/alerting). Its services run on one
-  # node (alerting_node, default the first Swarm manager); keep this in step.
-  - {name: ntfy, type: CNAME, value: swarm-m-01}
-  - {name: hc, type: CNAME, value: swarm-m-01}
-
-  # Other Swarm stacks behind the same Traefik. Its ports are published on
-  # every Swarm node (ingress mode), so these follow the alerting names.
-  - {name: status, type: CNAME, value: swarm-m-01}  # stack uptime (Uptime Kuma)
-  - {name: portainer, type: CNAME, value: swarm-m-01}  # stack portainer
+  # Swarm VIP (swarm_vip in the Terraform inventory, keepalived, role edge):
+  # held by one Swarm manager whose Traefik answers. Every Swarm app name points
+  # at it; Traefik routes to the node the app runs on. A new name also goes into
+  # edge_hosts (ansible/roles/edge/defaults/main.yml).
+  - {name: swarm, type: A, value: 192.168.1.40}
+  - {name: ntfy, type: CNAME, value: swarm}  # stack alerting
+  - {name: hc, type: CNAME, value: swarm}  # stack alerting
+  - {name: status, type: CNAME, value: swarm}  # stack uptime (Uptime Kuma)
+  - {name: portainer, type: CNAME, value: swarm}  # stack portainer
 
   # Infrastructure outside the inventory.
   - {name: pve, type: A, value: 192.168.1.200}

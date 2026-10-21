@@ -2,7 +2,6 @@
 - name: Check that the secrets are loaded
   ansible.builtin.assert:
     that:
-      - alerting_cloudflare_api_token is defined
       - alerting_ntfy_admin_user is defined
       - alerting_ntfy_admin_user != 'publisher'
       - alerting_ntfy_admin_hash is defined
@@ -26,11 +25,17 @@
       homelab.alerting: "true"
     labels_state: merge
 
-- name: Create the edge overlay network
-  community.docker.docker_network:
+# Traefik and the edge network come from the edge stack (make edge).
+- name: Look up the edge network
+  community.docker.docker_network_info:
     name: "{{ alerting_edge_network }}"
-    driver: overlay
-    attachable: true
+  register: alerting_edge
+
+- name: Check that the edge network exists
+  ansible.builtin.assert:
+    that: alerting_edge.exists
+    fail_msg: "Overlay network {{ alerting_edge_network }} not found: deploy the edge stack first (make edge)."
+    quiet: true
 
 - name: Render the ntfy server config
   ansible.builtin.set_fact:
@@ -42,9 +47,6 @@
 - name: Name the Swarm secrets after their content
   ansible.builtin.set_fact:
     alerting_secrets:
-      cloudflare_api_token:
-        name: "alerting_cf_token_{{ (alerting_cloudflare_api_token | hash('sha256'))[:10] }}"
-        data: "{{ alerting_cloudflare_api_token }}"
       ntfy_server:
         name: "alerting_ntfy_server_{{ (alerting_ntfy_config | hash('sha256'))[:10] }}"
         data: "{{ alerting_ntfy_config }}"

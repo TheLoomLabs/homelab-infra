@@ -1,6 +1,6 @@
 ---
 # Swarm stack "portainer": Portainer CE and its agent (docs/portainer.md).
-# Needs the alerting stack (Traefik, edge network) and the admin password in
+# Needs the edge stack (Traefik, edge network) and the admin password in
 # swarm/portainer.sops.yaml. Runs on the first Swarm manager, which deploys
 # the stack for the whole swarm; the server runs on portainer_node, the agent
 # on every node.

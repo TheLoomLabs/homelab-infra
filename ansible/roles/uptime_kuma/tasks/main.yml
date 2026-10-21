@@ -25,7 +25,7 @@
     name: [python3-jsondiff, python3-yaml]
     state: present
 
-# Traefik and the edge network come from the alerting stack (make alerting).
+# Traefik and the edge network come from the edge stack (make edge).
 - name: Look up the edge network
   community.docker.docker_network_info:
     name: "{{ uptime_kuma_edge_network }}"
@@ -34,7 +34,7 @@
 - name: Check that the edge network exists
   ansible.builtin.assert:
     that: uptime_kuma_edge.exists
-    fail_msg: "Overlay network {{ uptime_kuma_edge_network }} not found: deploy the alerting stack first (make alerting)."
+    fail_msg: "Overlay network {{ uptime_kuma_edge_network }} not found: deploy the edge stack first (make edge)."
     quiet: true
 
 - name: Pin the stack to its node

@@ -1,6 +1,7 @@
 ---
-# Swarm stack "alerting": Traefik, ntfy, healthchecks (ADR 0011). Runs on the
-# first Swarm manager, which deploys the stack for the whole swarm.
+# Swarm stack "alerting": ntfy, healthchecks (ADR 0011). Needs the edge stack
+# (Traefik, edge network: make edge). Runs on the first Swarm manager, which
+# deploys the stack for the whole swarm.
 - name: Docker Swarm | Alerting stack
   hosts: swarm_managers[0]
   become: true

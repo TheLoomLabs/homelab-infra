@@ -1,30 +1,22 @@
 ---
-# Swarm stack "alerting": Traefik (TLS), ntfy (push to the phone) and
-# healthchecks (dead man's switch for Alertmanager). ADR 0011, docs/alerting.md.
+# Swarm stack "alerting": ntfy (push to the phone) and healthchecks (dead
+# man's switch for Alertmanager). ADR 0011, docs/alerting.md. Traefik, the
+# edge network and the VIP in front of them are the stack "edge" (role edge).
 
 alerting_domain: lab.theloomlabs.org
 alerting_ntfy_host: "ntfy.{{ alerting_domain }}"
 alerting_healthchecks_host: "hc.{{ alerting_domain }}"
 
-# The stack keeps its state (ntfy and healthchecks SQLite databases, Traefik's
-# ACME certificate) in local Docker volumes, so every service runs on this
-# one node. The DNS names in dns/records.yml point at it.
+# The stack keeps its state (ntfy and healthchecks SQLite databases) in local
+# Docker volumes, so every service runs on this one node. Their DNS names
+# point at the Swarm VIP (dns/records.yml); Traefik on any manager routes to
+# this node over the edge network.
 alerting_node: "{{ groups['swarm_managers'] | first }}"
 
-alerting_traefik_image: traefik:v3.7.15
 alerting_ntfy_image: binwiederhier/ntfy:v2.31.1
 alerting_healthchecks_image: healthchecks/healthchecks:v4.4
 
-# Traefik's Prometheus metrics (host-mode port on alerting_node).
-alerting_traefik_metrics_port: 8082
-
-# Let's Encrypt (account without e-mail) and the public resolvers for the
-# DNS-01 propagation check. BIND answers lab.theloomlabs.org itself, so the
-# check must not use the lab DNS (same as cert-manager, ADR 0007).
-alerting_acme_server: https://acme-v02.api.letsencrypt.org/directory
-alerting_acme_resolvers: "1.1.1.1:53,9.9.9.9:53"
-
-# Overlay network that Traefik routes on. Later Swarm stacks join it.
+# Traefik's overlay network (role edge, edge_network).
 alerting_edge_network: edge
 
 alerting_stack_name: alerting
@@ -36,7 +28,7 @@ alerting_ntfy_topic: alerts
 alerting_ntfy_cache_duration: 72h
 
 # From swarm/alerting.sops.yaml (playbooks/alerting.yml loads it):
-# alerting_cloudflare_api_token, alerting_ntfy_admin_user (the account the
+# alerting_ntfy_admin_user (the account the
 # phone logs in with; admin, reads every topic), alerting_ntfy_admin_hash, alerting_ntfy_publisher_hash,
 # alerting_ntfy_token_alertmanager, alerting_ntfy_token_healthchecks,
 # alerting_ntfy_token_uptime (Uptime Kuma, role uptime_kuma),

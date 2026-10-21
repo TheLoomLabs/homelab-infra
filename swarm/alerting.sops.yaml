@@ -1,4 +1,3 @@
-alerting_cloudflare_api_token: ENC[AES256_GCM,data:gP+i5ICD4bNEtTs1Bzlp42KOhCzG1kmEAeg3sze4Byb7I6STXUzLc49zr3lj1CodKOrH5q4=,iv:sckuZQ/NIPEmwljz6atFsf8/E/8aG74YXySARM8yxuo=,tag:7wrtxrQRKSS28RtlktpOKQ==,type:str]
 alerting_ntfy_admin_hash: ENC[AES256_GCM,data:aoUolMNuHWsQm9BlZVw0LPiJCsyOQ4siIIdFe+c7ctzFF0QT7vgJp6GVdio3dL+ma2tuChzlF9xZlYlK,iv:1dgNXeYve3dkumW1Ah6Scinhx9cjGA9uJZulDMezBIQ=,tag:jHOYz9Sh5VwLbgX6QcdloQ==,type:str]
 alerting_ntfy_publisher_hash: ENC[AES256_GCM,data:Q16HrCvgK+TRARDExc8rXuxgbcRR2FdeZJJPs/LhF6FwCJGVT3Uy5cGsV5kqgvsuUZsoO9T9A4O/a51V,iv:SlpiO0KNTv2rWE0SyAnOsl6UDxReX/KqIyWCmM4kdz0=,tag:NExvWufebbM65NH53j+Jdw==,type:str]
 alerting_ntfy_token_alertmanager: ENC[AES256_GCM,data:mCOOjCXZ98RsuIiaQ4k3Ml+9B5jkF+1yAaAjiyVtq1c=,iv:5XC0hmneXfQL6rHOAv1W1yYF0oK+wQ+yQTueunscZpA=,tag:xHEby5XH2aYco26JVqYehg==,type:str]
@@ -17,7 +16,7 @@ sops:
             gsNopaDZuyMrD18amT/UjkTC3qhZCI6mugg/gs8/dGsbxMgjPzmw6A==
             -----END AGE ENCRYPTED FILE-----
           recipient: age1fjsagzw9yzjhd5p6n4fmjstjvud9ucdp383mwe2gqn0k7rfaffrsa3asek
-    lastmodified: "2026-10-20T15:12:29Z"
-    mac: ENC[AES256_GCM,data:+0cOg/mp1ulb5rtEK+akS/xFFUcrrSwm9jhZMbMsAXIej8v9d9/BAACxtUYmjLb7VP5vvCut1dtGicfHNUxWyOtggrZ9CpaYjMXmoi0/3Kk0nAYk1tzhmT+8dnYWYZvyj0g+rSre7tKP3fR4soa8hpJ3eEFaHSddlwiIv6wVp4c=,iv:hkoXm3B8KJ/mmZZUKGsw7aW6sXLxcPtOsf0CWt1WQzI=,tag:kjZSMwb8yDHUc/LssXDxuA==,type:str]
+    lastmodified: "2026-10-21T10:55:11Z"
+    mac: ENC[AES256_GCM,data:xPEP7tZHjSouVFQd8lVAQoKxaCHOiRzHP76CZFkVDSUIJyiKAZKXl063+/k1jPbcqDamVwTVjn/Mk7RUVksAc0QKvDjh9D24QkwiZTlUpy877mzvU/eDS1wSWFM3DSXd5Il7lSA56/2WvHC6pDytLlH+m+Bk9OzhcXSARtGO/NI=,iv:X0Oxw96GbhOowbgNJKGzetFD/H0SolJZyz0sgmdaYNM=,tag:bvhU2Bv/OypfnBs1xl+4Yw==,type:str]
     unencrypted_suffix: _unencrypted
     version: 3.13.3
