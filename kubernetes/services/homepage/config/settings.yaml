@@ -1,13 +1,14 @@
 ---
 # Homepage settings (https://gethomepage.dev/configs/settings/).
-# Look and feel in custom.css (sizes for large screens, background).
+# Look and feel: custom.css.
 title: TheLoomLabs
 description: Lab dashboard
 theme: dark
 color: slate
-headerStyle: boxedWidgets
-cardStyle: hairline
-blockStyle: refined
+# Look: custom.css (option D of the dashboard designs). The page uses the
+# whole window width; text stays at its normal size.
+headerStyle: clean
+fullWidth: true
 statusStyle: dot
 hideVersion: true
 # No call to GitHub for new releases: the pod has no internet access, and
@@ -23,17 +24,21 @@ quicklaunch:
   hideInternetSearch: true
   showSearchSuggestions: false
 
-# Groups in services.yaml, top to bottom; one row each.
+# Groups in services.yaml, top to bottom; one row each. Status first: the
+# five readouts that say whether anything needs attention.
 layout:
+  Status:
+    style: row
+    columns: 5
   Apps:
     style: row
     columns: 4
   Kubernetes:
     style: row
-    columns: 3
+    columns: 4
   Swarm:
     style: row
-    columns: 3
+    columns: 4
   Infrastructure:
     style: row
-    columns: 3
+    columns: 4
