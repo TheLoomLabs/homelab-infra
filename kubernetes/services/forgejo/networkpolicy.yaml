@@ -1,0 +1,88 @@
+---
+# Default deny for every pod in forgejo (docs/network-policy.md): DNS through
+# Cilium's DNS proxy and scrapes from Prometheus (the /metrics endpoint,
+# servicemonitor.yaml), nothing else unless a policy below allows it.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  namespace: forgejo
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+            k8s:app.kubernetes.io/name: prometheus
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# Forgejo: the web UI and Git over HTTPS through the shared Gateway, Git over
+# SSH from the LAN through the LoadBalancer address .62. No egress at all:
+# mirrors, migrations, the update check, mail and Gravatar are off
+# (config.yaml), and the runner VM calls Forgejo, never the other way round.
+# A webhook to a lab service needs an egress rule here.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: forgejo
+  namespace: forgejo
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: forgejo
+  ingress:
+    - fromEntities:
+        - ingress
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP
+    # SSH on 192.168.1.62:22. Two ways in (externalTrafficPolicy Cluster):
+    # the worker holding the L2 lease runs the pod → the client's own LAN
+    # address; it runs on the other worker → forwarded and source-NATed to
+    # the lease holder's address (remote-node). Tailscale (100.64.0.0/10)
+    # comes with Phase 4.
+    - fromCIDRSet:
+        - cidr: 192.168.1.0/24
+        - cidr: 100.64.0.0/10
+      toPorts:
+        - ports:
+            - port: "2222"
+              protocol: TCP
+    - fromEntities:
+        - remote-node
+        - host
+      toPorts:
+        - ports:
+            - port: "2222"
+              protocol: TCP
+---
+# The backup jobs: restic to R2. Any R2 endpoint, because the hostname holds
+# the account ID, which stays out of Git (same as Velero).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: backup-to-r2
+  namespace: forgejo
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: forgejo-backup
+  egress:
+    - toFQDNs:
+        - matchPattern: "*.r2.cloudflarestorage.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

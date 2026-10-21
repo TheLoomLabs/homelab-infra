@@ -1,0 +1,25 @@
+---
+# Forgejo's own metrics (/metrics, FORGEJO__metrics__ENABLED): counts of
+# users, repos, issues, pull requests, Actions runs (gitea_* names, kept from
+# Gitea), plus Go runtime and process metrics. The endpoint wants the bearer
+# token from the Secret forgejo-metrics (secrets.sops.yaml), the same value as
+# FORGEJO__metrics__TOKEN in forgejo-secrets. Scraped on the pod port, not
+# through the Gateway.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: forgejo
+  namespace: forgejo
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: forgejo
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 60s
+      authorization:
+        type: Bearer
+        credentials:
+          name: forgejo-metrics
+          key: token

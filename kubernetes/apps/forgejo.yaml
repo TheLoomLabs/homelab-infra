@@ -1,0 +1,39 @@
+---
+# Forgejo, the lab's Git server (repos, issues, packages, Actions), at
+# git.lab.theloomlabs.org; Git over SSH at git-ssh.lab.theloomlabs.org
+# (LoadBalancer 192.168.1.62). Plain manifests in kubernetes/services/forgejo,
+# SQLite on an encrypted Longhorn volume, a nightly app-level backup (database
+# dump + restic to R2). The Actions runner is a separate VM (runner-01, Ansible
+# role forgejo_runner). docs/forgejo.md, ADR 0020.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: forgejo
+  namespace: argocd
+spec:
+  project: apps
+  source:
+    repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+    targetRevision: main
+    path: kubernetes/services/forgejo
+  destination:
+    server: https://kubernetes.default.svc
+    # Created with its Pod Security labels by the namespaces app
+    # (kubernetes/platform/namespaces/), not here: the apps project can't.
+    namespace: forgejo
+  syncPolicy:
+    automated:
+      # The PVC also says Prune=false,Delete=false, and its StorageClass
+      # retains the volume: removing a manifest never deletes repositories.
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # The SopsSecret, CiliumNetworkPolicy and monitoring CRDs come from
+      # platform apps.
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

@@ -1,0 +1,198 @@
+---
+# Everything Forgejo keeps: repositories, LFS objects, packages, attachments,
+# avatars, the SQLite database, the SSH host key, search indexes. Encrypted
+# Longhorn volume (default class longhorn-encrypted, 2 replicas, hourly
+# snapshots, daily + weekly backups to R2), also in the nightly Velero backup.
+# ReadWriteOnce: one Forgejo pod, and the backup job runs on the same node
+# (backup.yaml). Grow it by editing the request (Longhorn expands online).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: forgejo-data
+  namespace: forgejo
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  storageClassName: longhorn-encrypted
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: forgejo
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo
+spec:
+  replicas: 1
+  # SQLite and a ReadWriteOnce volume: never two pods at once.
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: forgejo
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: forgejo
+    spec:
+      automountServiceAccountToken: false
+      # A Service named forgejo would add FORGEJO_* variables; close enough to
+      # the FORGEJO__ settings prefix to be confusing.
+      enableServiceLinks: false
+      # Pod Security `restricted`. The rootless image runs as git (1000:1000).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: forgejo
+          # Rootless image: built-in SSH server, no OpenSSH, no root. The
+          # backup job uses the same one (backup.yaml).
+          image: codeberg.org/forgejo/forgejo:15.0.10-rootless
+          envFrom:
+            - configMapRef:
+                name: forgejo-env
+            # SECRET_KEY, INTERNAL_TOKEN, JWT secrets, metrics token
+            # (docs/forgejo.md, "Secrets").
+            - secretRef:
+                name: forgejo-secrets
+          ports:
+            - name: http
+              containerPort: 3000
+            - name: ssh
+              containerPort: 2222
+          # Public without login, even with REQUIRE_SIGNIN_VIEW: checks the
+          # database and the cache.
+          startupProbe:
+            httpGet:
+              path: /api/healthz
+              port: http
+            periodSeconds: 5
+            # Database migrations after an upgrade can take a while.
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /api/healthz
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /api/healthz
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/gitea
+            # app.ini, rewritten from the template and forgejo-env at every
+            # start.
+            - name: config
+              mountPath: /etc/gitea
+            # GITEA_TEMP / TMPDIR (/tmp/gitea): uploads, git operations.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: forgejo-data
+        - name: config
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: forgejo
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo
+spec:
+  selector:
+    app.kubernetes.io/name: forgejo
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# Git over SSH from the LAN (and Tailscale later): its own LAN address, port
+# 22, because the shared Gateway only speaks HTTP(S). LB IPAM takes .62 from
+# the pool (kubernetes/platform/cilium-lb) and a worker answers ARP for it.
+# DNS: git-ssh.lab.theloomlabs.org → 192.168.1.62 (dns/records.yml).
+apiVersion: v1
+kind: Service
+metadata:
+  name: forgejo-ssh
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo
+  annotations:
+    lbipam.cilium.io/ips: 192.168.1.62
+spec:
+  type: LoadBalancer
+  # Cluster: whichever worker holds the L2 lease forwards to the pod, wherever
+  # it runs (networkpolicy.yaml allows both ways the traffic can arrive).
+  externalTrafficPolicy: Cluster
+  selector:
+    app.kubernetes.io/name: forgejo
+  ports:
+    - name: ssh
+      port: 22
+      targetPort: ssh
+---
+# Through the shared Gateway (ADR 0007): LAN and Tailscale only, TLS with the
+# wildcard certificate. The *.lab record already points at the Gateway, so no
+# DNS change. Git over HTTPS, LFS, the container registry (/v2/) and the
+# runner's API calls use the same route.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: forgejo
+  namespace: forgejo
+spec:
+  parentRefs:
+    # group and kind spelled out: the API server defaults them, and Argo CD
+    # would otherwise show the route as OutOfSync.
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: lab
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - git.lab.theloomlabs.org
+  # Defaults spelled out (match, group, kind, weight), same reason.
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: forgejo
+          port: 80
+          weight: 1

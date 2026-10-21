@@ -1,0 +1,97 @@
+---
+# Forgejo settings as FORGEJO__<section>__<KEY> environment variables
+# (https://forgejo.org/docs/v15.0/admin/config-cheat-sheet/). At every start
+# the image writes /etc/gitea/app.ini from its template and applies these on
+# top (environment-to-ini), so app.ini lives on an emptyDir and this ConfigMap
+# is the only source of settings. Secrets (SECRET_KEY, INTERNAL_TOKEN, JWT
+# secrets, metrics token) come from secrets.sops.yaml. Shared by the server and
+# the backup job, which runs the same binary. docs/forgejo.md.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forgejo-env
+  namespace: forgejo
+data:
+  # The image's paths, spelled out so the backup job's excludes match.
+  GITEA_APP_INI: /etc/gitea/app.ini
+  FORGEJO__database__DB_TYPE: sqlite3
+  FORGEJO__database__PATH: /var/lib/gitea/data/forgejo.db
+  FORGEJO__database__SQLITE_JOURNAL_MODE: WAL
+  FORGEJO__repository__ROOT: /var/lib/gitea/git/repositories
+  # Small state (database, sessions, avatars, attachments, SSH host key) in
+  # data/. Not the volume root: `forgejo dump` archives everything under
+  # APP_DATA_PATH, and the nightly dumps in /var/lib/gitea/backups must not
+  # end up inside the next one.
+  FORGEJO__server__APP_DATA_PATH: /var/lib/gitea/data
+  # Search index and queues: rebuildable, left out of the restic backup.
+  FORGEJO__indexer__ISSUE_INDEXER_PATH: /var/lib/gitea/indexers/issues.bleve
+  FORGEJO__queue__DATADIR: /var/lib/gitea/queues
+  FORGEJO__lfs__PATH: /var/lib/gitea/git/lfs
+
+  # Top-level keys (no section): four underscores.
+  FORGEJO____APP_NAME: TheLoomLabs Git
+  FORGEJO____RUN_MODE: prod
+  FORGEJO__security__INSTALL_LOCK: "true"
+
+  # Web UI through the shared Gateway (TLS there, plain HTTP to the pod).
+  FORGEJO__server__DOMAIN: git.lab.theloomlabs.org
+  FORGEJO__server__ROOT_URL: https://git.lab.theloomlabs.org/
+  FORGEJO__server__HTTP_PORT: "3000"
+  # The Gateway's Envoy connects from the node's Cilium ingress address in the
+  # pod CIDR; only it may set X-Forwarded-For (client address in the logs).
+  # Not the v15 image default `*`. Reverse proxy login stays off.
+  FORGEJO__security__REVERSE_PROXY_TRUSTED_PROXIES: 10.244.0.0/16
+  FORGEJO__security__REVERSE_PROXY_LIMIT: "1"
+
+  # Git over SSH: Forgejo's built-in SSH server on 2222 (non-root), published
+  # by the LoadBalancer service forgejo-ssh on 192.168.1.62:22. Clone URLs
+  # show git@git-ssh.lab.theloomlabs.org:owner/repo.git. The host key is
+  # generated on first start into /var/lib/gitea/data/ssh (on the volume,
+  # backed up), so it survives restarts.
+  FORGEJO__server__DISABLE_SSH: "false"
+  FORGEJO__server__START_SSH_SERVER: "true"
+  FORGEJO__server__SSH_DOMAIN: git-ssh.lab.theloomlabs.org
+  FORGEJO__server__SSH_PORT: "22"
+  FORGEJO__server__SSH_LISTEN_PORT: "2222"
+  FORGEJO__server__BUILTIN_SSH_SERVER_USER: git
+
+  FORGEJO__server__LFS_START_SERVER: "true"
+  # No CDNs, Gravatar or other outside resources: the pod has no egress.
+  FORGEJO__server__OFFLINE_MODE: "true"
+  FORGEJO__picture__DISABLE_GRAVATAR: "true"
+  FORGEJO__picture__ENABLE_FEDERATED_AVATAR: "false"
+
+  # Private instance: no self-registration, nothing visible without login.
+  # Accounts: `forgejo admin user create` (docs/forgejo.md); OIDC with the SSO
+  # step later.
+  FORGEJO__service__DISABLE_REGISTRATION: "true"
+  FORGEJO__service__REQUIRE_SIGNIN_VIEW: "true"
+  FORGEJO__service__DEFAULT_KEEP_EMAIL_PRIVATE: "true"
+  FORGEJO__openid__ENABLE_OPENID_SIGNIN: "false"
+  FORGEJO__openid__ENABLE_OPENID_SIGNUP: "false"
+  FORGEJO__repository__DEFAULT_PRIVATE: private
+
+  # Logins survive a restart (sessions in the database, not in memory).
+  FORGEJO__session__PROVIDER: db
+  FORGEJO__session__COOKIE_SECURE: "true"
+
+  # No egress (networkpolicy.yaml): no mirrors, no migrations from other
+  # hosts, no update check, no mail. Webhooks only to the lab's own hosts
+  # once a policy allows them.
+  FORGEJO__mirror__ENABLED: "false"
+  FORGEJO__migrations__ALLOW_LOCALNETWORKS: "false"
+  # _0X2E_ is a dot: section [cron.update_checker].
+  FORGEJO__cron_0X2E_update_checker__ENABLED: "false"
+  FORGEJO__mailer__ENABLED: "false"
+  FORGEJO__federation__ENABLED: "false"
+
+  # Actions: jobs run on the runner VM (runner-01), which fetches `uses:`
+  # actions from DEFAULT_ACTIONS_URL itself; the server never does.
+  FORGEJO__actions__ENABLED: "true"
+  FORGEJO__actions__DEFAULT_ACTIONS_URL: https://data.forgejo.org
+
+  # Prometheus metrics on /metrics, bearer token (servicemonitor.yaml).
+  FORGEJO__metrics__ENABLED: "true"
+
+  FORGEJO__log__MODE: console
+  FORGEJO__log__LEVEL: Info
