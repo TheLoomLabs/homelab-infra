@@ -120,6 +120,65 @@ spec:
               Container {{ $labels.name }} (service {{ $labels.container_label_com_docker_swarm_service_name }})
               hit its memory limit. Raise the limit in its stack or find the leak.
 
+    - name: swarm-backup
+      rules:
+        - alert: SwarmBackupFailed
+          # swarm-backup on a node couldn't back up a group, or couldn't start
+          # a service again after the backup (role swarm_backup).
+          expr: max by (host) (swarm_backup_last_run_success{job="node-exporter"}) == 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "The Swarm volume backup failed on {{ $labels.host }}"
+            description: >-
+              `journalctl -u swarm-backup` on {{ $labels.host }} shows which group and why. If a service
+              wasn't started again, SwarmServiceReplicasMismatch fires too: `docker service scale <service>=1`.
+              See docs/swarm-backup.md.
+        - alert: SwarmBackupStale
+          # Every node reports the volumes it backed up; the newest copy counts
+          # (a volume whose service moved keeps its old series on the old node).
+          expr: time() - max by (volume) (swarm_backup_volume_last_success_timestamp_seconds{job="node-exporter"}) > 26 * 3600
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Swarm volume {{ $labels.volume }} has no backup for {{ $value | humanizeDuration }}"
+            description: >-
+              No node backed it up last night. Its service may be down or the timer broken:
+              `systemctl list-timers swarm-backup.timer` and `journalctl -u swarm-backup` on the node
+              that runs the service. See docs/swarm-backup.md.
+        - alert: SwarmBackupNeverRan
+          # In swarm_backup_groups (written by Ansible) but never backed up:
+          # a new volume, a misspelt volume or service name, or no node runs it.
+          expr: |
+            max by (volume, group) (swarm_backup_volume_configured{job="node-exporter"})
+              unless on (volume)
+            max by (volume) (swarm_backup_volume_last_success_timestamp_seconds{job="node-exporter"})
+          for: 26h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Swarm volume {{ $labels.volume }} has never been backed up"
+            description: >-
+              Check the names in swarm_backup_groups (group {{ $labels.group }}) against
+              `docker volume ls` and `docker service ls`. See docs/swarm-backup.md.
+        - alert: SwarmBackupCheckStale
+          # Weekly restic check (structure + a sample of the data) from one node.
+          expr: |
+            time() - max(swarm_backup_check_last_success_timestamp_seconds{job="node-exporter"}) > 8 * 86400
+            or
+            max(swarm_backup_check_last_run_success{job="node-exporter"}) == 0
+            or
+            absent(swarm_backup_check_last_success_timestamp_seconds{job="node-exporter"})
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "The Swarm backup repository hasn't passed restic check this week"
+            description: >-
+              `journalctl -u swarm-backup-check` on the check node (swarm_backup_check_host). Errors there
+              mean damaged or missing data in R2: see "Repository errors" in docs/swarm-backup.md.
+
     - name: traefik
       rules:
         - alert: TraefikCertificateExpiringSoon
