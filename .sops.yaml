@@ -12,7 +12,7 @@ creation_rules:
     age: age1fjsagzw9yzjhd5p6n4fmjstjvud9ucdp383mwe2gqn0k7rfaffrsa3asek
 
   # Ansible secrets next to the data they belong to (dns/tsig.sops.yaml,
-  # swarm/alerting.sops.yaml, logging/alloy.sops.yaml, k8s/encryption.sops.yaml).
-  # Every value is encrypted; key names stay readable.
-  - path_regex: (dns|swarm|logging|k8s)/.*\.sops\.yaml$
+  # swarm/alerting.sops.yaml, logging/alloy.sops.yaml, k8s/encryption.sops.yaml,
+  # ci/runner.sops.yaml). Every value is encrypted; key names stay readable.
+  - path_regex: (dns|swarm|logging|k8s|ci)/.*\.sops\.yaml$
     age: age1fjsagzw9yzjhd5p6n4fmjstjvud9ucdp383mwe2gqn0k7rfaffrsa3asek
