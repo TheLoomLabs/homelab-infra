@@ -56,8 +56,9 @@ defaultBackupStore:
 longhornGlobalManager:
   replicas: 2
 
-# The UI has no authentication. It is not exposed (no HTTPRoute) until SSO
-# exists; use kubectl port-forward (docs/storage.md).
+# The UI has no authentication: it is published behind Authentik's proxy at
+# longhorn.lab (docs/sso.md#proxied-uis), and networkpolicy.yaml lets only
+# Authentik's server reach it.
 longhornUI:
   replicas: 1
 

@@ -1,0 +1,27 @@
+---
+# The Longhorn UI has no login and its API can delete volumes, so only
+# Authentik's server (the embedded outpost, after the login) may reach it:
+# longhorn.lab → Gateway → Authentik → this pod (docs/sso.md#proxied-uis).
+# Without this policy every pod in the cluster could open the UI: the chart's
+# own ui-frontend NetworkPolicy exists only with networkPolicies.enabled
+# (off, values.yaml). Ingress only: the UI's calls to longhorn-backend stay
+# as they are. Kubelet probes come from the host, which Cilium allows.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: longhorn-ui
+  namespace: longhorn-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app: longhorn-ui
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: authentik
+            app.kubernetes.io/name: authentik
+            app.kubernetes.io/component: server
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
