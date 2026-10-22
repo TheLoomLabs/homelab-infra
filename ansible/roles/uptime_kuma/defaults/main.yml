@@ -113,6 +113,11 @@ uptime_kuma_monitors:
     # The LoadBalancer address (git-ssh → .62), port 22.
     hostname: "git-ssh.{{ uptime_kuma_domain }}"
     port: 22
+  authentik:
+    type: http
+    name: Authentik
+    # Health endpoint, no login (Kubernetes, through the Gateway).
+    url: "https://auth.{{ uptime_kuma_domain }}/-/health/live/"
   homepage:
     type: http
     name: Homepage
