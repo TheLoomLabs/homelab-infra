@@ -77,3 +77,32 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
+---
+# The login source `authentik` (OIDC discovery, JWKS, token and userinfo
+# calls) at https://auth.lab.theloomlabs.org, which is the shared Gateway:
+# allowed by name and, after Envoy, by backend pod. Forgejo's only egress.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: forgejo-to-authentik
+  namespace: forgejo
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: forgejo
+  egress:
+    - toFQDNs:
+        - matchName: auth.lab.theloomlabs.org
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: authentik
+            app.kubernetes.io/name: authentik
+            app.kubernetes.io/component: server
+      toPorts:
+        - ports:
+            - port: "9000"
+              protocol: TCP

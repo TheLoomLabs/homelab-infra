@@ -62,9 +62,16 @@ data:
   FORGEJO__picture__ENABLE_FEDERATED_AVATAR: "false"
 
   # Private instance: no self-registration, nothing visible without login.
-  # Accounts: `forgejo admin user create` (docs/forgejo.md); OIDC with the SSO
-  # step later.
+  # Accounts: `forgejo admin user create` (docs/forgejo.md).
   FORGEJO__service__DISABLE_REGISTRATION: "true"
+  # Login with Authentik (login source `authentik`, added with the CLI,
+  # docs/sso.md). No accounts are created from it: the first SSO login of a
+  # user shows the link page, where they sign in once with their Forgejo
+  # password (and 2FA) to attach the Authentik identity. Nothing is matched by
+  # name or e-mail.
+  FORGEJO__oauth2_client__ENABLE_AUTO_REGISTRATION: "false"
+  FORGEJO__oauth2_client__ACCOUNT_LINKING: login
+  FORGEJO__oauth2_client__UPDATE_AVATAR: "false"
   FORGEJO__service__REQUIRE_SIGNIN_VIEW: "true"
   FORGEJO__service__DEFAULT_KEEP_EMAIL_PRIVATE: "true"
   FORGEJO__openid__ENABLE_OPENID_SIGNIN: "false"
