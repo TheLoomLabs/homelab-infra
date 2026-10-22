@@ -59,16 +59,24 @@ spec:
             # no IPv6), instead of the image's "::" or the pod name.
             - name: HOSTNAME
               value: 0.0.0.0
-            # Login (docs/homepage.md): password now, OIDC in the SSO step.
-            # The password and the cookie secret are in homepage-env.
+            # Login with Authentik (docs/homepage.md, docs/sso.md). With the
+            # three OIDC settings set, Homepage offers no password login.
+            # HOMEPAGE_OIDC_CLIENT_SECRET and the cookie secret are in
+            # homepage-env.
             - name: HOMEPAGE_AUTH_ENABLED
               value: "true"
             - name: HOMEPAGE_EXTERNAL_URL
               value: https://home.lab.theloomlabs.org
+            - name: HOMEPAGE_OIDC_ISSUER
+              value: https://auth.lab.theloomlabs.org/application/o/homepage/
+            - name: HOMEPAGE_OIDC_CLIENT_ID
+              value: homepage
+            - name: HOMEPAGE_OIDC_NAME
+              value: Authentik
             # Logs to stdout only (Alloy → Loki), no log file.
             - name: LOG_TARGETS
               value: stdout
-          # HOMEPAGE_AUTH_SECRET, HOMEPAGE_AUTH_PASSWORD and the widget
+          # HOMEPAGE_AUTH_SECRET, HOMEPAGE_OIDC_CLIENT_SECRET and the widget
           # credentials (HOMEPAGE_VAR_*), from secrets.sops.yaml.
           envFrom:
             - secretRef:

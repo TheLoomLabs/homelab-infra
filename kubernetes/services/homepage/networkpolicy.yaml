@@ -75,6 +75,23 @@ spec:
         - ports:
             - port: "9090"
               protocol: TCP
+    # The login: Authentik at auth.lab (the shared Gateway), allowed by name
+    # and, after Envoy, by backend pod.
+    - toFQDNs:
+        - matchName: auth.lab.theloomlabs.org
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: authentik
+            app.kubernetes.io/name: authentik
+            app.kubernetes.io/component: server
+      toPorts:
+        - ports:
+            - port: "9000"
+              protocol: TCP
     # Swarm apps through the Swarm VIP and Traefik: status checks, the Uptime
     # Kuma status page, the healthchecks API.
     - toFQDNs:
