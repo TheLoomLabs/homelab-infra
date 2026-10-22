@@ -381,11 +381,32 @@ Longhorn, Prometheus and Alertmanager have no login of their own. They are publi
 
 1. **Customization → Blueprints**: `Lab - Proxied UIs` **successful**. **Applications → Outposts**: `authentik Embedded Outpost` lists Longhorn, Prometheus and Alertmanager, health green (last seen within a minute).
 2. Route accepted: `kubectl -n authentik get httproute authentik-proxy -o jsonpath='{.status.parents[0].conditions[*].reason}'` → `Accepted ResolvedRefs`.
-3. Without a session: `curl -sI https://prometheus.lab.theloomlabs.org | grep -i '^location'` → a redirect to `https://auth.lab.theloomlabs.org/application/o/authorize/…`.
+3. Without a session, each name answers with the outpost's start page (a HEAD request, `curl -I`, gets Authentik's own `/flows/…` instead; use GET):
+
+   ```bash
+   for h in longhorn prometheus alertmanager; do
+     curl -s -o /dev/null -w "$h %{http_code} %{redirect_url}\n" https://$h.lab.theloomlabs.org/
+   done
+   # each: 302 https://<name>.lab.theloomlabs.org/outpost.goauthentik.io/start?rd=…
+   ```
 4. In a private window: https://longhorn.lab.theloomlabs.org → Authentik login → the Longhorn dashboard with volumes and nodes (live updates over websocket). Then https://prometheus.lab.theloomlabs.org/targets and https://alertmanager.lab.theloomlabs.org open without a second login.
 5. A `lab-users` account gets *Permission denied* from Authentik, not the UI.
-6. The UI is closed to other pods. Prometheus may reach the whole cluster, so it is a good test: `kubectl -n monitoring exec prometheus-kube-prometheus-stack-prometheus-0 -c prometheus -- wget -q -T 5 -O /dev/null http://longhorn-frontend.longhorn-system` → *download timed out* (before this change it returned nothing, i.e. success).
-7. Nothing else dropped: `hubble observe --verdict DROPPED --since 10m`.
+6. The UI is closed to other pods. Prometheus may reach the whole cluster, so it is a good test:
+
+   ```bash
+   POD=$(kubectl -n monitoring get pod -l app.kubernetes.io/name=prometheus -o name)
+   kubectl -n monitoring exec $POD -c prometheus -- wget -q -T 5 -O /dev/null http://longhorn-frontend.longhorn-system
+   # wget: download timed out
+   ```
+
+7. Nothing else dropped (Hubble needs its port-forward first):
+
+   ```bash
+   cilium hubble port-forward &
+   sleep 3
+   hubble observe --verdict DROPPED --since 10m
+   kill %1
+   ```
 
 ## Change the config (blueprints)
 
