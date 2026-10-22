@@ -28,7 +28,7 @@ edge_keepalived_check_interval: 2
 edge_keepalived_check_fall: 2
 edge_keepalived_check_rise: 2
 
-edge_traefik_image: traefik:v3.7.15
+edge_traefik_image: traefik:v3.7.16
 
 # Traefik's Prometheus metrics and /ping (keepalived's check), host mode on
 # every manager.
