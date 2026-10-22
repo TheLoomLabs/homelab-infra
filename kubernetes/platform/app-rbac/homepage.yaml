@@ -115,3 +115,17 @@ subjects:
   - kind: ServiceAccount
     name: homepage
     namespace: homepage
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: homepage-pods
+  namespace: authentik
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homepage-pods
+subjects:
+  - kind: ServiceAccount
+    name: homepage
+    namespace: homepage

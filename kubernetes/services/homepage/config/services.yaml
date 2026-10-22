@@ -75,6 +75,11 @@
               format:
                 type: relativeDate
                 scale: 1000
+            - label: Authentik
+              query: max(kube_cronjob_status_last_successful_time{namespace="authentik", cronjob="authentik-backup"})
+              format:
+                type: relativeDate
+                scale: 1000
             - label: Swarm (oldest)
               query: min(swarm_backup_volume_last_success_timestamp_seconds)
               format:
@@ -143,6 +148,28 @@
               query: max(gitea_repositories{namespace="forgejo"})
             - label: Last backup
               query: max(kube_cronjob_status_last_successful_time{namespace="forgejo", cronjob="forgejo-backup"})
+              format:
+                type: relativeDate
+                scale: 1000
+
+    - Authentik:
+        icon: authentik.svg
+        href: https://auth.lab.theloomlabs.org
+        description: Single sign-on
+        namespace: authentik
+        app: authentik
+        widget:
+          type: prometheusmetric
+          url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          refreshInterval: 300000
+          metrics:
+            - label: Last backup
+              query: max(kube_cronjob_status_last_successful_time{namespace="authentik", cronjob="authentik-backup"})
+              format:
+                type: relativeDate
+                scale: 1000
+            - label: Last check
+              query: max(kube_cronjob_status_last_successful_time{namespace="authentik", cronjob="authentik-backup-check"})
               format:
                 type: relativeDate
                 scale: 1000
