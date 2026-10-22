@@ -71,7 +71,7 @@ curl -s https://portainer.lab.theloomlabs.org/api/system/status    # {"Version":
 Log in as `admin`. The environment `primary` (the swarm through the agents) is already there. Then **Settings** →
 
 1. **General**: untick **Allow the collection of anonymous statistics** → **Save application settings**.
-2. **Authentication**: session lifetime as you like (default 8 hours). SSO (OAuth) comes with the SSO step of Phase 3.
+2. **Authentication**: session lifetime as you like (default 8 hours). Login with Authentik (OAuth) is set up there too ([sso.md](sso.md#portainer-ui)); the local admin stays as break-glass.
 
 Changing the admin password later is done in the UI (**My account**). `swarm/portainer.sops.yaml` is read only when the database is created, so keep it in step by hand (`sops edit swarm/portainer.sops.yaml`): it is the password a rebuilt Portainer starts with.
 

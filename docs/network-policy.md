@@ -43,7 +43,7 @@ Everything else is one policy per component, named for what it allows:
 | Velero | API server; `*.r2.cloudflarestorage.com` | 6443; 443 |
 | Prometheus | the whole cluster (`cluster` entity: pods, nodes, API server); the DNS, Swarm and runner VMs (`toCIDR`, their LAN addresses) | any; VMs: 12345 (Alloy), 9323 (Docker), 8082 (Traefik) |
 | Grafana | Prometheus, Alertmanager, Loki; API server (sidecars) | 9090, 9093, 3100; 6443 |
-| Grafana, argocd-server | Authentik for the SSO login: `auth.lab` (the Gateway, by name) and, after Envoy, the authentik-server pods | 443; 9000 |
+| Grafana, argocd-server, Forgejo, Homepage | Authentik for the SSO login: `auth.lab` (the Gateway, by name) and, after Envoy, the authentik-server pods | 443; 9000 |
 | Gateway | Grafana; loki-gateway | 3000; 8080 |
 | Alertmanager | ntfy.lab / hc.lab.theloomlabs.org (Swarm) | 443 |
 | Loki (ruler) | Alertmanager | 9093 |

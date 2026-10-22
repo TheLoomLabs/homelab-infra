@@ -7,7 +7,7 @@
 | Argo CD app (project `apps`) | `kubernetes/apps/homepage.yaml` |
 | Manifests | `kubernetes/services/homepage/` (kustomize, for the ConfigMap only) |
 | Cards, widgets, settings | `config/services.yaml`, `config/widgets.yaml`, `config/settings.yaml`, `config/bookmarks.yaml` |
-| Login password, cookie secret, widget credentials | `secrets.sops.yaml` (SOPS) → Secret `homepage-env` |
+| OIDC client secret, cookie secret, widget credentials | `secrets.sops.yaml` (SOPS) → Secret `homepage-env` |
 | Deployment, ServiceAccount, Service, HTTPRoute | `homepage.yaml` |
 | Network policies | `networkpolicy.yaml`; in the targets' namespaces: `server-from-homepage` (argocd), the `prometheus` policy (monitoring) |
 | Read access to the cluster | `kubernetes/platform/app-rbac/homepage.yaml` (app `app-rbac`, project `platform`) |
@@ -21,7 +21,7 @@
 - Look: "control room" style in `custom.css` (dark background with a grid, cyan and magenta glow, Orbitron / JetBrains Mono / Exo 2 fonts loaded by the browser from Google Fonts), page at full window width (`settings.yaml`). The first row, **Status**, holds the five cards that say whether anything needs attention: alerts, Argo CD, Uptime Kuma, backups, storage. `custom.css` loads without login; it only uses Homepage's class names, so an upgrade that renames them loses styling, nothing else.
 - One pod, image `ghcr.io/gethomepage/homepage`, as UID 1000 on port 3000, read-only root filesystem. Writable: an emptyDir under `/app/config` (Homepage copies a default file there for any file it doesn't find; the files from Git are mounted on top), `/app/.next/cache` and `/tmp`.
 - **Configuration from Git.** `config/*` becomes the ConfigMap `homepage-config-<hash>`; any change gives it a new name, so the pod restarts with the new files. Nothing is edited in the pod.
-- **Login.** Homepage's own login (`HOMEPAGE_AUTH_ENABLED`): one password, kept in Vaultwarden. Every page and API call needs a session, except `/api/healthcheck` (probes, Uptime Kuma). In the SSO step this becomes OIDC (`HOMEPAGE_OIDC_*`). Homepage doesn't rate-limit password attempts; it logs failed ones as warnings (Loki, `{namespace="homepage"}`). Acceptable on a LAN-only name; OIDC replaces it.
+- **Login.** With Authentik (`HOMEPAGE_AUTH_ENABLED` + `HOMEPAGE_OIDC_*`, [sso.md](sso.md#homepage)): members of `lab-admins` and `lab-users`. Every page and API call needs a session, except `/api/healthcheck` (probes, Uptime Kuma). With OIDC set, Homepage has no password login; while Authentik is down, the dashboard is locked.
 - **Host check.** Only `Host: home.lab.theloomlabs.org` (and the pod address, for the probes) is answered (`HOMEPAGE_ALLOWED_HOSTS`).
 - **What it reads, and how:**
 
@@ -83,7 +83,7 @@ The page is public on the LAN at `/status/lab`, like the rest of the lab.
 
 ### 4. Secrets
 
-The login password and the cookie secret are generated; the widget credentials are read from the terminal. Leave the Argo CD token empty for now. Everything is written to the file encrypted.
+Historical first setup (the login was a password then; since the SSO step the file holds `HOMEPAGE_OIDC_CLIENT_SECRET` instead of `HOMEPAGE_AUTH_PASSWORD`, see [sso.md](sso.md#forgejo-homepage-portainer-proxmox)). The login password and the cookie secret are generated; the widget credentials are read from the terminal. Leave the Argo CD token empty for now. Everything is written to the file encrypted.
 
 ```bash
 F=kubernetes/services/homepage/secrets.sops.yaml
@@ -174,7 +174,8 @@ Renovate opens a PR for `ghcr.io/gethomepage/homepage`. Read the release notes: 
 
 ## Rotate
 
-- **Login password / cookie secret**: `sops edit kubernetes/services/homepage/secrets.sops.yaml` (new values from `openssl rand -base64 24` / `32`), push, `kubectl -n homepage rollout restart deploy/homepage`. A new cookie secret logs everyone out.
+- **OIDC client secret**: a new value in both `kubernetes/services/authentik/oidc.sops.yaml` (`OIDC_HOMEPAGE_CLIENT_SECRET`) and here, push, restart the Authentik worker and Homepage.
+- **Cookie secret**: `sops edit kubernetes/services/homepage/secrets.sops.yaml` (new values from `openssl rand -base64 24` / `32`), push, `kubectl -n homepage rollout restart deploy/homepage`. A new cookie secret logs everyone out.
 - **Argo CD token**: generate a new one ([step 6](#6-argo-cd-token)), then delete the old one on the same page.
 - **Proxmox token**: `pveum user token remove homepage@pve dashboard`, then the `token add` and `-token` lines of step 1 again, and `sops set` the new secret (same command as step 6, key `HOMEPAGE_VAR_PROXMOX_TOKEN_SECRET`).
 - **healthchecks key**: **Revoke** on the project's Settings page, create a new one, `sops set` `HOMEPAGE_VAR_HEALTHCHECKS_KEY`.

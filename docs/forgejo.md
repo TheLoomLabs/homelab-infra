@@ -36,7 +36,7 @@
 - **Web** through the shared Gateway (`HTTPRoute forgejo`, port 3000), with TLS from the wildcard certificate. The `*.lab` record already points at the Gateway, so the web name needs no DNS change. Git over HTTPS, LFS and the registry (`/v2/`) use the same route.
 - **SSH**: Forgejo's built-in SSH server listens on 2222. The LoadBalancer service `forgejo-ssh` publishes it on **192.168.1.62:22**, and the DNS name is `git-ssh` (not `ssh.git`, see [dns.md](dns.md)). Clone URLs look like `git@git-ssh.lab.theloomlabs.org:owner/repo.git`.
 - **No egress.** The pod reaches only DNS. Mirrors, migrations from other hosts, the update check, mail, Gravatar and federation are off. A webhook to a lab service needs an egress rule in `networkpolicy.yaml`.
-- **Private.** Self-registration is off and nothing is visible without login (`REQUIRE_SIGNIN_VIEW`). New repositories are private. Accounts are created with the CLI ([Add a user](#add-a-user)). OIDC comes with the SSO step.
+- **Private.** Self-registration is off and nothing is visible without login (`REQUIRE_SIGNIN_VIEW`). New repositories are private. Accounts are created with the CLI ([Add a user](#add-a-user)). Login with Authentik (login source `authentik`): an account is linked to its Authentik identity at the first SSO login, never created from it; `lab-admins` are site admins ([sso.md](sso.md#forgejo)).
 - **No SMTP.** No mails: no password reset by mail. 2FA is TOTP or a security key/passkey (WebAuthn).
 - **Metrics**: `/metrics` with a bearer token (`forgejo-metrics`), scraped by Prometheus (job `forgejo`). It exposes `gitea_*` counts (repos, users, issues) and Go/process metrics. Homepage reads the repo count from there.
 

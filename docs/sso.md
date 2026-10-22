@@ -116,7 +116,7 @@ In Prometheus (Status → Targets), `serviceMonitor/authentik/authentik-server/0
 
 1. Open https://auth.lab.theloomlabs.org, log in as `akadmin` with the password from step 2.
 2. Authentik asks you to set up a second factor (blueprint `lab-mfa.yaml`). Choose **WebAuthn device** and register a passkey or security key, or **TOTP device** and scan the code with your authenticator app (and keep the TOTP secret in Vaultwarden next to the password).
-3. Top right: **Admin interface**. **System → Blueprints**: the two `Lab - …` blueprints show status **successful**.
+3. Top right: **Admin interface**. **Customization → Blueprints**: the two `Lab - …` blueprints show status **successful**.
 4. **Directory → Groups**: `lab-admins` and `lab-users` exist.
 
 ### 5. Your account
@@ -158,10 +158,14 @@ Each app is an OAuth2/OIDC provider + application in a blueprint (`lab-app-<slug
 |---|---|---|---|---|
 | Argo CD (`argocd`) | **Log in via Authentik**; CLI `argocd login argocd.lab.theloomlabs.org --sso --grpc-web` | `lab-admins` → `role:admin` (`policy.csv`) | nobody | `kubectl` (cluster admin); the local `admin` is off (`admin.enabled: "false"`) |
 | Grafana (`grafana`) | **Sign in with Authentik** | `lab-admins` → Admin (`role_attribute_path`) | `lab-users` → Viewer | the admin form (`grafana-admin`) |
+| Forgejo (`forgejo`) | **Sign in with authentik** (login source added with the CLI); first time: link to the existing account | `lab-admins` → site admin (`--admin-group`) | `lab-users` → users (accounts are linked, never auto-created) | local password (+2FA) and the CLI |
+| Homepage (`homepage`) | **Sign in with Authentik**, the only login | no roles | `lab-users` | none: change the env back to a password if Authentik is down for long |
+| Portainer (`portainer`, Swarm) | **Login with OAuth** (settings in its UI) | promoted once by hand (CE has no group mapping) | nobody | **Use internal authentication** (admin from SOPS) |
+| Proxmox (`proxmox`) | Realm **Authentik SSO** (`pveum`) | `lab-admins-authentik` → Administrator on `/` | nobody | `root@pam` |
 
 Issuer and discovery for an app: `https://auth.lab.theloomlabs.org/application/o/<slug>/.well-known/openid-configuration`.
 
-### OIDC secrets (once, then one key per new app)
+### OIDC secrets: Argo CD and Grafana
 
 One random client secret per app, written to Authentik's SOPS file and to the app's. Run from the repo root:
 
@@ -221,11 +225,131 @@ The loop lists the two `OIDC_*` keys, then `clientSecret`, then `GF_AUTH_GENERIC
 
 ### Check a login
 
-1. Authentik, **System → Blueprints**: `Lab - App Argo CD` and `Lab - App Grafana` **successful**. **Applications → Applications**: both listed, each with its provider.
+1. Authentik, **Customization → Blueprints**: `Lab - App Argo CD` and `Lab - App Grafana` **successful**. **Applications → Applications**: both listed, each with its provider.
 2. Discovery answers: `curl -s https://auth.lab.theloomlabs.org/application/o/argocd/.well-known/openid-configuration | jq .issuer`.
 3. In a private window: https://argocd.lab.theloomlabs.org → **Log in via Authentik** → Authentik login (password, passkey) → back in Argo CD with every app visible. **User Info** shows your username and the group `lab-admins`.
 4. https://grafana.lab.theloomlabs.org → **Sign in with Authentik** → back in Grafana; **Profile** shows role Admin.
 5. Nothing dropped meanwhile: `hubble observe --verdict DROPPED --since 10m`.
+
+### Forgejo, Homepage, Portainer, Proxmox
+
+Four more client secrets. Homepage reads its own from its SOPS file; Forgejo, Portainer and Proxmox store theirs in their own configuration (set below from Authentik's SOPS file), so only Authentik's file holds those. The script also removes Homepage's password: with OIDC configured, Homepage has no password login. Run from the repo root:
+
+```bash
+F=kubernetes/services/authentik/oidc.sops.yaml
+for app in FORGEJO HOMEPAGE PORTAINER PROXMOX; do
+  sops set "$F" "[\"spec\"][\"secretTemplates\"][0][\"stringData\"][\"OIDC_${app}_CLIENT_SECRET\"]" \
+    "\"$(openssl rand -hex 32)\""
+done
+H=kubernetes/services/homepage/secrets.sops.yaml
+sops decrypt "$H" | yq '.spec.secretTemplates[0].name'      # homepage-env
+sops set "$H" '["spec"]["secretTemplates"][0]["stringData"]["HOMEPAGE_OIDC_CLIENT_SECRET"]' \
+  "\"$(sops decrypt "$F" | yq -r '.spec.secretTemplates[0].stringData.OIDC_HOMEPAGE_CLIENT_SECRET')\""
+sops unset "$H" '["spec"]["secretTemplates"][0]["stringData"]["HOMEPAGE_AUTH_PASSWORD"]'
+unset F H
+sops decrypt kubernetes/services/authentik/oidc.sops.yaml | yq '.spec.secretTemplates[0].stringData | keys'
+sops decrypt kubernetes/services/homepage/secrets.sops.yaml | yq '.spec.secretTemplates[0].stringData | keys'
+```
+
+The first listing has six `OIDC_*` keys. The second has `HOMEPAGE_OIDC_CLIENT_SECRET` and no `HOMEPAGE_AUTH_PASSWORD`. Delete the Homepage password from Vaultwarden once the OIDC login works.
+
+After the push, restart the worker so it reads the four new keys, then check the blueprints (**Customization → Blueprints**: `Lab - App Forgejo`, `Homepage`, `Portainer`, `Proxmox` **successful**):
+
+```bash
+kubectl -n authentik get secret authentik-oidc -o json | jq '.data | keys'   # six keys
+kubectl -n authentik rollout restart deploy/authentik-worker
+kubectl -n authentik rollout status deploy/authentik-worker
+```
+
+A small helper prints one client secret for the commands below (it stays in your terminal):
+
+```bash
+oidc_secret() { sops decrypt kubernetes/services/authentik/oidc.sops.yaml | yq -r ".spec.secretTemplates[0].stringData.OIDC_$1_CLIENT_SECRET"; }
+```
+
+#### Forgejo
+
+The login source is stored in Forgejo's database (not in `config.yaml`), so it is added once with the CLI. `--admin-group` makes members of `lab-admins` site admins at every login; `--skip-local-2fa` because Authentik already asked for a second factor.
+
+```bash
+kubectl -n forgejo exec deploy/forgejo -- forgejo admin auth add-oauth \
+  --name authentik \
+  --provider openidConnect \
+  --key forgejo \
+  --secret "$(oidc_secret FORGEJO)" \
+  --auto-discover-url https://auth.lab.theloomlabs.org/application/o/forgejo/.well-known/openid-configuration \
+  --scopes email --scopes profile \
+  --group-claim-name groups \
+  --admin-group lab-admins \
+  --skip-local-2fa \
+  --icon-url https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/authentik.svg
+kubectl -n forgejo exec deploy/forgejo -- forgejo admin auth list
+kubectl -n forgejo rollout restart deploy/forgejo       # loads the new source
+kubectl -n forgejo rollout status deploy/forgejo
+```
+
+The name `authentik` is part of the callback URL (`/user/oauth2/authentik/callback`), so keep it. Then link your account: in a private window, https://git.lab.theloomlabs.org → **Sign in with authentik** → Authentik login → Forgejo's **Link account** page → sign in with your Forgejo username and password (and Forgejo 2FA, this once). From then on the Authentik button is enough. **Settings → Security → Manage linked accounts** shows the link. SSH keys and access tokens don't change.
+
+To change the source later: `forgejo admin auth list` for its ID, then `forgejo admin auth update-oauth --id <ID> …` with the flags to change.
+
+#### Homepage
+
+Nothing to do after the push: the pod restarts with the OIDC settings. https://home.lab.theloomlabs.org shows **Sign in with Authentik**, and there is no password field any more.
+
+#### Portainer (UI)
+
+Portainer CE keeps OAuth settings in its database. As the local admin (break-glass, stays): **Settings → Authentication**:
+
+1. **Authentication method**: **OAuth**.
+2. **Automatic user provisioning**: on. (CE can't map groups to teams or roles: new SSO users are standard users.)
+3. **Provider**: **Custom**, then:
+
+   | Field | Value |
+   |---|---|
+   | Client ID | `portainer` |
+   | Client secret | output of `oidc_secret PORTAINER` |
+   | Authorization URL | `https://auth.lab.theloomlabs.org/application/o/authorize/` |
+   | Access token URL | `https://auth.lab.theloomlabs.org/application/o/token/` |
+   | Resource URL | `https://auth.lab.theloomlabs.org/application/o/userinfo/` |
+   | Redirect URL | `https://portainer.lab.theloomlabs.org/` (with the trailing slash, as in the blueprint) |
+   | Logout URL | `https://auth.lab.theloomlabs.org/application/o/portainer/end-session/` |
+   | User identifier | `preferred_username` |
+   | Scopes | `openid email profile` |
+   | Auth Style | **In Params** |
+
+4. **Save settings**.
+5. In a private window: https://portainer.lab.theloomlabs.org → **Login with OAuth** → Authentik → back in Portainer, as a user without rights.
+6. Back as the local admin (the login page keeps **Use internal authentication**): **Administration → User-related → Users** → your SSO user → **Administrator** on → **Update user**. Log in with Authentik again: full rights.
+
+#### Proxmox (CLI on pve)
+
+An OpenID realm `authentik`. Users are created at their first login (`<username>@authentik`), their Authentik groups become Proxmox groups `<group>-authentik`, and `lab-admins-authentik` gets **Administrator** on `/`. `root@pam` stays the break-glass login. First check that pve resolves and trusts Authentik:
+
+```bash
+ssh root@pve.lab.theloomlabs.org \
+  'curl -s https://auth.lab.theloomlabs.org/application/o/proxmox/.well-known/openid-configuration | head -c 120; echo'
+```
+
+Then add the realm and the permission. The secret goes over SSH on the command line once; Proxmox stores it in `/etc/pve/priv/`.
+
+```bash
+ssh root@pve.lab.theloomlabs.org pveum realm add authentik --type openid \
+  --issuer-url https://auth.lab.theloomlabs.org/application/o/proxmox/ \
+  --client-id proxmox \
+  --client-key "$(oidc_secret PROXMOX)" \
+  --username-claim preferred_username \
+  --scopes "'openid email profile'" \
+  --autocreate 1 \
+  --groups-claim groups --groups-autocreate 1 --groups-overwrite 1 \
+  --comment "'Authentik SSO'"
+ssh root@pve.lab.theloomlabs.org pveum group add lab-admins-authentik --comment "'Authentik lab-admins'"
+ssh root@pve.lab.theloomlabs.org pveum acl modify / --groups lab-admins-authentik --roles Administrator
+ssh root@pve.lab.theloomlabs.org pveum realm list
+```
+
+Log in at https://pve.lab.theloomlabs.org:8006 with **Realm: Authentik SSO** → **Login (OpenID redirect)** → Authentik → back in Proxmox with full rights. **Datacenter → Permissions → Users** lists `<you>@authentik`, in group `lab-admins-authentik`. Proxmox's own TOTP is not needed for this realm (Authentik asked).
+
+Unset the helper when done: `unset -f oidc_secret`.
 
 ### Add an app
 
@@ -236,7 +360,7 @@ The loop lists the two `OIDC_*` keys, then `clientSecret`, then `GF_AUTH_GENERIC
 
 ## Change the config (blueprints)
 
-Edit `blueprints.yaml`, push. The kubelet updates the mounted files within a minute or two and the worker applies the changed blueprint. Check **System → Blueprints** (status, last applied) or the worker log. To apply one right away: **System → Blueprints → ⋮ → Apply**.
+Edit `blueprints.yaml`, push. The kubelet updates the mounted files within a minute or two and the worker applies the changed blueprint. Check **Customization → Blueprints** (status, last applied) or the worker log. To apply one right away: **Customization → Blueprints → ⋮ → Apply**.
 
 - Entries are matched by their `identifiers`; the `attrs` listed are set on every apply. Removing an entry doesn't delete the object: delete it in the UI too.
 - Objects you create in the UI that aren't in a blueprint stay (users always do).
