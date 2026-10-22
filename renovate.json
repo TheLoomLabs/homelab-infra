@@ -137,7 +137,8 @@
         "prometheus/prometheus",
         "grafana/loki",
         "kubernetes-sigs/gateway-api",
-        "aquasecurity/trivy"
+        "aquasecurity/trivy",
+        "forgejo/runner"
       ],
       "prBodyNotes": [
         "**Checksum pinned:** update the matching `*_SHA256` / `*_sha256` value in this PR (from the release's checksums file). CI fails until it matches."
@@ -227,6 +228,15 @@
       "allowedVersions": "/^15\\./",
       "prBodyNotes": [
         "Server and backup job (`kubernetes/services/forgejo/`) use the same image. Read the release notes (https://codeberg.org/forgejo/forgejo/releases) for changed settings. Argo CD deploys it on merge; the database migrates at start (the nightly dump and the Longhorn snapshot are the way back, docs/forgejo.md). Runner compatibility: docs/forgejo.md, \"Upgrades\"."
+      ]
+    },
+    {
+      "description": "Forgejo Actions runner on runner-01 (role forgejo_runner)",
+      "matchDepNames": [
+        "forgejo/runner"
+      ],
+      "prBodyNotes": [
+        "Read the release notes (https://code.forgejo.org/forgejo/runner/releases): majors change workflow behaviour and config keys. Put the SHA-256 of the GPG-verified binary into `forgejo_runner_sha256` (docs/forgejo-runner.md, \"Upgrade\"), then `make runner` after merging. Running jobs are cancelled by the restart."
       ]
     },
     {
