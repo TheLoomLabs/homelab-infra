@@ -45,7 +45,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: homepage
-          image: ghcr.io/gethomepage/homepage:v2.2.0
+          image: ghcr.io/gethomepage/homepage:v2.6.0
           env:
             - name: MY_POD_IP
               valueFrom:
