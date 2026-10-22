@@ -108,6 +108,12 @@ server:
 
 worker:
   automountServiceAccountToken: false
+  # Client secrets of the apps' OIDC providers, read by the blueprints
+  # (`!Env`). Secret authentik-oidc from oidc.sops.yaml. A new key needs a
+  # restart of the worker (docs/sso.md, "Add an app").
+  envFrom:
+    - secretRef:
+        name: authentik-oidc
   resources:
     requests:
       cpu: 50m
