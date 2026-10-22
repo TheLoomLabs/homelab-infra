@@ -1,0 +1,54 @@
+---
+# Authentik, the lab's identity provider (OIDC/OAuth2, proxy) at
+# auth.lab.theloomlabs.org: single sign-on for Argo CD, Grafana, Forgejo,
+# Portainer, Homepage and Proxmox, and a login in front of the UIs that have
+# none. Official Helm chart for the server and worker, plus plain manifests in
+# kubernetes/services/authentik: PostgreSQL, nightly dump + restic to R2,
+# network policies, the route and the blueprints (Authentik's config in Git).
+# docs/sso.md, ADR 0021.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: authentik
+  namespace: argocd
+spec:
+  project: apps
+  sources:
+    - repoURL: https://charts.goauthentik.io
+      chart: authentik
+      targetRevision: 2026.8.5
+      helm:
+        releaseName: authentik
+        valueFiles:
+          - $values/kubernetes/services/authentik/values.yaml
+    - repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+      targetRevision: main
+      ref: values
+    # PostgreSQL, backup, policies, route, blueprints, SopsSecret.
+    # values.yaml is Helm input, not a manifest.
+    - repoURL: https://github.com/TheLoomLabs/homelab-infra.git
+      targetRevision: main
+      path: kubernetes/services/authentik
+      directory:
+        exclude: values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    # Created with its Pod Security labels by the namespaces app
+    # (kubernetes/platform/namespaces/), not here: the apps project can't.
+    namespace: authentik
+  syncPolicy:
+    automated:
+      # The PVC also says Prune=false,Delete=false, and its StorageClass
+      # retains the volume: removing a manifest never deletes the database.
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # The SopsSecret, CiliumNetworkPolicy and monitoring CRDs come from
+      # platform apps.
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

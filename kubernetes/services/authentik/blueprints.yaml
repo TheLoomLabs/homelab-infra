@@ -1,0 +1,73 @@
+---
+# Authentik's config in Git (https://docs.goauthentik.io/customize/blueprints/).
+# The worker reads every *.yaml key from /blueprints/mounted/cm-authentik-blueprints/,
+# applies it at start and again when the file changes (Argo CD updates the
+# ConfigMap, the kubelet the mounted files, within a minute or two). An entry
+# without `state` is `present`: created if missing, the listed attributes put
+# back if someone changed them in the UI. Attributes not listed stay as they
+# are. Removing an entry here doesn't delete the object in Authentik.
+#
+# Users are not here: no usernames in the public repo. Accounts are created
+# in the UI and put into a group (docs/sso.md).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authentik-blueprints
+  namespace: authentik
+data:
+  lab-groups.yaml: |
+    version: 1
+    metadata:
+      name: Lab - Groups
+    entries:
+      # Admin everywhere: Authentik superuser, and the admin role in each app
+      # (each app's provider maps this group, docs/sso.md).
+      - model: authentik_core.group
+        identifiers:
+          name: lab-admins
+        attrs:
+          is_superuser: true
+      # Signed-in users without admin rights in the apps.
+      - model: authentik_core.group
+        identifiers:
+          name: lab-users
+        attrs:
+          is_superuser: false
+
+  lab-mfa.yaml: |
+    version: 1
+    metadata:
+      name: Lab - MFA required
+    entries:
+      # Apply the default flows first: the stages below come from them.
+      - model: authentik_blueprints.metaapplyblueprint
+        attrs:
+          identifiers:
+            name: Default - Authentication flow
+          required: true
+      - model: authentik_blueprints.metaapplyblueprint
+        attrs:
+          identifiers:
+            name: Default - WebAuthn MFA setup flow
+          required: true
+      - model: authentik_blueprints.metaapplyblueprint
+        attrs:
+          identifiers:
+            name: Default - TOTP MFA setup flow
+          required: true
+      # The default login asks for a second factor only if the user has one
+      # (`skip`). `configure`: whoever has none sets one up at the next login,
+      # a passkey/security key (WebAuthn) or an authenticator app (TOTP).
+      # Static recovery codes count as a factor once created (user settings).
+      - model: authentik_stages_authenticator_validate.authenticatorvalidatestage
+        identifiers:
+          name: default-authentication-mfa-validation
+        attrs:
+          not_configured_action: configure
+          device_classes:
+            - webauthn
+            - totp
+            - static
+          configuration_stages:
+            - !Find [authentik_stages_authenticator_webauthn.authenticatorwebauthnstage, [name, default-authenticator-webauthn-setup]]
+            - !Find [authentik_stages_authenticator_totp.authenticatortotpstage, [name, default-authenticator-totp-setup]]

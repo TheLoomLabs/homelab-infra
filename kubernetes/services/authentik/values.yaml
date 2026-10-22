@@ -1,0 +1,140 @@
+---
+# Authentik chart (https://github.com/goauthentik/helm), docs/sso.md.
+# Server (web UI, OIDC endpoints, the embedded proxy outpost) and worker
+# (background tasks, blueprints). The image follows the chart's appVersion, so
+# a chart bump is an Authentik upgrade. PostgreSQL is not the chart's bundled
+# Bitnami one: postgresql.yaml in this directory.
+
+global:
+  # Pod Security `restricted`. The image runs as authentik (UID 1000).
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+    seccompProfile:
+      type: RuntimeDefault
+
+  # Settings that aren't secret (https://docs.goauthentik.io/install-config/configuration/).
+  # With authentik.existingSecret the chart writes none of its authentik.*
+  # values, so every setting is here or in the Secret.
+  env:
+    - name: AUTHENTIK_POSTGRESQL__HOST
+      value: postgresql
+    - name: AUTHENTIK_POSTGRESQL__NAME
+      value: authentik
+    - name: AUTHENTIK_POSTGRESQL__USER
+      value: authentik
+    # The Gateway's Envoy connects from the pod network. Only it can reach
+    # the server (networkpolicy.yaml), so X-Forwarded-For from there is the
+    # client address.
+    - name: AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS
+      value: 10.244.0.0/16
+    # Nothing leaves the lab (no egress in networkpolicy.yaml anyway).
+    - name: AUTHENTIK_DISABLE_UPDATE_CHECK
+      value: "true"
+    - name: AUTHENTIK_DISABLE_STARTUP_ANALYTICS
+      value: "true"
+    - name: AUTHENTIK_ERROR_REPORTING__ENABLED
+      value: "false"
+    # No Docker socket or Kubernetes token to discover: only the embedded
+    # outpost, which runs inside the server.
+    - name: AUTHENTIK_OUTPOSTS__DISCOVER
+      value: "false"
+
+  # Read-only root filesystem: the paths Authentik writes to.
+  #   /data      uploaded files (icons, backgrounds). Not kept across
+  #              restarts: blueprints reference icons by URL instead.
+  #   /certs     certificate discovery (worker), unused
+  #   /dev/shm   TMPDIR (image default): Prometheus multiprocess files, mode
+  #   /tmp
+  volumeMounts:
+    - name: data
+      mountPath: /data
+    - name: certs
+      mountPath: /certs
+    - name: shm
+      mountPath: /dev/shm
+    - name: tmp
+      mountPath: /tmp
+  volumes:
+    - name: data
+      emptyDir:
+        sizeLimit: 256Mi
+    - name: certs
+      emptyDir:
+        sizeLimit: 16Mi
+    - name: shm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 128Mi
+    - name: tmp
+      emptyDir:
+        sizeLimit: 256Mi
+
+authentik:
+  # Secret authentik-env from secrets.sops.yaml: AUTHENTIK_SECRET_KEY,
+  # AUTHENTIK_POSTGRESQL__PASSWORD, AUTHENTIK_BOOTSTRAP_PASSWORD,
+  # AUTHENTIK_BOOTSTRAP_EMAIL.
+  existingSecret:
+    secretName: authentik-env
+
+# No ServiceAccount and no ClusterRole: the worker would use them to deploy
+# outposts into the cluster. The embedded outpost is enough, and the apps
+# project allows nothing cluster-scoped.
+serviceAccount:
+  create: false
+
+server:
+  automountServiceAccountToken: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 640Mi
+    limits:
+      memory: 1536Mi
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      interval: 60s
+
+worker:
+  automountServiceAccountToken: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      interval: 60s
+
+# Authentik's own config from Git (blueprints.yaml), applied by the worker.
+blueprints:
+  configMaps:
+    - authentik-blueprints
+
+# Only recording rules; the alerts are in prometheusrule.yaml.
+prometheus:
+  rules:
+    enabled: false
+
+postgresql:
+  enabled: false

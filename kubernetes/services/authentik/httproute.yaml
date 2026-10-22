@@ -1,0 +1,32 @@
+---
+# Through the shared Gateway (ADR 0007): LAN and Tailscale only, TLS with the
+# wildcard certificate. The *.lab record already points at the Gateway, so no
+# DNS change. The Service is the chart's (authentik-server, port 80 → 9000).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: authentik
+  namespace: authentik
+spec:
+  parentRefs:
+    # group and kind spelled out: the API server defaults them, and Argo CD
+    # would otherwise show the route as OutOfSync.
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: lab
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - auth.lab.theloomlabs.org
+  # Defaults spelled out (match, group, kind, weight), same reason.
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: authentik-server
+          port: 80
+          weight: 1
