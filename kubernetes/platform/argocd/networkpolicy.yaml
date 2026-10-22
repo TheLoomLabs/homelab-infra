@@ -105,7 +105,7 @@ spec:
 # The repo-server clones this repo and the external Git sources and pulls the
 # Helm charts. Chart repos on GitHub Pages serve their tarballs from GitHub
 # releases (*.githubusercontent.com). A new chart repo outside these names
-# needs a line here, next to its entry in the platform AppProject.
+# needs a line here, next to its entry in the AppProject (platform or apps).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -122,6 +122,8 @@ spec:
         - matchPattern: "*.githubusercontent.com"
         - matchName: charts.jetstack.io
         - matchName: charts.longhorn.io
+        # Authentik (apps project); the tarballs are GitHub release assets.
+        - matchName: charts.goauthentik.io
       toPorts:
         - ports:
             - port: "443"
