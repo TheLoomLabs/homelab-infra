@@ -305,5 +305,6 @@
         "Argo CD upgrades itself from this Application; Ansible reads the same version for a fresh bootstrap."
       ]
     }
-  ]
+  ],
+  "platformCommit": "enabled"
 }
