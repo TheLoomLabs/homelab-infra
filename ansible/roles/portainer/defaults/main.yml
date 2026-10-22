@@ -15,8 +15,8 @@ portainer_node: "{{ groups['swarm_managers'][1] }}"
 # CE stays on 2.x: 2.45 is the last 2.x LTS and gets fixes only; 3.x is the
 # Business Edition (renovate.json keeps CE below 3). Server and agent move
 # together.
-portainer_image: portainer/portainer-ce:2.45.1
-portainer_agent_image: portainer/agent:2.45.1
+portainer_image: portainer/portainer-ce:2.45.3
+portainer_agent_image: portainer/agent:2.45.3
 
 # Traefik's overlay network (role edge, edge_network).
 portainer_edge_network: edge
