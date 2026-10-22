@@ -203,6 +203,29 @@ grafana:
       disable_gravatar: true
     news:
       news_feed_enabled: false
+    # Login with Authentik (docs/sso.md); the admin form stays as break-glass.
+    # Role from the Authentik groups at every login: lab-admins → Admin,
+    # everyone else allowed in (lab-users) → Viewer. Grafana keeps no
+    # database across restarts, so users are created again at their next
+    # login. The client secret comes from envFromSecret below.
+    auth.generic_oauth:
+      enabled: true
+      name: Authentik
+      client_id: grafana
+      scopes: openid profile email
+      auth_url: https://auth.lab.theloomlabs.org/application/o/authorize/
+      token_url: https://auth.lab.theloomlabs.org/application/o/token/
+      api_url: https://auth.lab.theloomlabs.org/application/o/userinfo/
+      use_pkce: true
+      login_attribute_path: preferred_username
+      name_attribute_path: name
+      email_attribute_path: email
+      role_attribute_path: contains(groups, 'lab-admins') && 'Admin' || 'Viewer'
+      allow_sign_up: true
+    auth:
+      signout_redirect_url: https://auth.lab.theloomlabs.org/application/o/grafana/end-session/
+  # GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET (grafana-oidc.sops.yaml).
+  envFromSecret: grafana-oidc
   resources:
     requests:
       cpu: 50m

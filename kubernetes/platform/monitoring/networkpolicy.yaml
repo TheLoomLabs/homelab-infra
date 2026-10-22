@@ -130,7 +130,9 @@ spec:
               protocol: TCP
 ---
 # Grafana: the UI through the shared Gateway, its data sources (Prometheus,
-# Alertmanager, Loki) and the API for the dashboard and data source sidecars.
+# Alertmanager, Loki), the API for the dashboard and data source sidecars, and
+# Authentik for the login (token and userinfo calls to auth.lab, which is the
+# Gateway: allowed by address and, after Envoy, by backend pod).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -175,6 +177,21 @@ spec:
       toPorts:
         - ports:
             - port: "6443"
+              protocol: TCP
+    - toFQDNs:
+        - matchName: auth.lab.theloomlabs.org
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: authentik
+            app.kubernetes.io/name: authentik
+            app.kubernetes.io/component: server
+      toPorts:
+        - ports:
+            - port: "9000"
               protocol: TCP
 ---
 # kube-state-metrics turns API objects into metrics.
