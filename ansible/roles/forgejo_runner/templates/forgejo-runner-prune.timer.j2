@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Weekly Docker clean-up on the runner
+
+[Timer]
+OnCalendar={{ forgejo_runner_prune_on_calendar }}
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

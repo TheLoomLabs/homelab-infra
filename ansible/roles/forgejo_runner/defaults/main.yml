@@ -1,0 +1,42 @@
+---
+# Forgejo Actions runner on a dedicated VM (docs/forgejo-runner.md, ADR 0020):
+# forgejo-runner as a systemd service, every job in its own Docker container.
+# Docker comes from role docker (playbooks/runner.yml runs it first).
+
+# Release binary from code.forgejo.org, checked against the SHA-256 below.
+# A version bump needs the new checksum, taken from a GPG-verified download
+# (docs/forgejo-runner.md, "Upgrade").
+# renovate: datasource=forgejo-releases depName=forgejo/runner extractVersion=^v(?<version>.+)$
+forgejo_runner_version: 13.2.0
+forgejo_runner_sha256: fadaec897f5e6641c363f87ecaf75f866f99c81b7097ec6b433e4c48123fcad1
+
+# The Forgejo instance the runner connects to (web URL, not the SSH name).
+forgejo_runner_instance_url: https://git.lab.theloomlabs.org/
+
+# Jobs at the same time. 4 vCPU / 8 GB (runner-01 in Terraform): two jobs.
+forgejo_runner_capacity: 2
+
+# A job that runs longer is cancelled.
+forgejo_runner_job_timeout: 1h
+
+# Labels a workflow picks with runs-on. <name>:docker://<image>: the job runs
+# in that image. node is in it, which JavaScript actions (actions/checkout)
+# need. No host label: nothing runs directly on the VM.
+forgejo_runner_labels:
+  - docker:docker://node:22-bookworm
+  - ubuntu-latest:docker://node:22-bookworm
+
+# System user that runs the daemon. It is in the docker group, so it is
+# root-equivalent on this VM; the jobs themselves never get the Docker socket
+# (container.docker_host "-" in config.yml).
+forgejo_runner_user: forgejo-runner
+forgejo_runner_home: /var/lib/forgejo-runner
+
+# Weekly clean-up of images, build cache and anonymous volumes older than a
+# week (systemd OnCalendar, local time). Job images are never re-pulled while
+# they exist, so this is also how a newer node:22-bookworm arrives.
+forgejo_runner_prune_on_calendar: "Sun *-*-* 04:30:00"
+
+# From ci/runner.sops.yaml (playbooks/runner.yml loads it):
+# forgejo_runner_uuid   output of `forgejo forgejo-cli actions register`
+# forgejo_runner_token  the 40-hex secret given to that command

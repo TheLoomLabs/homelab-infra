@@ -1,6 +1,7 @@
 ---
 # Rolling reboot of every VM, one node at a time, keeping each cluster up:
-# DNS -> Kubernetes control plane -> Kubernetes workers -> Swarm managers.
+# DNS -> Kubernetes control plane -> Kubernetes workers -> Swarm managers ->
+# Forgejo Actions runner.
 # A node is only rebooted when the cluster around it is healthy, and the play
 # waits until the node is back in its cluster before it moves on.
 #
@@ -210,3 +211,32 @@
           retries: 30
           delay: 10
           changed_when: false
+
+- name: Reboot | Forgejo Actions runner
+  hosts: ci_runners
+  become: true
+  serial: 1
+  gather_facts: false
+  vars:
+    reboot_required_only: false
+  tasks:
+    - name: Check for a pending reboot
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+
+    # A reboot cancels the jobs running on the VM; Forgejo marks them failed.
+    - name: Reboot and wait for the runner
+      when: not reboot_required_only | bool or reboot_required.stat.exists
+      block:
+        - name: Reboot
+          ansible.builtin.reboot:
+            reboot_timeout: 600
+
+        - name: Wait for forgejo-runner
+          ansible.builtin.systemd_service:
+            name: forgejo-runner
+          register: reboot_runner
+          until: reboot_runner.status.ActiveState == 'active'
+          retries: 30
+          delay: 5

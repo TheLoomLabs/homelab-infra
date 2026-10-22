@@ -1,0 +1,16 @@
+---
+# Forgejo Actions runner on its own VM (docs/forgejo-runner.md, ADR 0020):
+# Docker, then forgejo-runner as a systemd service. Needs the VM (terraform
+# apply, make base) and ci/runner.sops.yaml with a runner already registered
+# in Forgejo. Logs and host metrics come from make logs.
+- name: CI | Forgejo Actions runner
+  hosts: ci_runners
+  become: true
+  pre_tasks:
+    - name: Load the runner credentials (ci/runner.sops.yaml, decrypted with the age key)
+      community.sops.load_vars:
+        file: "{{ playbook_dir }}/../../ci/runner.sops.yaml"
+      no_log: true
+  roles:
+    - docker
+    - forgejo_runner

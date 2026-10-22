@@ -39,3 +39,8 @@
 # After logs.yml: the backup metrics go to Alloy's textfile directory.
 - name: Swarm volume backups
   ansible.builtin.import_playbook: swarm-backup.yml
+
+# After logs.yml (Alloy on the runner). Forgejo itself comes from Argo CD; the
+# runner retries until it answers.
+- name: Forgejo Actions runner
+  ansible.builtin.import_playbook: runner.yml

@@ -1,0 +1,21 @@
+---
+# Forgejo Actions runner VMs (role forgejo_runner, docs/forgejo-runner.md).
+
+# Role docker without Swarm. Job networks come from an explicit pool, so
+# Docker never picks a 192.168.x range next to the LAN.
+docker_daemon_config:
+  log-driver: json-file
+  log-opts:
+    max-size: 10m
+    max-file: "3"
+  live-restore: false
+  default-address-pools:
+    - base: 172.18.0.0/16
+      size: 24
+
+# Job containers reach the runner's cache server on the VM address. Their
+# traffic comes from the Docker ranges, which UFW would drop otherwise.
+trusted_cidrs:
+  - "{{ lab_network_cidr }}"
+  - 172.17.0.0/16 # docker0 (default bridge)
+  - 172.18.0.0/16 # one network per job (default-address-pools above)

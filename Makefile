@@ -34,7 +34,7 @@ tf-destroy: ## Destroy all lab VMs
 
 ## --- Ansible -----------------------------------------------------------------
 
-.PHONY: ping base dns k8s encryption pod-security audit cilium longhorn sops-key argocd swarm edge alerting uptime portainer logs swarm-backup reboot site
+.PHONY: ping base dns k8s encryption pod-security audit cilium longhorn sops-key argocd swarm edge alerting uptime portainer logs swarm-backup runner reboot site
 ping: ## Check SSH to every node
 	cd $(ANSIBLE_DIR) && ansible all -m ansible.builtin.ping
 
@@ -89,6 +89,9 @@ logs: ## Ship the DNS and Swarm VMs' logs to Loki (Alloy)
 swarm-backup: ## Nightly restic backups of the Swarm volumes to R2 (needs make logs and swarm/backup.sops.yaml)
 	$(PLAYBOOK) playbooks/swarm-backup.yml
 
+runner: ## Forgejo Actions runner on runner-01 (needs ci/runner.sops.yaml, docs/forgejo-runner.md)
+	$(PLAYBOOK) playbooks/runner.yml
+
 reboot: ## Rolling reboot, one VM at a time (ARGS="-e reboot_required_only=true")
 	$(PLAYBOOK) playbooks/reboot.yml $(ARGS)
 
@@ -102,7 +105,7 @@ fmt: ## Format Terraform code
 	terraform fmt -recursive terraform
 
 sops-check: ## Fail if a *.sops.yaml manifest is not encrypted
-	@rc=0; for f in $$(git ls-files --cached --others --exclude-standard 'kubernetes/*.sops.yaml' 'dns/*.sops.yaml' 'swarm/*.sops.yaml' 'logging/*.sops.yaml' 'k8s/*.sops.yaml'); do \
+	@rc=0; for f in $$(git ls-files --cached --others --exclude-standard 'kubernetes/*.sops.yaml' 'dns/*.sops.yaml' 'swarm/*.sops.yaml' 'logging/*.sops.yaml' 'k8s/*.sops.yaml' 'ci/*.sops.yaml'); do \
 		grep -q '^sops:' "$$f" || { echo "not encrypted: $$f"; rc=1; }; \
 	done; exit $$rc
 

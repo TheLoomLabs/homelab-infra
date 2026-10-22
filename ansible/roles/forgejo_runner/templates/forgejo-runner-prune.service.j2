@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+# Weekly Docker clean-up on the runner (role forgejo_runner). Images and build
+# cache unused for a week, then anonymous volumes no container uses. Running
+# jobs keep theirs.
+[Unit]
+Description=Remove old Docker images, build cache and volumes left by CI jobs
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker system prune --all --force --filter until=168h
+ExecStart=/usr/bin/docker volume prune --force
+Nice=10
+IOSchedulingClass=idle

@@ -1,0 +1,118 @@
+---
+- name: Check the checksum and the credentials
+  ansible.builtin.assert:
+    that:
+      - forgejo_runner_sha256 is match('^[0-9a-f]{64}$')
+      - forgejo_runner_uuid is defined
+      - forgejo_runner_uuid is match('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+      - forgejo_runner_token is defined
+      - forgejo_runner_token is match('^[0-9a-f]{40}$')
+    fail_msg: >-
+      forgejo_runner_sha256 (role defaults) must be the SHA-256 of the verified
+      release binary, and forgejo_runner_uuid / forgejo_runner_token must come
+      from ci/runner.sops.yaml (docs/forgejo-runner.md).
+    quiet: true
+  no_log: true
+
+- name: Check that Docker is installed (role docker)
+  ansible.builtin.command:
+    argv: [docker, version, --format, "{{ '{{' }}.Server.Version{{ '}}' }}"]
+  register: forgejo_runner_docker_version
+  changed_when: false
+
+- name: Create the runner user (docker group)
+  ansible.builtin.user:
+    name: "{{ forgejo_runner_user }}"
+    system: true
+    home: "{{ forgejo_runner_home }}"
+    create_home: true
+    shell: /usr/sbin/nologin
+    groups: docker
+    append: true
+
+- name: Restrict the runner's home (cache, job state)
+  ansible.builtin.file:
+    path: "{{ forgejo_runner_home }}"
+    state: directory
+    owner: "{{ forgejo_runner_user }}"
+    group: "{{ forgejo_runner_user }}"
+    mode: "0750"
+
+- name: Create the binary and config directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: /usr/local/lib/forgejo-runner, group: root, mode: "0755"}
+    - {path: /etc/forgejo-runner, group: "{{ forgejo_runner_user }}", mode: "0750"}
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Download forgejo-runner
+  ansible.builtin.get_url:
+    url: "{{ forgejo_runner_release }}/forgejo-runner-{{ forgejo_runner_version }}-linux-amd64"
+    checksum: "sha256:{{ forgejo_runner_sha256 }}"
+    dest: "/usr/local/lib/forgejo-runner/forgejo-runner-{{ forgejo_runner_version }}"
+    owner: root
+    group: root
+    mode: "0755"
+  vars:
+    forgejo_runner_release: "https://code.forgejo.org/forgejo/runner/releases/download/v{{ forgejo_runner_version }}"
+
+- name: Link the forgejo-runner version in use
+  ansible.builtin.file:
+    src: "/usr/local/lib/forgejo-runner/forgejo-runner-{{ forgejo_runner_version }}"
+    dest: /usr/local/bin/forgejo-runner
+    state: link
+    owner: root
+    group: root
+  notify: Restart forgejo-runner
+
+# Holds the runner token: readable by the runner user only, never shown in a
+# diff.
+- name: Write the runner config
+  ansible.builtin.template:
+    src: config.yml.j2
+    dest: /etc/forgejo-runner/config.yml
+    owner: root
+    group: "{{ forgejo_runner_user }}"
+    mode: "0640"
+  diff: false
+  notify: Restart forgejo-runner
+
+- name: Write the runner unit
+  ansible.builtin.template:
+    src: forgejo-runner.service.j2
+    dest: /etc/systemd/system/forgejo-runner.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart forgejo-runner
+
+- name: Write the clean-up units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - forgejo-runner-prune.service
+    - forgejo-runner-prune.timer
+
+- name: Enable the runner
+  ansible.builtin.systemd_service:
+    name: forgejo-runner.service
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Enable the weekly Docker clean-up
+  ansible.builtin.systemd_service:
+    name: forgejo-runner-prune.timer
+    enabled: true
+    state: started
+    daemon_reload: true

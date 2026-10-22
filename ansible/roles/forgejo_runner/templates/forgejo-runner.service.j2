@@ -1,0 +1,26 @@
+# {{ ansible_managed }}
+# Forgejo Actions runner (role forgejo_runner, docs/forgejo-runner.md).
+[Unit]
+Description=Forgejo Actions runner
+Documentation=https://forgejo.org/docs/latest/admin/actions/
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User={{ forgejo_runner_user }}
+Group={{ forgejo_runner_user }}
+WorkingDirectory={{ forgejo_runner_home }}
+ExecStart=/usr/local/bin/forgejo-runner daemon --config /etc/forgejo-runner/config.yml
+Restart=on-failure
+RestartSec=10s
+# The daemon only talks to Forgejo and the Docker socket; the jobs run in
+# containers.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,43 @@
+# {{ ansible_managed }}
+# Forgejo Actions runner (role forgejo_runner, docs/forgejo-runner.md).
+# Every option is described in `forgejo-runner generate-config`.
+
+log:
+  level: info
+
+runner:
+  # No .runner file: the connection is in server.connections below.
+  capacity: {{ forgejo_runner_capacity }}
+  timeout: {{ forgejo_runner_job_timeout }}
+  insecure: false
+  labels: {{ forgejo_runner_labels | to_json }}
+
+# Cache server for actions/cache, on this VM. Job containers reach it on the
+# VM's address (UFW trusts the Docker ranges, group_vars/ci_runners.yml).
+cache:
+  enabled: true
+  dir: {{ forgejo_runner_home }}/cache
+
+container:
+  # Empty: a new bridge network per job (Docker's default-address-pools).
+  network: ""
+  enable_ipv6: false
+  privileged: false
+  options:
+  # Jobs can't mount anything from the VM.
+  valid_volumes: []
+  # "-": the runner finds Docker itself, and jobs never get the socket.
+  docker_host: "-"
+  force_pull: false
+
+host:
+  workdir_parent:
+
+# Offline registration: the UUID printed by `forgejo forgejo-cli actions
+# register` and the 40-hex secret given to it (ci/runner.sops.yaml).
+server:
+  connections:
+    forgejo:
+      url: {{ forgejo_runner_instance_url }}
+      uuid: {{ forgejo_runner_uuid }}
+      token: {{ forgejo_runner_token }}
