@@ -86,9 +86,12 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
-    # Proxmox API (read-only token) and status check.
-    - toFQDNs:
-        - matchName: pve.lab.theloomlabs.org
+    # Proxmox API (read-only token) and status check. By address, not by name:
+    # with toFQDNs a few calls a day showed up as world(pve.lab...) in audit
+    # mode, most likely DNS TTL timing. The host is outside Kubernetes and its
+    # address is fixed (dns/records.yml: pve).
+    - toCIDR:
+        - 192.168.1.200/32
       toPorts:
         - ports:
             - port: "8006"
