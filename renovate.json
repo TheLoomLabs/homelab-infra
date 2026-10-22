@@ -240,6 +240,31 @@
       ]
     },
     {
+      "description": "Authentik chart (the server and worker image follow its appVersion)",
+      "matchDepNames": [
+        "authentik"
+      ],
+      "matchDatasources": [
+        "helm"
+      ],
+      "prBodyNotes": [
+        "Read the release notes (https://docs.goauthentik.io/releases/): breaking changes, removed settings, provider and blueprint changes. Upgrade one minor release (YYYY.M) at a time, never skip one. Argo CD deploys it on merge; the database migrates at start (the nightly pg_dump and the Longhorn snapshot are the way back, docs/sso.md). Check a login to every app afterwards."
+      ]
+    },
+    {
+      "description": "PostgreSQL for Authentik stays on 18; a major needs a dump and restore",
+      "matchDepNames": [
+        "postgres"
+      ],
+      "matchFileNames": [
+        "kubernetes/services/authentik/**"
+      ],
+      "allowedVersions": "/^18\\./",
+      "prBodyNotes": [
+        "Database and backup job (`kubernetes/services/authentik/`) use the same image (pg_dump must not be older than the server). Minor releases need no migration; Argo CD restarts the database on merge, Authentik reconnects."
+      ]
+    },
+    {
       "matchDepNames": [
         "ghcr.io/gethomepage/homepage"
       ],
