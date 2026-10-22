@@ -1,9 +1,9 @@
 ---
-# Alloy on the VMs outside Kubernetes: journal on every DNS and Swarm VM,
-# container logs on the Swarm nodes (ADR 0012). Loki and its push endpoint
+# Alloy on the VMs outside Kubernetes: journal on every DNS, Swarm and runner
+# VM, container logs on the Swarm nodes (ADR 0012). Loki and its push endpoint
 # must be up first (Argo CD apps loki and alloy, docs/logging.md).
-- name: Logs | Alloy on the DNS and Swarm VMs
-  hosts: dns:swarm
+- name: Logs | Alloy on the DNS, Swarm and runner VMs
+  hosts: dns:swarm:ci_runners
   become: true
   vars:
     # The DNS VMs resolve through the public resolvers, which don't know the
