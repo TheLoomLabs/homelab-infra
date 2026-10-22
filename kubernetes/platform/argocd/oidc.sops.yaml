@@ -1,0 +1,27 @@
+apiVersion: isindir.github.com/v1alpha3
+kind: SopsSecret
+metadata:
+    name: argocd-oidc
+    namespace: argocd
+spec:
+    secretTemplates:
+        - name: ENC[AES256_GCM,data:vNyN+CO0EchdJB8=,iv:WtZVzfRi9NZ+0kxSg9bAl4xsa2k67O2m58IGrbZEnS0=,tag:jPJoBTGFzZwMkpY2M2dzvA==,type:str]
+          labels:
+            app.kubernetes.io/part-of: ENC[AES256_GCM,data:+Gn3IvQM,iv:DXoHGx8to/9DF84LsEnH1MiyEpoJxkBFqre9+l83O9w=,tag:7abUHcRTyVg0Px3YWQCOMg==,type:str]
+          stringData:
+            clientSecret: ENC[AES256_GCM,data:dAtp4C6YaLnkxvDtZ0Fgd/nZrBcXiqKKTQje1uuargknSVeWPOxhxgPxro/lO616ZGaeopPd44RtnLZX0sj+Eg==,iv:CJs2KNchGNBbFzlvSj/4nAKokyKZ/WpWceDvCB2FUk4=,tag:5qPRyCDKsdbnTGO47TDwtg==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSAyTmdOZGd4MzhJRkNGeVFt
+            YjJtSXFyWlNydGk4UTFvVUhVNmpvOHhMdWo4CkloYjRUaXJGT2UwZ3lPRUVmQjNH
+            NmNwTUdBb09ZRzl5Mi9yQzRsbjhLRzQKLS0tIGc0c1ZhazhaK1ZGQTBnSDE0a3VB
+            WS83eHdaS2N2dkpOd1VBdGhDeGd6ckkKmGMOZ0XsClQhmyyTf0sx/PHp4RAbKJ5s
+            A8g8WIKyTl4vS+bo+QW6x8du6GUsKa/7A+52xKMfCHX1OPWNL6IxXg==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1fjsagzw9yzjhd5p6n4fmjstjvud9ucdp383mwe2gqn0k7rfaffrsa3asek
+    encrypted_suffix: Templates
+    lastmodified: "2026-10-22T11:32:50Z"
+    mac: ENC[AES256_GCM,data:D86+M4bd6cfv8N4ANtXmlL6x3rnkOIIOR0yaTR9xS4i0ikgCO3bv3PalSd/YtjUdQDse5VL4PLIXsEuBV/IsY033aVEPcw2FsMQnBY++GPFPvLRyG3GpqA6cNnH1O/yD+8SzGqPkUJlJSnxUM3jckIxmx0zS8Q5ONl5I478JOvw=,iv:UGldwZSJEZGc15HBE8WfSYm+y0XxRMHdif5hsOGrThQ=,tag:J7pFAlQHnqT7SCKXUSVkIg==,type:str]
+    version: 3.13.3

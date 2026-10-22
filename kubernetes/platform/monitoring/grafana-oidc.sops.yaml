@@ -1,0 +1,25 @@
+apiVersion: isindir.github.com/v1alpha3
+kind: SopsSecret
+metadata:
+    name: grafana-oidc
+    namespace: monitoring
+spec:
+    secretTemplates:
+        - name: ENC[AES256_GCM,data:z0q2/To1r7+61/3N,iv:XlEfAhxqSYYkYFqjjq3ngcllN6Wd0z/ad4TgTi3e0V4=,tag:RgpeZhsFybYtIdU0Z2vh6Q==,type:str]
+          stringData:
+            GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: ENC[AES256_GCM,data:YR10EuhvslnjYwpasE91d23pMogVuQF2crXVkeRG4aKwihqcTJfqaE0wgtk6sf0uNMwXMvXXpqF68CIW8pCL6w==,iv:YeUSrwBAtNBjqyVLWNTdvOMucbS+6Xba3A90CBEmAlc=,tag:CTjVYj71iNpGHHBa1a9mQQ==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBrMTlyWlVwZTMyRFcxc241
+            NmFpNC9nektFU1Uya2VYSFVsenpYaEZBTHdJCjhuZWliQ05Eb1lWMGkvSlpjWkU4
+            MHNIYU83Vm5BU3Awem9qV3pwVHVnaGcKLS0tIEhRNzRNblY1OTgvQStQelRIQ1ZP
+            QUhOdzlURFIvMDNRZ2RmTTVwdFZycUEKXNFV791zZiNhc5AwWBCf+C7Ng5eX7Qyt
+            v1HxM3/F8fUcsb4xcK6a6mM6BtxfTiqsceh6MZGNolmHhCVmff9jfg==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1fjsagzw9yzjhd5p6n4fmjstjvud9ucdp383mwe2gqn0k7rfaffrsa3asek
+    encrypted_suffix: Templates
+    lastmodified: "2026-10-22T11:32:50Z"
+    mac: ENC[AES256_GCM,data:NS+m1D8sVO4quHt50DqQlTgelyTjsVipcRyJ7Xvgky1dohEaCiZB4xNfKUfQIsTKqYgpRzbFmQiNuvV/Cw1C7D3C0X1J2rdgkEE1/NYoUdRlxgexYpz8G67GFYc8V6NI1SASR7j0ZmTizRwyjY/+Jj4bp8e7BR4ZQvsjySMx2C8=,iv:zeHesrB+M4j3hZ4wnZJ3Pvgg2FlsiOLPKOjcOW9MX0c=,tag:tzrXFqQ7fKnS6lwG6xf6tA==,type:str]
+    version: 3.13.3

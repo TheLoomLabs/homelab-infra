@@ -1,0 +1,26 @@
+apiVersion: isindir.github.com/v1alpha3
+kind: SopsSecret
+metadata:
+    name: authentik-oidc
+    namespace: authentik
+spec:
+    secretTemplates:
+        - name: ENC[AES256_GCM,data:kFn/s254mVJ2F4v82yQ=,iv:S9ppKxPcZV86+i5jTY1M8ScEWlg0t8j+2lECalZTzvA=,tag:NxJlipjii4NSwq2v/IAObw==,type:str]
+          stringData:
+            OIDC_ARGOCD_CLIENT_SECRET: ENC[AES256_GCM,data:mEsWSoLBhhGCthr6Q6WuZletmJ+ZARXeSDegKpDkl6mXinmEvMJNkEsN9DFYNvavju3tdqtgrMof61LRpUTgiw==,iv:jMNYOyVUsmQHGZe5Jfkbfnq1bNe0Y0TWSvtH5l5yDGI=,tag:qbkhbN4igKuDEqNiYrnGUw==,type:str]
+            OIDC_GRAFANA_CLIENT_SECRET: ENC[AES256_GCM,data:2RXbe3FIidTSuRiQ5j/pWVCj6aqVOYjbaVhQMmrJKwqs6CMqXkx1CPNsE17LMo+qxG/cdfO5pkaRBWum2DIr9Q==,iv:b5FtmD3HGk8fkLO6EIx/RP5VVfgMtI2slzaGG2uau60=,tag:khYrF/zu9iYDbENT6lnnhA==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBuajVqR0p2cnJITUVVeFI4
+            MXpRUDhjdXpFdEFFVG1pUWpnUGx5OWVYTlMwCndQWmk5enV4bC9jOVA4cG1UdSs3
+            THVBajZwcWNmeW1HdlhCZzA5MHkzN2sKLS0tIDZnWDhrTlZmNHFpVm1hNExZNTlm
+            cllBV2IwUndNUG1sMkt6dW1XZGJTN1UKu1QuHkdn0jtlX0vuXn5szIZW2R+ELfk/
+            Asxf8MFDsnUZGlAWh9G/HaG3WszWhHwzbLSCtq6RK/3t5PyDlO6O0g==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1fjsagzw9yzjhd5p6n4fmjstjvud9ucdp383mwe2gqn0k7rfaffrsa3asek
+    encrypted_suffix: Templates
+    lastmodified: "2026-10-22T11:32:50Z"
+    mac: ENC[AES256_GCM,data:cEwKJujQkzuFOMTCU/hOntWY3ML9jtYlRdTeM6zXKgnsELj6NA4OUx2tXQUoTVZl153hJr+s6/RROsTiPytrdTkKpz87WuW2wsp2CGN1G2p5QP+Hs+U0zIKowhZjfIYVfJ0V1r5VM/U00XoShLLha5L3bT5O2KdhCIF2Ee0o4HA=,iv:LirjFkQ/3rorRJFqjn5HMxga1zv1IHla+PP0Z4JmGfc=,tag:uSXemPa209NeNTWFadnQ5Q==,type:str]
+    version: 3.13.3
