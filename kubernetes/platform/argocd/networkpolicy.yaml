@@ -29,7 +29,10 @@ spec:
               - matchPattern: "*"
 ---
 # Argo CD's controllers and API server watch and change cluster resources.
-# repo-server and redis never call the API.
+# redis-secret-init is the chart's pre-install/pre-upgrade hook Job: it creates
+# the argocd-redis Secret, so every sync of the argocd app runs it (without
+# this rule the sync hangs on the hook). repo-server and redis never call the
+# API.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -44,6 +47,7 @@ spec:
           - argocd-application-controller
           - argocd-applicationset-controller
           - argocd-server
+          - argocd-redis-secret-init
   egress:
     - toEntities:
         - kube-apiserver
