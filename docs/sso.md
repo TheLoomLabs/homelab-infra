@@ -229,7 +229,7 @@ The loop lists the two `OIDC_*` keys, then `clientSecret`, then `GF_AUTH_GENERIC
 
 ### Add an app
 
-1. A blueprint `lab-app-<slug>.yaml` in `blueprints.yaml` (copy Grafana's): provider name and `client_id` = slug, `client_secret: !Env OIDC_<SLUG>_CLIENT_SECRET`, the app's redirect URIs, the groups it lets in.
+1. A blueprint `lab-app-<slug>.yaml` in `blueprints.yaml` (copy Grafana's): provider name and `client_id` = slug, `client_secret: !Env OIDC_<SLUG>_CLIENT_SECRET`, `grant_types` (an empty list allows no login), the app's redirect URIs, the groups it lets in.
 2. A new random secret (`openssl rand -hex 32`): `sops edit kubernetes/services/authentik/oidc.sops.yaml` (add the key) and the same value in the app's own SopsSecret.
 3. The app's OIDC settings, and egress from the app to `auth.lab` (copy Grafana's two rules in `kubernetes/platform/monitoring/networkpolicy.yaml`).
 4. Push. The worker reads its environment only at start: `kubectl -n authentik rollout restart deploy/authentik-worker` once the Secret has the new key.
@@ -355,6 +355,7 @@ Also look at **Events → Logs** for failed logins and **System → System Tasks
 | PostgreSQL `CrashLoopBackOff`, *Permission denied* on the data directory | Volume ownership: fsGroup 999. `kubectl -n authentik exec postgresql-0 -- ls -ld /var/lib/postgresql/18/docker` |
 | Blueprint status **error** | Worker log (`kubectl -n authentik logs deploy/authentik-worker \| grep -i blueprint`): a typo, or a `!Find` that found nothing |
 | A UI change keeps coming back | That attribute is in a blueprint: change it in Git |
+| App: *invalid_request* (Argo CD) / *Login provider denied login request* (Grafana); server log *Invalid grant_type for provider* | The provider's `grant_types` is empty (the default for new providers): list `authorization_code` and `refresh_token` in the blueprint |
 | App: *invalid_client* / *unauthorized_client* | The two copies of the client secret differ, or the worker started before the key existed (restart it) |
 | App: *redirect_uri mismatch* | The app's callback URL isn't in the provider's `redirect_uris` (exact match) |
 | App: login works but no admin rights | The `groups` claim: is your user in `lab-admins`? Argo CD **User Info** shows the groups |
