@@ -54,7 +54,7 @@ Everything else is one policy per component, named for what it allows:
 | Gateway | vaultwarden | 8080 |
 | Vaultwarden backup jobs | `*.r2.cloudflarestorage.com` (Vaultwarden itself: nothing) | 443 |
 | Gateway | forgejo | 3000 |
-| LAN `192.168.1.0/24`, Tailscale `100.64.0.0/10`, `remote-node`/`host` (SSH via LoadBalancer .62, source-NATed when the lease holder doesn't run the pod) | forgejo | 2222 |
+| LAN `192.168.1.0/24` (SSH via LoadBalancer .62, `externalTrafficPolicy: Local` keeps the client address; Tailscale arrives source-NATed to a LAN address) | forgejo | 2222 |
 | Forgejo backup jobs | `*.r2.cloudflarestorage.com` (Forgejo itself: nothing) | 443 |
 | Gateway | homepage | 3000 |
 | Homepage | API server; argocd-server; Prometheus | 6443; 8080; 9090 |
