@@ -34,7 +34,7 @@ Everything else is one policy per component, named for what it allows:
 | Argo CD controller, applicationset, server, redis-secret-init (hook Job) | API server (`kube-apiserver` entity) | 6443 |
 | Argo CD pods | repo-server, redis (same namespace) | 8081, 6379 |
 | Gateway (`ingress` entity) | argocd-server | 8080 |
-| argocd-repo-server | github.com, `*.github.io`, `*.githubusercontent.com`, charts.jetstack.io, charts.longhorn.io | 443 |
+| argocd-repo-server | github.com, `*.github.io`, `*.githubusercontent.com`, charts.jetstack.io, charts.longhorn.io, charts.goauthentik.io | 443 |
 | cert-manager pods | API server | 6443 |
 | API server (`kube-apiserver`, `remote-node`: through the tunnel it comes from its node's cilium_host address) | cert-manager webhook | 10250 |
 | cert-manager controller | acme-v02 / acme-staging-v02.api.letsencrypt.org, api.cloudflare.com | 443 |
@@ -43,6 +43,7 @@ Everything else is one policy per component, named for what it allows:
 | Velero | API server; `*.r2.cloudflarestorage.com` | 6443; 443 |
 | Prometheus | the whole cluster (`cluster` entity: pods, nodes, API server); the DNS, Swarm and runner VMs (`toCIDR`, their LAN addresses) | any; VMs: 12345 (Alloy), 9323 (Docker), 8082 (Traefik) |
 | Grafana | Prometheus, Alertmanager, Loki; API server (sidecars) | 9090, 9093, 3100; 6443 |
+| Grafana, argocd-server | Authentik for the SSO login: `auth.lab` (the Gateway, by name) and, after Envoy, the authentik-server pods | 443; 9000 |
 | Gateway | Grafana; loki-gateway | 3000; 8080 |
 | Alertmanager | ntfy.lab / hc.lab.theloomlabs.org (Swarm) | 443 |
 | Loki (ruler) | Alertmanager | 9093 |
@@ -107,6 +108,8 @@ cilium config view | grep -E 'policy-audit-mode|enable-policy'
 Every policy should show `VALID True`. Then check that each component still works: Argo CD syncs (hard refresh the root app), Grafana dashboards and Explore (Loki), a test alert reaches ntfy, `kubectl -n velero get backups.velero.io` has a new completed backup, and `kubectl get certificates -A` shows Ready.
 
 ## Adding a component or an app
+
+A new Helm chart repository needs two entries: the AppProject's `sourceRepos` and `repo-server-to-git-and-charts` (otherwise the app shows sync status `Unknown`, *context deadline exceeded*). An app that logs in with Authentik needs egress to `auth.lab` like Grafana's.
 
 1. Put the app in its own namespace with a `networkpolicy.yaml` next to its manifests: a `default-deny` (copy one, with the namespace changed), then one policy per pod with what it needs. Use `fromEntities: [ingress]` for traffic through the shared Gateway, `toEntities: [kube-apiserver]` for the API, `toFQDNs` for anything outside.
 2. Allow it into the target's namespace too, if it calls another namespace (both ends need a policy).

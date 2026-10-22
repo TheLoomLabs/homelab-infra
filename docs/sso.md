@@ -8,7 +8,8 @@
 | Chart values (server, worker, settings as `AUTHENTIK_*` env) | `kubernetes/services/authentik/values.yaml` |
 | Secret key, database password, bootstrap admin, restic + R2 credentials | `secrets.sops.yaml` (SOPS) → Secrets `authentik-env`, `authentik-postgresql`, `authentik-restic` |
 | PostgreSQL (StatefulSet, PVC, Service) | `postgresql.yaml` |
-| Authentik's config: groups, login flow (blueprints) | `blueprints.yaml` (ConfigMap `authentik-blueprints`) |
+| Authentik's config: groups, login flow, apps (blueprints) | `blueprints.yaml` (ConfigMap `authentik-blueprints`) |
+| Apps' OIDC client secrets (Authentik side) | `oidc.sops.yaml` → Secret `authentik-oidc` (worker env) |
 | Route `auth.lab` | `httproute.yaml` |
 | Nightly pg_dump + restic, weekly check | `backup.yaml` |
 | Network policies | `networkpolicy.yaml` |
@@ -149,6 +150,90 @@ Next, test the bucket lock: in the dashboard, delete any object under `data/`. R
 
 The `…NeverRan` alerts clear after the first scheduled runs (01:15 UTC, and Sunday 05:15 UTC for the check).
 
+## Apps
+
+Each app is an OAuth2/OIDC provider + application in a blueprint (`lab-app-<slug>.yaml`), with its client ID in Git and its client secret in two SOPS files: Authentik's (`oidc.sops.yaml` → Secret `authentik-oidc`, read by the worker through `!Env`) and the app's. Access is by group: an application lets in only the groups bound to it. Every app keeps its own login as break-glass.
+
+| App | Login | Admin from | Others allowed | Break-glass |
+|---|---|---|---|---|
+| Argo CD (`argocd`) | **Log in via Authentik**; CLI `argocd login argocd.lab.theloomlabs.org --sso --grpc-web` | `lab-admins` → `role:admin` (`policy.csv`) | nobody | `kubectl` (cluster admin); local `admin` until it's turned off |
+| Grafana (`grafana`) | **Sign in with Authentik** | `lab-admins` → Admin (`role_attribute_path`) | `lab-users` → Viewer | the admin form (`grafana-admin`) |
+
+Issuer and discovery for an app: `https://auth.lab.theloomlabs.org/application/o/<slug>/.well-known/openid-configuration`.
+
+### OIDC secrets (once, then one key per new app)
+
+One random client secret per app, written to Authentik's SOPS file and to the app's. Run from the repo root:
+
+```bash
+ARGOCD=$(openssl rand -hex 32)
+GRAFANA=$(openssl rand -hex 32)
+F=kubernetes/services/authentik/oidc.sops.yaml
+sops encrypt --filename-override "$F" --input-type yaml --output-type yaml /dev/stdin > "$F" <<EOF
+apiVersion: isindir.github.com/v1alpha3
+kind: SopsSecret
+metadata:
+  name: authentik-oidc
+  namespace: authentik
+spec:
+  secretTemplates:
+    - name: authentik-oidc
+      stringData:
+        OIDC_ARGOCD_CLIENT_SECRET: "$ARGOCD"
+        OIDC_GRAFANA_CLIENT_SECRET: "$GRAFANA"
+EOF
+F=kubernetes/platform/argocd/oidc.sops.yaml
+sops encrypt --filename-override "$F" --input-type yaml --output-type yaml /dev/stdin > "$F" <<EOF
+apiVersion: isindir.github.com/v1alpha3
+kind: SopsSecret
+metadata:
+  name: argocd-oidc
+  namespace: argocd
+spec:
+  secretTemplates:
+    - name: argocd-oidc
+      labels:
+        app.kubernetes.io/part-of: argocd
+      stringData:
+        clientSecret: "$ARGOCD"
+EOF
+F=kubernetes/platform/monitoring/grafana-oidc.sops.yaml
+sops encrypt --filename-override "$F" --input-type yaml --output-type yaml /dev/stdin > "$F" <<EOF
+apiVersion: isindir.github.com/v1alpha3
+kind: SopsSecret
+metadata:
+  name: grafana-oidc
+  namespace: monitoring
+spec:
+  secretTemplates:
+    - name: grafana-oidc
+      stringData:
+        GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: "$GRAFANA"
+EOF
+unset ARGOCD GRAFANA F
+for f in kubernetes/services/authentik/oidc.sops.yaml kubernetes/platform/argocd/oidc.sops.yaml \
+  kubernetes/platform/monitoring/grafana-oidc.sops.yaml; do
+  sops decrypt "$f" | yq '.spec.secretTemplates[].stringData | keys'
+done
+```
+
+The loop lists the two `OIDC_*` keys, then `clientSecret`, then `GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET`.
+
+### Check a login
+
+1. Authentik, **System → Blueprints**: `Lab - App Argo CD` and `Lab - App Grafana` **successful**. **Applications → Applications**: both listed, each with its provider.
+2. Discovery answers: `curl -s https://auth.lab.theloomlabs.org/application/o/argocd/.well-known/openid-configuration | jq .issuer`.
+3. In a private window: https://argocd.lab.theloomlabs.org → **Log in via Authentik** → Authentik login (password, passkey) → back in Argo CD with every app visible. **User Info** shows your username and the group `lab-admins`.
+4. https://grafana.lab.theloomlabs.org → **Sign in with Authentik** → back in Grafana; **Profile** shows role Admin.
+5. Nothing dropped meanwhile: `hubble observe --verdict DROPPED --since 10m`.
+
+### Add an app
+
+1. A blueprint `lab-app-<slug>.yaml` in `blueprints.yaml` (copy Grafana's): provider name and `client_id` = slug, `client_secret: !Env OIDC_<SLUG>_CLIENT_SECRET`, the app's redirect URIs, the groups it lets in.
+2. A new random secret (`openssl rand -hex 32`): `sops edit kubernetes/services/authentik/oidc.sops.yaml` (add the key) and the same value in the app's own SopsSecret.
+3. The app's OIDC settings, and egress from the app to `auth.lab` (copy Grafana's two rules in `kubernetes/platform/monitoring/networkpolicy.yaml`).
+4. Push. The worker reads its environment only at start: `kubectl -n authentik rollout restart deploy/authentik-worker` once the Secret has the new key.
+
 ## Change the config (blueprints)
 
 Edit `blueprints.yaml`, push. The kubelet updates the mounted files within a minute or two and the worker applies the changed blueprint. Check **System → Blueprints** (status, last applied) or the worker log. To apply one right away: **System → Blueprints → ⋮ → Apply**.
@@ -164,7 +249,7 @@ Edit `blueprints.yaml`, push. The kubelet updates the mounted files within a min
 | Lost your passkey, recovery codes at hand | Log in with a recovery code instead of the second factor, then enroll a new device |
 | Locked out of your account | Log in as `akadmin` (Vaultwarden), fix your user (**Directory → Users → your user → MFA devices**) |
 | Locked out of every account | A recovery link (skips password and MFA): `kubectl -n authentik exec deploy/authentik-worker -- ak create_recovery_key 30 akadmin` prints a link (path), open it under `https://auth.lab.theloomlabs.org`. Valid for 30 minutes (the number is minutes) or until used |
-| Authentik or Kubernetes down | Each app's local admin (`admin` in Argo CD, Grafana's admin, Forgejo's CLI) |
+| Authentik or Kubernetes down | Each app's own login (Grafana's admin form, Forgejo's CLI); Argo CD through `kubectl` |
 
 ## Backups
 
@@ -270,6 +355,10 @@ Also look at **Events → Logs** for failed logins and **System → System Tasks
 | PostgreSQL `CrashLoopBackOff`, *Permission denied* on the data directory | Volume ownership: fsGroup 999. `kubectl -n authentik exec postgresql-0 -- ls -ld /var/lib/postgresql/18/docker` |
 | Blueprint status **error** | Worker log (`kubectl -n authentik logs deploy/authentik-worker \| grep -i blueprint`): a typo, or a `!Find` that found nothing |
 | A UI change keeps coming back | That attribute is in a blueprint: change it in Git |
+| App: *invalid_client* / *unauthorized_client* | The two copies of the client secret differ, or the worker started before the key existed (restart it) |
+| App: *redirect_uri mismatch* | The app's callback URL isn't in the provider's `redirect_uris` (exact match) |
+| App: login works but no admin rights | The `groups` claim: is your user in `lab-admins`? Argo CD **User Info** shows the groups |
+| App: timeout after the Authentik login | The app's egress to `auth.lab` (Hubble `--verdict DROPPED`) |
 | Login loop or *CSRF* error | The browser reached Authentik under another name than `auth.lab.theloomlabs.org`, or cookies blocked |
 | Client addresses in **Events** are pod IPs | `AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS` doesn't cover where the Gateway connects from |
 | restic *unable to open config file* / *wrong password* | `authentik-restic` Secret: repository URL, keys, password |
