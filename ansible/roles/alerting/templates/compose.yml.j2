@@ -44,7 +44,8 @@ services:
       SECURE_PROXY_SSL_HEADER: HTTP_X_FORWARDED_PROTO,https
       # ntfy resolves to a private lab address.
       INTEGRATIONS_ALLOW_PRIVATE_IPS: "True"
-      UWSGI_PROCESSES: "2"
+      # Since v5.0 the image runs gunicorn (UWSGI_PROCESSES is only a fallback).
+      GUNICORN_WORKERS: "2"
     volumes:
       - healthchecks-data:/data
     secrets:
