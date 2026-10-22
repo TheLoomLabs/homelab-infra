@@ -48,21 +48,12 @@ spec:
         - ports:
             - port: "3000"
               protocol: TCP
-    # SSH on 192.168.1.62:22. Two ways in (externalTrafficPolicy Cluster):
-    # the worker holding the L2 lease runs the pod → the client's own LAN
-    # address; it runs on the other worker → forwarded and source-NATed to
-    # the lease holder's address (remote-node). Tailscale (100.64.0.0/10)
-    # comes with Phase 4.
+    # SSH on 192.168.1.62:22. externalTrafficPolicy Local (forgejo.yaml):
+    # the lease holder runs the pod, so the client's own LAN address arrives.
+    # Tailscale (Phase 4): the subnet router source-NATs to its LAN address by
+    # default, so this rule covers it too.
     - fromCIDRSet:
         - cidr: 192.168.1.0/24
-        - cidr: 100.64.0.0/10
-      toPorts:
-        - ports:
-            - port: "2222"
-              protocol: TCP
-    - fromEntities:
-        - remote-node
-        - host
       toPorts:
         - ports:
             - port: "2222"
