@@ -1,0 +1,73 @@
+---
+# Alerts for Authentik (docs/sso.md). kube-state-metrics provides the CronJob
+# and Job state; the app being down is Uptime Kuma's job (monitor authentik)
+# and KubePodNotReady's.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: authentik
+  namespace: authentik
+spec:
+  groups:
+    - name: authentik
+      rules:
+        - alert: AuthentikMetricsDown
+          # Server and worker metrics (the chart's ServiceMonitors).
+          expr: up{namespace="authentik"} == 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Prometheus can't scrape Authentik ({{ $labels.job }})"
+            description: >-
+              The {{ $labels.job }} target in namespace authentik is down. Check the pods
+              (kubectl -n authentik get pods) and Loki {namespace="authentik"}. See docs/sso.md.
+    - name: authentik-backup
+      rules:
+        - alert: AuthentikBackupFailed
+          # Failed Jobs are removed after 20 h (ttlSecondsAfterFinished).
+          expr: kube_job_failed{namespace="authentik", condition="true"} > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "Authentik backup job {{ $labels.job_name }} failed"
+            description: >-
+              Check the job's logs: kubectl -n authentik logs job/{{ $labels.job_name }} --all-containers, or in
+              Loki {namespace="authentik"}. See docs/sso.md.
+        - alert: AuthentikBackupStale
+          expr: |
+            time() - kube_cronjob_status_last_successful_time{namespace="authentik", cronjob="authentik-backup"}
+              > 26 * 3600
+          for: 1h
+          labels:
+            severity: critical
+          annotations:
+            summary: "No successful Authentik backup in over 26 hours"
+            description: "The nightly pg_dump + restic job (01:15 UTC) hasn't completed. See docs/sso.md."
+        - alert: AuthentikBackupNeverRan
+          # A new install before its first night, for longer than a night.
+          expr: absent(kube_cronjob_status_last_successful_time{namespace="authentik", cronjob="authentik-backup"})
+          for: 26h
+          labels:
+            severity: warning
+          annotations:
+            summary: "The Authentik backup has never completed"
+            description: "CronJob authentik/authentik-backup has no successful run. See docs/sso.md."
+        - alert: AuthentikBackupCheckStale
+          expr: |
+            time() - kube_cronjob_status_last_successful_time{namespace="authentik", cronjob="authentik-backup-check"}
+              > 8 * 86400
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "No passing restic check of the Authentik repository in 8 days"
+            description: "The weekly check (Sunday 05:15 UTC) failed or didn't run. See docs/sso.md."
+        - alert: AuthentikBackupCheckNeverRan
+          expr: absent(kube_cronjob_status_last_successful_time{namespace="authentik", cronjob="authentik-backup-check"})
+          for: 8d
+          labels:
+            severity: warning
+          annotations:
+            summary: "The restic check of the Authentik repository has never passed"
+            description: "CronJob authentik/authentik-backup-check has no successful run. See docs/sso.md."

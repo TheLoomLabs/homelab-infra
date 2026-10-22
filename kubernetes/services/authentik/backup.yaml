@@ -1,0 +1,218 @@
+---
+# App-level backup of Authentik's database (docs/sso.md, ADR 0021), on top of
+# Longhorn's volume backups and Velero. Every night at 01:15 UTC:
+#
+#   1. dump    pg_dump over the network into an emptyDir: a consistent copy
+#              of the live database (custom format, compressed), checked by
+#              reading its table of contents back.
+#   2. restic  the dump (always the same path, authentik.dump) to the R2
+#              bucket theloomlabs-authentik-backup, encrypted with the restic
+#              password. Independent of the Longhorn key. The bucket lock
+#              keeps every snapshot, so the job never runs forget/prune
+#              (quarterly by hand, docs/sso.md).
+#
+# The database is reached through its Service, so the job runs on any node.
+# While PostgreSQL is down the dump fails, and AuthentikBackupFailed fires.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: authentik-backup
+  namespace: authentik
+spec:
+  schedule: "15 1 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      # Failed jobs (and AuthentikBackupFailed) go after 20 h; the logs stay
+      # in Loki.
+      ttlSecondsAfterFinished: 72000
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: authentik-backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            fsGroup: 999
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: dump
+              # Same image as the database (postgresql.yaml): pg_dump must not
+              # be older than the server.
+              image: postgres:18.6-trixie
+              env:
+                - name: PGHOST
+                  value: postgresql
+                - name: PGUSER
+                  value: authentik
+                - name: PGDATABASE
+                  value: authentik
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: authentik-postgresql
+                      key: password
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  pg_dump --format=custom --no-owner --file=/backup/authentik.dump.part
+                  pg_restore --list /backup/authentik.dump.part > /dev/null
+                  mv /backup/authentik.dump.part /backup/authentik.dump
+                  ls -l /backup
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          containers:
+            - name: restic
+              image: restic/restic:0.19.1
+              envFrom:
+                - secretRef:
+                    name: authentik-restic
+              env:
+                - name: AWS_DEFAULT_REGION
+                  value: auto
+                - name: RESTIC_CACHE_DIR
+                  value: /cache
+                - name: HOME
+                  value: /tmp
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  # First run: create the repository. Any other error (wrong
+                  # password, no network) makes init fail too ("already exists").
+                  restic cat config >/dev/null 2>&1 || restic init
+                  restic backup /backup --host authentik --tag authentik
+                  restic snapshots --host authentik --latest 1
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+                  readOnly: true
+                - name: cache
+                  mountPath: /cache
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: backup
+              emptyDir:
+                sizeLimit: 1Gi
+            - name: cache
+              emptyDir:
+                sizeLimit: 1Gi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 256Mi
+---
+# Weekly `restic check`: repository structure plus a random 5% of the data,
+# downloaded and verified (R2 has no egress fees).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: authentik-backup-check
+  namespace: authentik
+spec:
+  schedule: "15 5 * * 0"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 72000
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: authentik-backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: restic
+              image: restic/restic:0.19.1
+              envFrom:
+                - secretRef:
+                    name: authentik-restic
+              env:
+                - name: AWS_DEFAULT_REGION
+                  value: auto
+                - name: RESTIC_CACHE_DIR
+                  value: /cache
+                - name: HOME
+                  value: /tmp
+              args:
+                - check
+                - --read-data-subset
+                - 5%
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - name: cache
+                  mountPath: /cache
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: cache
+              emptyDir:
+                sizeLimit: 1Gi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 256Mi
