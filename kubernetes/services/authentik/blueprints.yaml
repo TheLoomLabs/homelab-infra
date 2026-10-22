@@ -14,6 +14,9 @@
 # IDs are here, client secrets come from the worker's environment (`!Env`,
 # Secret authentik-oidc, oidc.sops.yaml); the app gets the same value from its
 # own SopsSecret. Issuer: https://auth.lab.theloomlabs.org/application/o/<slug>/
+#
+# Proxied UIs (lab-proxy.yaml): UIs with no login of their own (Longhorn,
+# Prometheus, Alertmanager) behind the embedded outpost in the server pod.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -471,3 +474,131 @@ data:
           group: !Find [authentik_core.group, [name, lab-admins]]
         attrs:
           order: 0
+
+  lab-proxy.yaml: |
+    version: 1
+    metadata:
+      name: Lab - Proxied UIs
+    entries:
+      # UIs without a login, behind Authentik's embedded outpost (proxy mode,
+      # docs/sso.md#proxied-uis). The Gateway sends the three names to the
+      # server (httproute.yaml, route authentik-proxy); the outpost checks the
+      # Authentik session and forwards to internal_host. Only lab-admins:
+      # every one of these UIs can change or delete things.
+      # All proxied providers live in this one blueprint: the outpost entry
+      # below sets the outpost's full provider list.
+      - model: authentik_blueprints.metaapplyblueprint
+        attrs:
+          identifiers:
+            name: Lab - Groups
+          required: true
+      - model: authentik_blueprints.metaapplyblueprint
+        attrs:
+          identifiers:
+            name: Default - Provider authorization flow (implicit consent)
+          required: true
+      - model: authentik_blueprints.metaapplyblueprint
+        attrs:
+          identifiers:
+            name: Default - Provider invalidation flow
+          required: true
+      # Proxy providers need no grant_types or redirect URIs: Authentik fills
+      # them in (external_host + /outpost.goauthentik.io/callback) on save.
+      - model: authentik_providers_proxy.proxyprovider
+        id: longhorn-provider
+        identifiers:
+          name: longhorn
+        attrs:
+          authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+          invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+          mode: proxy
+          external_host: https://longhorn.lab.theloomlabs.org
+          # Service longhorn-frontend, port 80 → the UI pod's 8000.
+          internal_host: http://longhorn-frontend.longhorn-system.svc.cluster.local
+          access_token_validity: hours=8
+      - model: authentik_core.application
+        id: longhorn-app
+        identifiers:
+          slug: longhorn
+        attrs:
+          name: Longhorn
+          provider: !KeyOf longhorn-provider
+          meta_launch_url: https://longhorn.lab.theloomlabs.org
+          meta_icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/longhorn.svg
+          policy_engine_mode: any
+      - model: authentik_policies.policybinding
+        identifiers:
+          target: !KeyOf longhorn-app
+          group: !Find [authentik_core.group, [name, lab-admins]]
+        attrs:
+          order: 0
+      - model: authentik_providers_proxy.proxyprovider
+        id: prometheus-provider
+        identifiers:
+          name: prometheus
+        attrs:
+          authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+          invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+          mode: proxy
+          external_host: https://prometheus.lab.theloomlabs.org
+          internal_host: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          access_token_validity: hours=8
+      - model: authentik_core.application
+        id: prometheus-app
+        identifiers:
+          slug: prometheus
+        attrs:
+          name: Prometheus
+          provider: !KeyOf prometheus-provider
+          meta_launch_url: https://prometheus.lab.theloomlabs.org
+          meta_icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/prometheus.svg
+          policy_engine_mode: any
+      - model: authentik_policies.policybinding
+        identifiers:
+          target: !KeyOf prometheus-app
+          group: !Find [authentik_core.group, [name, lab-admins]]
+        attrs:
+          order: 0
+      - model: authentik_providers_proxy.proxyprovider
+        id: alertmanager-provider
+        identifiers:
+          name: alertmanager
+        attrs:
+          authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+          invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+          mode: proxy
+          external_host: https://alertmanager.lab.theloomlabs.org
+          internal_host: http://kube-prometheus-stack-alertmanager.monitoring.svc.cluster.local:9093
+          access_token_validity: hours=8
+      - model: authentik_core.application
+        id: alertmanager-app
+        identifiers:
+          slug: alertmanager
+        attrs:
+          name: Alertmanager
+          provider: !KeyOf alertmanager-provider
+          meta_launch_url: https://alertmanager.lab.theloomlabs.org
+          meta_icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/alertmanager.svg
+          policy_engine_mode: any
+      - model: authentik_policies.policybinding
+        identifiers:
+          target: !KeyOf alertmanager-app
+          group: !Find [authentik_core.group, [name, lab-admins]]
+        attrs:
+          order: 0
+      # The embedded outpost (created by Authentik, found by its `managed`
+      # key). `providers` and `config` replace what's there: missing config
+      # keys fall back to their defaults. authentik_host is where the outpost
+      # sends browsers to log in; its own API calls stay on localhost.
+      - model: authentik_outposts.outpost
+        identifiers:
+          managed: goauthentik.io/outposts/embedded
+        attrs:
+          type: proxy
+          providers:
+            - !KeyOf longhorn-provider
+            - !KeyOf prometheus-provider
+            - !KeyOf alertmanager-provider
+          config:
+            authentik_host: https://auth.lab.theloomlabs.org
+            authentik_host_insecure: false
