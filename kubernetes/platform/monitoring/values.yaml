@@ -55,6 +55,9 @@ prometheus:
     ruleSelectorNilUsesHelmValues: false
     probeSelectorNilUsesHelmValues: false
     scrapeConfigSelectorNilUsesHelmValues: false
+    # The UI's address behind Authentik (docs/sso.md#proxied-uis): links in
+    # the UI and the "source" link of every alert point here.
+    externalUrl: https://prometheus.lab.theloomlabs.org
     retention: 15d
     # Below the volume size, so Prometheus deletes old blocks before the
     # volume fills up.
@@ -78,6 +81,9 @@ prometheus:
 
 alertmanager:
   alertmanagerSpec:
+    # The UI's address behind Authentik: links in notifications (silences,
+    # the alert list) point here.
+    externalUrl: https://alertmanager.lab.theloomlabs.org
     # Secret alertmanager-notify (notify.sops.yaml) is mounted at
     # /etc/alertmanager/secrets/alertmanager-notify/. Alertmanager reads the
     # ntfy access token and the healthchecks ping URL from those files, so

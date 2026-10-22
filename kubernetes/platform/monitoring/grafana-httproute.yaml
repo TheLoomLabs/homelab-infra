@@ -1,7 +1,8 @@
 ---
 # Grafana through the shared Gateway (ADR 0007), LAN and Tailscale only.
-# Prometheus and Alertmanager have no authentication and are not exposed
-# until SSO exists; use kubectl port-forward (docs/monitoring.md).
+# Prometheus and Alertmanager have no login of their own: they are published
+# behind Authentik's proxy (route authentik-proxy in
+# kubernetes/services/authentik/httproute.yaml, docs/sso.md#proxied-uis).
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:

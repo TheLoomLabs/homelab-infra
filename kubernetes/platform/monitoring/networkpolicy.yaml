@@ -31,7 +31,8 @@ spec:
             dns:
               - matchPattern: "*"
 ---
-# Prometheus is queried by Grafana and Homepage, and scrapes everything in the
+# Prometheus is queried by Grafana and Homepage, its UI is reached through
+# Authentik's proxy (docs/sso.md#proxied-uis), and it scrapes everything in the
 # cluster: pods in every namespace, the nodes (node-exporter, kubelet, etcd,
 # scheduler, controller manager on the node addresses) and the API server.
 # Any port: targets come and go with ServiceMonitors. Outside the cluster only
@@ -59,6 +60,17 @@ spec:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: homepage
             k8s:app.kubernetes.io/name: homepage
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+    # The UI at prometheus.lab, after the Authentik login (embedded outpost
+    # in the Authentik server).
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: authentik
+            app.kubernetes.io/name: authentik
+            app.kubernetes.io/component: server
       toPorts:
         - ports:
             - port: "9090"
@@ -92,7 +104,7 @@ spec:
               protocol: TCP
 ---
 # Alertmanager gets alerts from Prometheus (default-deny) and Loki's ruler,
-# queries from Grafana, and sends notifications to ntfy and pings to
+# queries from Grafana, its UI through Authentik's proxy, and sends notifications to ntfy and pings to
 # healthchecks on the Swarm (Traefik, LAN addresses from the lab DNS).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -116,6 +128,16 @@ spec:
         - matchLabels:
             app.kubernetes.io/name: loki
             app.kubernetes.io/component: single-binary
+      toPorts:
+        - ports:
+            - port: "9093"
+              protocol: TCP
+    # The UI at alertmanager.lab, after the Authentik login.
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: authentik
+            app.kubernetes.io/name: authentik
+            app.kubernetes.io/component: server
       toPorts:
         - ports:
             - port: "9093"
