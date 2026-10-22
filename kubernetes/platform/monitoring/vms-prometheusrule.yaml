@@ -1,5 +1,5 @@
 ---
-# Alerts for the VMs outside Kubernetes: DNS and Swarm (docs/monitoring.md,
+# Alerts for the VMs outside Kubernetes: DNS, Swarm, runner (docs/monitoring.md,
 # scrapeconfig-vms.yaml). Disk, memory, clock and the other host alerts come
 # from kube-prometheus-stack's node-exporter rules, because the VMs' host
 # metrics use job node-exporter. A down VM target also fires the chart's

@@ -66,13 +66,15 @@ spec:
   egress:
     - toEntities:
         - cluster
-    # Alloy on every DNS and Swarm VM (host, container and Alloy metrics).
+    # Alloy on every DNS, Swarm and runner VM (host, container and Alloy
+    # metrics).
     - toCIDR:
         - 192.168.1.11/32
         - 192.168.1.12/32
         - 192.168.1.41/32
         - 192.168.1.42/32
         - 192.168.1.43/32
+        - 192.168.1.45/32
       toPorts:
         - ports:
             - port: "12345"

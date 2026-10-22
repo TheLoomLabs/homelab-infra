@@ -1,6 +1,6 @@
 ---
 # Grafana dashboard "Docker Swarm" (docs/monitoring.md): the Swarm (Raft,
-# nodes, tasks, services), the DNS and Swarm VMs, containers and Traefik, from
+# nodes, tasks, services), the DNS, Swarm and runner VMs, containers and Traefik, from
 # the targets in scrapeconfig-vms.yaml. Per-VM details: kube-prometheus-stack's
 # "Node Exporter / Nodes" dashboard (pick the VM as instance).
 # Generated as JSON; edit in Grafana, export (Share → Export → JSON) and paste
@@ -24,7 +24,7 @@ data:
         "docker",
         "vms"
       ],
-      "description": "Docker Swarm, its services and containers, the DNS and Swarm VMs, and Traefik (scrapeconfig-vms.yaml, docs/monitoring.md)",
+      "description": "Docker Swarm, its services and containers, the DNS, Swarm and runner VMs, and Traefik (scrapeconfig-vms.yaml, docs/monitoring.md)",
       "editable": true,
       "schemaVersion": 41,
       "version": 1,
@@ -560,7 +560,7 @@ data:
         {
           "id": 10,
           "type": "row",
-          "title": "Hosts (DNS and Swarm VMs)",
+          "title": "Hosts (DNS, Swarm and runner VMs)",
           "collapsed": false,
           "gridPos": {
             "h": 1,
