@@ -31,7 +31,7 @@ Everything else is one policy per component, named for what it allows:
 
 | From | To | Port |
 |---|---|---|
-| Argo CD controller, applicationset, server | API server (`kube-apiserver` entity) | 6443 |
+| Argo CD controller, applicationset, server, redis-secret-init (hook Job) | API server (`kube-apiserver` entity) | 6443 |
 | Argo CD pods | repo-server, redis (same namespace) | 8081, 6379 |
 | Gateway (`ingress` entity) | argocd-server | 8080 |
 | argocd-repo-server | github.com, `*.github.io`, `*.githubusercontent.com`, charts.jetstack.io, charts.longhorn.io | 443 |
@@ -58,7 +58,7 @@ Everything else is one policy per component, named for what it allows:
 | Forgejo backup jobs | `*.r2.cloudflarestorage.com` (Forgejo itself: nothing) | 443 |
 | Gateway | homepage | 3000 |
 | Homepage | API server; argocd-server; Prometheus | 6443; 8080; 9090 |
-| Homepage | status / portainer / ntfy / hc.lab.theloomlabs.org (Swarm); pve.lab.theloomlabs.org | 443; 8006 |
+| Homepage | status / portainer / ntfy / hc.lab.theloomlabs.org (Swarm); Proxmox 192.168.1.200 (`toCIDR`: fixed address, no DNS timing) | 443; 8006 |
 
 The R2 rule matches any R2 endpoint because the hostname contains the account ID, which stays out of Git. Grafana has no internet access, so `values.yaml` turns off Gravatar and the news feed.
 
