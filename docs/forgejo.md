@@ -17,7 +17,7 @@
 | Uptime monitors | `forgejo`, `forgejo-ssh` in `uptime_kuma_monitors` (`make uptime`) |
 | Homepage card | Apps → Forgejo (`kubernetes/services/homepage/config/services.yaml`) |
 | restic from the workstation | `scripts/forgejo-restic.sh <restic args>` |
-| Actions runner | VM `runner-01`, Ansible role `forgejo_runner` (separate doc, Part B) |
+| Actions runner | VM `runner-01`, Ansible role `forgejo_runner`, `make runner` ([forgejo-runner.md](forgejo-runner.md)) |
 
 ## How it runs
 

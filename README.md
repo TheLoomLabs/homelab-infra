@@ -24,11 +24,11 @@ Proxmox VE ──Terraform──▶ 10 Ubuntu VMs ──Ansible──▶ hardene
 | Secrets | SOPS + age, sops-secrets-operator, role `sops_age`, `community.sops` | Secrets committed **encrypted**, decrypted in the cluster (Argo CD never sees plaintext) or by Ansible on the workstation; **Secrets and ConfigMaps encrypted at rest in etcd** (secretbox, two-pass rollout, key rotation runbook) |
 | Storage | Longhorn, role `longhorn_node` | Replicated block volumes on a dedicated data disk per worker, **LUKS-encrypted default StorageClass**, hourly snapshots and daily/weekly **backups to Cloudflare R2** |
 | Backups | Velero + CSI snapshots, restic (role `swarm_backup`) | Nightly cluster backups to R2 (objects **SSE-C encrypted**), volumes backed up by Longhorn through CSI VolumeSnapshots; restore tested end to end. **Swarm volumes**: nightly restic snapshots to R2 behind a **bucket lock with no expiry** (the nodes can't delete their own backups), weekly `restic check`, stale-backup alerts |
-| Monitoring | kube-prometheus-stack (Argo CD), roles `alloy`, `docker` | Prometheus, Alertmanager, Grafana; components ship their own ServiceMonitors and rules, **alerts on failed or missing backups**, degraded volumes and the usual cluster health; **the DNS and Swarm VMs too**: host and container metrics, Swarm Raft and service replicas, Traefik |
+| Monitoring | kube-prometheus-stack (Argo CD), roles `alloy`, `docker` | Prometheus, Alertmanager, Grafana; components ship their own ServiceMonitors and rules, **alerts on failed or missing backups**, degraded volumes and the usual cluster health; **the DNS, Swarm and runner VMs too**: host and container metrics, Swarm Raft and service replicas, Traefik |
 | Logs | Loki + Grafana Alloy (Argo CD), role `alloy` | Pod logs, node journals and Kubernetes events from the cluster, **journal and Swarm container logs from the VMs**; 15 days in Loki, queried in Grafana |
 | Alerting | Swarm stack: ntfy, healthchecks (role `alerting`) | **Self-hosted, no SaaS:** push to the phone via ntfy, **dead man's switch** on healthchecks outside Kubernetes, so a dead cluster is still reported |
 | Swarm | Ansible roles `docker`, `swarm`, `edge`, `alerting`, `uptime_kuma`, `portainer` | Docker CE, 3-manager Raft quorum, node labels; **HA entry point: keepalived VIP + Traefik on every manager**, one wildcard cert issued by the Raft leader and kept in the Swarm (lego, Cloudflare DNS-01); **Uptime Kuma** checks the lab from outside Kubernetes and reports through ntfy, its monitors defined in Ansible (AutoKuma); **Portainer CE** with an agent on every node, admin created from SOPS |
-| Apps (Phase 3) | Argo CD project `apps` | **Vaultwarden** (password manager) on Kubernetes: SQLite on an encrypted Longhorn volume, no egress, signups off; nightly consistent dump + **restic to its own locked R2 bucket**, independent of the Longhorn key. **Homepage** dashboard: config in Git, login, read-only cluster access granted by the platform (not the app), no admin credential in any widget. **Forgejo** (Git, packages, Actions): SQLite on an encrypted volume, no egress, Git over SSH on its own LoadBalancer address, nightly SQL dump + restic to its own locked bucket |
+| Apps (Phase 3) | Argo CD project `apps` | **Vaultwarden** (password manager) on Kubernetes: SQLite on an encrypted Longhorn volume, no egress, signups off; nightly consistent dump + **restic to its own locked R2 bucket**, independent of the Longhorn key. **Homepage** dashboard: config in Git, login, read-only cluster access granted by the platform (not the app), no admin credential in any widget. **Forgejo** (Git, packages, Actions): SQLite on an encrypted volume, no egress, Git over SSH on its own LoadBalancer address, nightly SQL dump + restic to its own locked bucket; **Actions jobs on a dedicated runner VM** (unprivileged containers, no Docker socket in jobs) |
 | Quality | GitHub Actions, pre-commit | `terraform fmt/validate`, tflint, yamllint, ansible-lint (production profile), gitleaks, SOPS encryption check; **every Argo CD app rendered and validated** with kubeconform against schemas generated from the pinned CRDs, plus `promtool check rules`, AppProject limits, Pod Security labels and a default-deny network policy per namespace; actions pinned to commit SHAs, self-hosted Renovate, weekly Trivy image scan to code scanning ([docs/ci.md](docs/ci.md)) |
 
 ## Architecture
@@ -95,6 +95,7 @@ More detail is in [docs/architecture.md](docs/architecture.md). The design decis
 | [portainer.md](docs/portainer.md) | Portainer on Swarm: setup, admin password, stacks from the UI next to Ansible's |
 | [vaultwarden.md](docs/vaultwarden.md) | Vaultwarden on Kubernetes: setup, users, clients, backups (dump + restic), restores |
 | [forgejo.md](docs/forgejo.md) | Forgejo on Kubernetes: setup, accounts, SSH, backups (SQL dump + restic), restores, upgrades |
+| [forgejo-runner.md](docs/forgejo-runner.md) | Forgejo Actions runner VM: registration, deploy, test workflow, upgrades, troubleshooting |
 | [homepage.md](docs/homepage.md) | Homepage dashboard: cards and widgets, access it gets, setup, adding a card |
 | [logging.md](docs/logging.md) | Loki and Alloy: labels, push secret, checks, example queries |
 | [maintenance.md](docs/maintenance.md) | Rolling reboots (kernel updates, network changes) |
@@ -152,23 +153,24 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 │   ├── modules/proxmox-vm/     # one VM: disk import, cloud-init snippet, network
 │   └── envs/homelab/           # the lab: node map → VMs → Ansible inventory
 ├── ansible/
-│   ├── playbooks/              # site, base, dns, kubernetes, encryption, pod-security, audit, cilium, longhorn, sops, argocd, swarm, logs, edge, alerting, uptime, portainer, swarm-backup, reboot
+│   ├── playbooks/              # site, base, dns, kubernetes, encryption, pod-security, audit, cilium, longhorn, sops, argocd, swarm, logs, edge, alerting, uptime, portainer, swarm-backup, runner, reboot
 │   ├── roles/                  # common, hardening, bind, docker, swarm, k8s_prereqs,
 │   │                           # k8s_control_plane, k8s_worker, cilium, longhorn_node,
 │   │                           # sops_age, argocd, edge, alerting, uptime_kuma, portainer,
-│   │                           # alloy, swarm_backup
+│   │                           # alloy, swarm_backup, forgejo_runner
 │   └── inventory/group_vars/   # versions and CIDRs
 ├── dns/                        # lab zone records + SOPS-encrypted TSIG key
 ├── swarm/                      # SOPS-encrypted secrets of the Swarm stacks
 ├── logging/                    # SOPS-encrypted push password for Alloy on the VMs
 ├── k8s/                        # SOPS-encrypted key for encryption at rest in etcd
+├── ci/                         # SOPS-encrypted Forgejo runner credentials
 ├── kubernetes/
 │   ├── apps/                   # Argo CD Applications + AppProjects (app of apps, synced from main)
 │   ├── platform/               # Helm values, manifests and *.sops.yaml secrets per component
 │   └── services/               # Phase 3 apps (project apps): plain manifests per app
-├── scripts/                    # check-manifests.py (make manifests), scan-images.py (make images), hubble-flows.py, swarm-restic.sh, vaultwarden-restic.sh, forgejo-restic.sh
+├── scripts/                    # check-manifests.py (make manifests), scan-images.py (make images), hubble-flows.py, lan-scan.py, swarm-restic.sh, vaultwarden-restic.sh, forgejo-restic.sh
 └── docs/                       # architecture, bootstrap, runbooks (dns, secrets, storage,
-                                # backup, swarm-backup, monitoring, edge, alerting, uptime, portainer, vaultwarden, forgejo, homepage, logging, ci, maintenance, encryption,
+                                # backup, swarm-backup, monitoring, edge, alerting, uptime, portainer, vaultwarden, forgejo, forgejo-runner, homepage, logging, ci, maintenance, encryption,
                                 # pod-security, network-policy, audit-logging), ADRs, roadmap
 ```
 

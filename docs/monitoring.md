@@ -12,7 +12,7 @@ kube-prometheus-stack runs Prometheus, Alertmanager and Grafana in the namespace
 | Longhorn metrics and alerts | `metrics.serviceMonitor` in `kubernetes/platform/longhorn/values.yaml`, `kubernetes/platform/longhorn/prometheusrule.yaml` |
 | Velero metrics and alerts | `metrics.serviceMonitor` in `kubernetes/platform/velero/values.yaml`, `kubernetes/platform/velero/prometheusrule.yaml` |
 | Control-plane metrics (etcd, scheduler, controller manager) | kubeadm patches in `ansible/roles/k8s_control_plane/templates/patches/`, `kubeEtcd`/`kubeScheduler`/`kubeControllerManager` in `values.yaml` |
-| DNS and Swarm VMs: targets, alerts, dashboard | `kubernetes/platform/monitoring/scrapeconfig-vms.yaml`, `vms-prometheusrule.yaml`, `swarm-dashboard.yaml`; on the VMs roles `alloy`, `docker`, `alerting` ([below](#vms-outside-kubernetes-dns-and-swarm)) |
+| DNS, Swarm and runner VMs: targets, alerts, dashboard | `kubernetes/platform/monitoring/scrapeconfig-vms.yaml`, `vms-prometheusrule.yaml`, `swarm-dashboard.yaml`; on the VMs roles `alloy`, `docker`, `alerting` ([below](#vms-outside-kubernetes-dns-and-swarm)) |
 | Logs (Loki, Alloy) and their alerts | [logging.md](logging.md) |
 
 ## Alert routing
@@ -190,17 +190,17 @@ kill $!
 
 ## VMs outside Kubernetes (DNS and Swarm)
 
-Prometheus on Kubernetes also scrapes the five VMs outside the cluster (dns-01, dns-02, swarm-m-01..03). Nothing new runs on them except one systemd timer: Alloy, which already ships their logs, serves the metrics too.
+Prometheus on Kubernetes also scrapes the VMs outside the cluster (dns-01, dns-02, swarm-m-01..03, and the Forgejo runner runner-01). Nothing new runs on them except one systemd timer: Alloy, which already ships their logs, serves the metrics too.
 
 | Job | Hosts | Source | Port, path |
 |---|---|---|---|
-| `node-exporter` | all five | Alloy's built-in node_exporter (`prometheus.exporter.unix`), plus textfiles | 12345, `/api/v0/component/prometheus.exporter.unix.node/metrics` |
-| `alloy-vm` | all five | Alloy itself | 12345, `/metrics` |
+| `node-exporter` | all | Alloy's built-in node_exporter (`prometheus.exporter.unix`), plus textfiles | 12345, `/api/v0/component/prometheus.exporter.unix.node/metrics` |
+| `alloy-vm` | all | Alloy itself | 12345, `/metrics` |
 | `docker-cadvisor` | Swarm | Alloy's built-in cAdvisor (`prometheus.exporter.cadvisor`), Docker containers only | 12345, `/api/v0/component/prometheus.exporter.cadvisor.containers/metrics` |
 | `docker-engine` | Swarm | dockerd (`metrics-addr` in daemon.json, role `docker`): engine, and on managers the Swarm (`swarm_manager_*`, Raft) | 9323, `/metrics` |
 | `traefik` | Swarm managers | Traefik of the edge stack (global service), own entrypoint, host-mode port | 8082, `/metrics` |
 
-- **Targets are static** (`scrapeconfig-vms.yaml`, ScrapeConfig CRD): the VMs' LAN addresses, with the labels `host` (VM name, also used as `instance`) and `group` (`dns`, `swarm`). A new or re-addressed VM means changing that file and the `prometheus` network policy (egress `toCIDR` per address and port).
+- **Targets are static** (`scrapeconfig-vms.yaml`, ScrapeConfig CRD): the VMs' LAN addresses, with the labels `host` (VM name, also used as `instance`) and `group` (`dns`, `swarm`, `ci`). A new or re-addressed VM means changing that file and the `prometheus` network policy (egress `toCIDR` per address and port).
 - **Host metrics use job `node-exporter`**, like the cluster nodes. kube-prometheus-stack's node alerts (disk filling up, memory, clock, network errors), its recording rules and the *Node Exporter / Nodes* and *USE Method* dashboards cover the VMs without new rules. Pick the VM as instance there.
 - **Replicas per Swarm service:** the Swarm has no exporter for desired versus running tasks. A systemd timer on every manager (`swarm-services-metrics.timer`, every 30 s, as user `alloy`) runs `docker service ls` and writes `swarm_service_replicas_desired` and `swarm_service_replicas_running` (labels `stack`, `service`, `mode`) into `/var/lib/alloy/textfile/`, which the node exporter serves. All three managers write the same numbers; the rules take the max.
 - **Network:** UFW on these VMs already trusts the whole lab network, and pod traffic leaves the cluster with the node's address, so the firewall needs nothing new. Alloy's HTTP server (metrics and a read-only UI) now listens on the VM address instead of 127.0.0.1, without authentication: reachable from the LAN only. Traefik's port is published by Docker, which bypasses UFW; also LAN-only.

@@ -3,7 +3,7 @@
 Loki stores the logs of the whole lab for 15 days; Grafana queries them (ADR 0012). Grafana Alloy ships them:
 
 - **Kubernetes:** an Alloy DaemonSet reads every pod's log files and every node's journal (kubelet, containerd, kernel, sshd). A second Alloy with one replica ships Kubernetes events, which the API server keeps for an hour only.
-- **DNS and Swarm VMs:** Alloy as a systemd service (role `alloy`) ships the journal and, on the Swarm nodes, every container's log. It pushes through the Gateway to Loki's nginx gateway, which requires basic auth.
+- **DNS, Swarm and runner VMs:** Alloy as a systemd service (role `alloy`) ships the journal and, on the Swarm nodes, every container's log. It pushes through the Gateway to Loki's nginx gateway, which requires basic auth.
 
 Loki runs as one process (single binary) in `monitoring`, with its index and chunks on a 20 GiB volume of the plain `longhorn` class: no object storage, no encryption, no backups (Velero skips the namespace). Logs are disposable, like metrics.
 
