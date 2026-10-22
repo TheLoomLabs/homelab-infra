@@ -333,3 +333,42 @@
                 suffix: "%"
                 options:
                   maximumFractionDigits: 0
+
+    - Forgejo runner:
+        icon: forgejo.svg
+        href: https://git.lab.theloomlabs.org/admin/actions/runners
+        description: runner-01, Actions jobs in Docker
+        widget:
+          type: prometheusmetric
+          url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          refreshInterval: 30000
+          metrics:
+            # The VM, not the runner service: Forgejo has no runner metrics.
+            - label: VM up
+              query: count(up{job="node-exporter", group="ci"} == 1) or vector(0)
+            - label: CPU
+              query: 100 * avg(1 - rate(node_cpu_seconds_total{group="ci", mode="idle"}[5m]))
+              format:
+                type: number
+                suffix: "%"
+                options:
+                  maximumFractionDigits: 0
+            - label: Memory
+              query: >-
+                100 * (1 - sum(node_memory_MemAvailable_bytes{group="ci"})
+                / sum(node_memory_MemTotal_bytes{group="ci"}))
+              format:
+                type: number
+                suffix: "%"
+                options:
+                  maximumFractionDigits: 0
+            # Job images and build cache; the weekly prune frees it.
+            - label: Disk
+              query: >-
+                100 * (1 - max(node_filesystem_avail_bytes{group="ci", mountpoint="/"})
+                / max(node_filesystem_size_bytes{group="ci", mountpoint="/"}))
+              format:
+                type: number
+                suffix: "%"
+                options:
+                  maximumFractionDigits: 0

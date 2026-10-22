@@ -37,6 +37,7 @@
 | Workloads: pods running / pending / failed, restarts 24h | Prometheus (kube-state-metrics) | none |
 | Grafana: dashboards, log lines/s, log volume 24h | Prometheus (Grafana's and Loki's metrics) | none |
 | Swarm managers, DNS: nodes up, CPU, memory | Prometheus (Alloy on the VMs) | none |
+| Forgejo runner: VM up, CPU, memory, disk (runner-01; the link opens Forgejo's runner list) | Prometheus (Alloy on the VM) | none |
 | Traefik: instances up, requests/s, 5xx/s | Prometheus | none |
 | ntfy: failed notifications 24h | Prometheus (Alertmanager) | none |
 | Vaultwarden, Forgejo, Backups: last successful backup (Velero, Vaultwarden, Forgejo, oldest Swarm volume); Forgejo repo count (its /metrics) | Prometheus | none |
