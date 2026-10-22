@@ -117,6 +117,7 @@ Defined in `uptime_kuma_monitors` (role defaults). Each key is AutoKuma's ID: re
 | `vaultwarden` | http | `https://vault…/alive` (Kubernetes, through the Gateway) |
 | `forgejo` | http | `https://git…/api/healthz` (Kubernetes, through the Gateway) |
 | `forgejo-ssh` | port | `git-ssh…:22` (Kubernetes, LoadBalancer .62) |
+| `authentik` | http | `https://auth…/-/health/live/` (Kubernetes, through the Gateway) |
 | `homepage` | http | `https://home…/api/healthcheck` (Kubernetes, through the Gateway; the one path without login) |
 | `proxmox` | http | `https://pve…:8006/` (TLS not verified: self-signed) |
 
