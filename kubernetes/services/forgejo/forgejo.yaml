@@ -154,9 +154,13 @@ metadata:
     lbipam.cilium.io/ips: 192.168.1.62
 spec:
   type: LoadBalancer
-  # Cluster: whichever worker holds the L2 lease forwards to the pod, wherever
-  # it runs (networkpolicy.yaml allows both ways the traffic can arrive).
-  externalTrafficPolicy: Cluster
+  # Local: only a worker running the pod may hold the L2 lease, so the client
+  # reaches the pod directly with its own LAN address (networkpolicy.yaml
+  # allows the LAN, nothing else). With Cluster, the lease holder forwarded to
+  # the other worker through the tunnel, source-NATed to its cilium_host
+  # address with identity world, which no rule could allow narrowly. When the
+  # pod moves, the lease follows it (a few seconds without SSH).
+  externalTrafficPolicy: Local
   selector:
     app.kubernetes.io/name: forgejo
   ports:
