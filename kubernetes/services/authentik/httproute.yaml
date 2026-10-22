@@ -30,3 +30,34 @@ spec:
           name: authentik-server
           port: 80
           weight: 1
+---
+# The UIs behind the embedded outpost (blueprint lab-proxy.yaml): the server
+# answers for these names too and forwards signed-in requests to each UI
+# (docs/sso.md#proxied-uis). Same Gateway, Service and defaults as above.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: authentik-proxy
+  namespace: authentik
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: lab
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - longhorn.lab.theloomlabs.org
+    - prometheus.lab.theloomlabs.org
+    - alertmanager.lab.theloomlabs.org
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: authentik-server
+          port: 80
+          weight: 1

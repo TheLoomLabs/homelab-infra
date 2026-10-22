@@ -28,7 +28,8 @@ spec:
               - matchPattern: "*"
 ---
 # Server and worker reach the database and nothing else: no update check, no
-# analytics, no SMTP, no outposts to deploy. Apps don't need a way in to
+# analytics, no SMTP, no outposts to deploy (the server's own egress to the
+# proxied UIs is below). Apps don't need a way in to
 # Authentik's pods for OIDC: browsers follow the redirects through the
 # Gateway, and back-channel calls (token, userinfo) also go to auth.lab.
 apiVersion: cilium.io/v2
@@ -50,7 +51,8 @@ spec:
               protocol: TCP
 ---
 # The server: web UI, OIDC endpoints and the embedded outpost, only through
-# the shared Gateway.
+# the shared Gateway. The outpost forwards signed-in requests to the proxied
+# UIs (blueprint lab-proxy.yaml); each UI's policy lets only this pod in.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -67,6 +69,32 @@ spec:
       toPorts:
         - ports:
             - port: "9000"
+              protocol: TCP
+  egress:
+    # Longhorn UI: Service longhorn-frontend 80 → pod 8000.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: longhorn-system
+            app: longhorn-ui
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+            app.kubernetes.io/name: alertmanager
+      toPorts:
+        - ports:
+            - port: "9093"
               protocol: TCP
 ---
 # PostgreSQL: Authentik and the backup job's pg_dump.
