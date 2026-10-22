@@ -16,7 +16,7 @@ Every platform namespace is **default deny** for ingress and egress. A pod only 
 |---|---|
 | argocd, cert-manager, sops, velero, gateway, monitoring | default deny + allows (below) |
 | Phase 3 app namespaces (vaultwarden, homepage, forgejo, authentik) | default deny from the first commit (`make manifests` fails without it) |
-| kube-system, longhorn-system | none: the CNI, kube-vip, control plane and Longhorn's node agents. Longhorn ships its own policies (`networkPolicies.restrictInternalTraffic`) |
+| kube-system, longhorn-system | no default deny: the CNI, kube-vip, control plane and Longhorn's node agents. Longhorn ships its own policies (`networkPolicies.restrictInternalTraffic`); one Cilium policy closes the UI pod (`longhorn-ui`, ingress only) to everything but Authentik's server |
 
 Not affected in any namespace: pods in the host network (node-exporter), and the kubelet's probes (Cilium always allows the local node).
 
@@ -58,6 +58,7 @@ Everything else is one policy per component, named for what it allows:
 | LAN `192.168.1.0/24` (SSH via LoadBalancer .62, `externalTrafficPolicy: Local` keeps the client address; Tailscale arrives source-NATed to a LAN address) | forgejo | 2222 |
 | Forgejo backup jobs | `*.r2.cloudflarestorage.com` (Forgejo itself: nothing) | 443 |
 | Gateway | authentik-server | 9000 |
+| Authentik server (embedded outpost, proxied UIs) | longhorn-ui; Prometheus; Alertmanager | 8000; 9090; 9093 |
 | Authentik server, worker; backup jobs | postgresql (Authentik itself: nothing else) | 5432 |
 | Authentik backup jobs | `*.r2.cloudflarestorage.com` | 443 |
 | Gateway | homepage | 3000 |

@@ -221,7 +221,9 @@ To rotate the token: create a new one in the Cloudflare dashboard (R2 → Manage
 
 ## Longhorn UI
 
-The UI has no login, so it is not published on the Gateway. Use a port-forward:
+The UI has no login of its own. It is at **https://longhorn.lab.theloomlabs.org** behind Authentik's proxy (`lab-admins` only, [sso.md](sso.md#proxied-uis)); a Cilium policy (`networkpolicy.yaml`) lets only Authentik's server reach the UI pod.
+
+Break-glass when Authentik is down, a port-forward (goes through the API server, not the Gateway):
 
 ```bash
 kubectl -n longhorn-system port-forward svc/longhorn-frontend 8080:80

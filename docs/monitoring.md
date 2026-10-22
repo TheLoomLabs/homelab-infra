@@ -79,12 +79,13 @@ kubectl -n monitoring get pods,pvc
 kubectl get servicemonitors,prometheusrules -A
 ```
 
-Prometheus targets and rules (no UI on the Gateway):
+Prometheus targets and rules: https://prometheus.lab.theloomlabs.org/targets (every target UP: longhorn-system, velero, kube-system, monitoring) and `/rules` (groups longhorn-backup, longhorn-volumes, velero). Prometheus and Alertmanager (https://alertmanager.lab.theloomlabs.org) have no login of their own and sit behind Authentik's proxy, `lab-admins` only ([sso.md](sso.md#proxied-uis)).
+
+Without Authentik, a port-forward:
 
 ```bash
 kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090 &
-# http://localhost:9090/targets  → every target UP (longhorn-system, velero, kube-system, monitoring)
-# http://localhost:9090/rules    → groups longhorn-backup, longhorn-volumes, velero
+# http://localhost:9090/targets
 kill %1
 ```
 

@@ -10,13 +10,14 @@
 | PostgreSQL (StatefulSet, PVC, Service) | `postgresql.yaml` |
 | Authentik's config: groups, login flow, apps (blueprints) | `blueprints.yaml` (ConfigMap `authentik-blueprints`) |
 | Apps' OIDC client secrets (Authentik side) | `oidc.sops.yaml` → Secret `authentik-oidc` (worker env) |
-| Route `auth.lab` | `httproute.yaml` |
+| Route `auth.lab`; route `authentik-proxy` (longhorn / prometheus / alertmanager.lab) | `httproute.yaml` |
 | Nightly pg_dump + restic, weekly check | `backup.yaml` |
 | Network policies | `networkpolicy.yaml` |
 | Alerts (scrape, backup) | `prometheusrule.yaml`; ServiceMonitors from the chart |
 | Namespace + Pod Security level | `kubernetes/platform/namespaces/namespaces.yaml` (`restricted`) |
 | Uptime monitor | `authentik` in `uptime_kuma_monitors` (`make uptime`) |
 | Homepage card | Apps → Authentik, Status → Backups |
+| Proxied UIs: providers, apps, embedded outpost | blueprint `lab-proxy.yaml` ([Proxied UIs](#proxied-uis)) |
 | restic from the workstation | `scripts/authentik-restic.sh <restic args>` |
 
 ## How it runs
@@ -27,7 +28,7 @@
 - **Config as blueprints**: groups and the login flow are YAML in `blueprints.yaml`. The worker applies them at start and whenever the ConfigMap changes, and puts back attributes changed in the UI. Users are not in Git (no usernames in the public repo): you create them in the UI.
 - **Groups**: `lab-admins` (Authentik superuser, admin in every app) and `lab-users` (signed in, no admin rights). The bootstrap admin `akadmin` is in `authentik Admins`.
 - **Login**: username or e-mail, password, then a second factor: a passkey/security key (WebAuthn) or an authenticator app (TOTP). An account without one has to set one up at its next login (blueprint `lab-mfa.yaml`). Recovery codes can be added in the user settings.
-- **No egress.** Server and worker reach PostgreSQL and DNS only: update check, analytics and error reporting are off, there is no SMTP (no password reset by mail). Apps don't need to reach the pods: browsers follow the redirects through the Gateway.
+- **No egress** to the outside. Server and worker reach PostgreSQL and DNS: update check, analytics and error reporting are off, there is no SMTP (no password reset by mail). Apps don't need to reach the pods: browsers follow the redirects through the Gateway. The one exception is the server's embedded outpost, which forwards to the [proxied UIs](#proxied-uis) inside the cluster.
 - **Metrics**: server and worker on port 9300, scraped by Prometheus through the chart's ServiceMonitors.
 
 ## Set up (once)
@@ -358,6 +359,34 @@ Unset the helper when done: `unset -f oidc_secret`.
 3. The app's OIDC settings, and egress from the app to `auth.lab` (copy Grafana's two rules in `kubernetes/platform/monitoring/networkpolicy.yaml`).
 4. Push. The worker reads its environment only at start: `kubectl -n authentik rollout restart deploy/authentik-worker` once the Secret has the new key.
 
+## Proxied UIs
+
+Longhorn, Prometheus and Alertmanager have no login of their own. They are published behind Authentik's **embedded outpost** (part of the server pod, proxy mode): no extra deployment, and the UIs themselves are unchanged.
+
+| UI | URL | Forwards to |
+|---|---|---|
+| Longhorn | https://longhorn.lab.theloomlabs.org | `longhorn-frontend.longhorn-system` :80 (pod 8000) |
+| Prometheus | https://prometheus.lab.theloomlabs.org | `kube-prometheus-stack-prometheus.monitoring` :9090 |
+| Alertmanager | https://alertmanager.lab.theloomlabs.org | `kube-prometheus-stack-alertmanager.monitoring` :9093 |
+
+- **Path:** browser → Gateway (route `authentik-proxy`, three names, wildcard certificate, no DNS change) → `authentik-server` → the outpost checks the Authentik session (login and MFA as usual if there is none) → the UI. A request without a session is redirected to `auth.lab` and back to `<name>/outpost.goauthentik.io/callback`.
+- **Who:** `lab-admins` only. Every one of these UIs can change things (delete a volume, silence an alert).
+- **Config:** blueprint `lab-proxy.yaml`: a proxy provider + application per UI, and the embedded outpost (its provider list and `authentik_host`). Add a fourth UI there, not in a new blueprint: the outpost entry replaces the whole list.
+- **Network:** the server has egress to the three pods; each pod lets in only the server (`longhorn-ui` in `kubernetes/platform/longhorn/networkpolicy.yaml`, the first Cilium policy in longhorn-system; `prometheus` and `alertmanager` in the monitoring policies). Before this, any pod could open the Longhorn UI.
+- **Session:** 8 hours (`access_token_validity`), then a new Authentik login (usually silent while the Authentik session lasts). Sign out of one UI: `https://<name>/outpost.goauthentik.io/sign_out`.
+- **Links:** Prometheus and Alertmanager have `externalUrl` set to their names, so alert source links and silence links in ntfy messages open through the proxy. Homepage cards link here.
+- **Break-glass:** the port-forwards still work (`kubectl` bypasses the Gateway and the policies apply to pods, not to the API server's tunnel): [storage.md](storage.md#longhorn-ui), [monitoring.md](monitoring.md#check).
+
+### Check the proxied UIs
+
+1. **Customization → Blueprints**: `Lab - Proxied UIs` **successful**. **Applications → Outposts**: `authentik Embedded Outpost` lists Longhorn, Prometheus and Alertmanager, health green (last seen within a minute).
+2. Route accepted: `kubectl -n authentik get httproute authentik-proxy -o jsonpath='{.status.parents[0].conditions[*].reason}'` → `Accepted ResolvedRefs`.
+3. Without a session: `curl -sI https://prometheus.lab.theloomlabs.org | grep -i '^location'` → a redirect to `https://auth.lab.theloomlabs.org/application/o/authorize/…`.
+4. In a private window: https://longhorn.lab.theloomlabs.org → Authentik login → the Longhorn dashboard with volumes and nodes (live updates over websocket). Then https://prometheus.lab.theloomlabs.org/targets and https://alertmanager.lab.theloomlabs.org open without a second login.
+5. A `lab-users` account gets *Permission denied* from Authentik, not the UI.
+6. The UI is closed to other pods. Prometheus may reach the whole cluster, so it is a good test: `kubectl -n monitoring exec prometheus-kube-prometheus-stack-prometheus-0 -c prometheus -- wget -q -T 5 -O /dev/null http://longhorn-frontend.longhorn-system` → *download timed out* (before this change it returned nothing, i.e. success).
+7. Nothing else dropped: `hubble observe --verdict DROPPED --since 10m`.
+
 ## Change the config (blueprints)
 
 Edit `blueprints.yaml`, push. The kubelet updates the mounted files within a minute or two and the worker applies the changed blueprint. Check **Customization → Blueprints** (status, last applied) or the worker log. To apply one right away: **Customization → Blueprints → ⋮ → Apply**.
@@ -489,3 +518,8 @@ Also look at **Events → Logs** for failed logins and **System → System Tasks
 | restic *unable to open config file* / *wrong password* | `authentik-restic` Secret: repository URL, keys, password |
 | restic *Fatal: unable to save … 403* | The bucket lock refused an overwrite (interrupted upload, or a prune with the rules on); the next night succeeds |
 | `AuthentikMetricsDown` | Pod down, or the scrape blocked (Hubble, `--verdict DROPPED`) |
+| Proxied UI: *404* or Authentik's *Not Found* page | The outpost doesn't know the name: blueprint `Lab - Proxied UIs` not applied, or the provider missing from the embedded outpost (**Applications → Outposts**) |
+| Proxied UI: redirect to `localhost` or an empty host after login | `authentik_host` missing from the embedded outpost's config (blueprint, outpost entry) |
+| Proxied UI: *502 Bad Gateway* / timeout after the login | The server can't reach the UI: Hubble `--verdict DROPPED` (server egress or the UI's ingress), or the UI pod is down |
+| Longhorn UI loads but stays empty / doesn't update | The websocket (`/v1/ws/…`) is cut: browser dev tools → Network → WS; Hubble for drops |
+| Proxied UI: login loop | Cookies blocked for the name, or the clock off on a node |
