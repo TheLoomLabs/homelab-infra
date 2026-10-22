@@ -56,6 +56,7 @@ spec:
     - {server: https://kubernetes.default.svc, namespace: vaultwarden}
     - {server: https://kubernetes.default.svc, namespace: homepage}
     - {server: https://kubernetes.default.svc, namespace: forgejo}
+    - {server: https://kubernetes.default.svc, namespace: authentik}
   clusterResourceWhitelist:
     - {group: "*", kind: "*"}
 ---
@@ -70,12 +71,15 @@ spec:
   description: Daily-use apps (namespaced only, no Namespace objects)
   sourceRepos:
     - https://github.com/TheLoomLabs/homelab-infra.git
+    # Authentik (server + worker; nothing cluster-scoped, values.yaml).
+    - https://charts.goauthentik.io
   # One entry per app namespace, added with the app. Never the platform
   # namespaces above.
   destinations:
     - {server: https://kubernetes.default.svc, namespace: vaultwarden}
     - {server: https://kubernetes.default.svc, namespace: homepage}
     - {server: https://kubernetes.default.svc, namespace: forgejo}
+    - {server: https://kubernetes.default.svc, namespace: authentik}
   # Nothing cluster-scoped, not even Namespace: the platform creates app
   # namespaces with their Pod Security labels. An app that needs to read the
   # cluster (Homepage) gets its ClusterRoles and bindings from the platform's
