@@ -116,7 +116,8 @@ variable "swarm_vip_offset" {
 variable "nodes" {
   description = <<-EOT
     Every VM in the lab. 'group' maps to the Ansible inventory group
-    (dns, k8s_control_plane, k8s_workers, swarm_managers, swarm_workers);
+    (dns, k8s_control_plane, k8s_workers, swarm_managers, swarm_workers,
+    ci_runners);
     'ip_offset' is the host number inside network_cidr. 'startup_order' sets
     the Proxmox boot order (lower starts first; unset = no order).
     'data_disk_gb' adds an empty second disk for Longhorn (Kubernetes workers
@@ -145,14 +146,18 @@ variable "nodes" {
     swarm-m-01 = { vm_id = 241, group = "swarm_managers", ip_offset = 41, cores = 2, memory_mb = 4096, disk_gb = 40 }
     swarm-m-02 = { vm_id = 242, group = "swarm_managers", ip_offset = 42, cores = 2, memory_mb = 4096, disk_gb = 40 }
     swarm-m-03 = { vm_id = 243, group = "swarm_managers", ip_offset = 43, cores = 2, memory_mb = 4096, disk_gb = 40 }
+    # Forgejo Actions runner (role forgejo_runner): jobs in Docker containers.
+    # .45, not .51: the router's DHCP had given .51 to another device
+    # (scripts/lan-scan.py).
+    runner-01 = { vm_id = 251, group = "ci_runners", ip_offset = 45, cores = 4, memory_mb = 8192, disk_gb = 60 }
   }
 
   validation {
     condition = alltrue([
       for n in values(var.nodes) :
-      contains(["dns", "k8s_control_plane", "k8s_workers", "swarm_managers", "swarm_workers"], n.group)
+      contains(["dns", "k8s_control_plane", "k8s_workers", "swarm_managers", "swarm_workers", "ci_runners"], n.group)
     ])
-    error_message = "Each node group must be one of: dns, k8s_control_plane, k8s_workers, swarm_managers, swarm_workers."
+    error_message = "Each node group must be one of: dns, k8s_control_plane, k8s_workers, swarm_managers, swarm_workers, ci_runners."
   }
 
   validation {

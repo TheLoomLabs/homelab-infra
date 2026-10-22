@@ -13,7 +13,7 @@ locals {
   # Second Proxmox tag per group: the platform the VM belongs to.
   platform_tag = {
     for g in local.groups : g => (
-      startswith(g, "k8s") ? "kubernetes" : startswith(g, "swarm") ? "swarm" : g
+      startswith(g, "k8s") ? "kubernetes" : startswith(g, "swarm") ? "swarm" : startswith(g, "ci") ? "ci" : g
     )
   }
 }

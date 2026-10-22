@@ -31,6 +31,9 @@ all:
         swarm-m-03: {ansible_host: 192.168.10.43}
     swarm_workers:
       hosts: {}
+    ci_runners:
+      hosts:
+        runner-01: {ansible_host: 192.168.10.45}
     k8s:
       children:
         k8s_control_plane:
