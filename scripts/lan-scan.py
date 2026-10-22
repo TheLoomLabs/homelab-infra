@@ -10,17 +10,24 @@ Each address is matched against what the repo plans for it:
   - A records in dns/records.yml
   - the Cilium LoadBalancer pool (kubernetes/platform/cilium-lb/ip-pool.yaml)
 
-Proxmox gives its VMs MAC addresses starting with bc:24:11. A VM address, VIP
-or LoadBalancer address that answers from any other MAC is reported as
-CONFLICT: another device (usually a phone or laptop with a DHCP lease from the
-router) holds it. MACs with the
-locally administered bit set are random per-network MACs (phones, laptops).
+The output is a map of the whole /24, then the lab addresses, the other
+devices and the free ranges. Lab addresses get a state:
+
+  ok        answers, and from a Proxmox VM (MAC bc:24:11:...) where one is expected
+  DOWN      planned in the repo, but nothing answers (VM off, VIP not held)
+  CONFLICT  a VM, VIP or LoadBalancer address answered by a MAC that is not a
+            Proxmox VM: another device (usually a phone or laptop with a DHCP
+            lease from the router) holds it
+
+MACs with the locally administered bit set are random per-network MACs
+(phones, laptops). Colours only on a terminal; NO_COLOR or --no-color turn
+them off.
 
 Run it from a machine on the LAN (ARP doesn't cross routers or Tailscale):
 
-    scripts/lan-scan.py                 # every address, with what it is
-    scripts/lan-scan.py --free          # only free, unplanned addresses
-    scripts/lan-scan.py --start 40 --end 59
+    scripts/lan-scan.py                 # map and tables
+    scripts/lan-scan.py --free          # only free, unplanned addresses, one per line
+    scripts/lan-scan.py --start 40 --end 59 --no-map
 
 A sleeping phone may miss both pings and ARP; run it again before taking an
 address. Exit code 1 when a CONFLICT is found.
@@ -30,18 +37,43 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import dataclasses
 import ipaddress
+import os
 import pathlib
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 INVENTORY = ROOT / "ansible/inventory/hosts.yml"
 DNS_RECORDS = ROOT / "dns/records.yml"
 LB_POOL = ROOT / "kubernetes/platform/cilium-lb/ip-pool.yaml"
 PROXMOX_OUI = "bc:24:11"
+LB = "LoadBalancer pool"
+
+# ANSI colours, emptied when colour is off.
+C = {"reset": "\033[0m", "bold": "\033[1m", "dim": "\033[2m", "red": "\033[31m", "green": "\033[32m",
+     "yellow": "\033[33m", "blue": "\033[34m", "magenta": "\033[35m", "cyan": "\033[36m"}
+
+
+def paint(text: str, *styles: str) -> str:
+    codes = "".join(C[s] for s in styles)
+    return f"{codes}{text}{C['reset']}" if codes else text
+
+
+@dataclasses.dataclass
+class Address:
+    ip: str
+    host: int
+    answered: bool = False
+    mac: str = ""
+    plan: str = ""
+    kind: str = "free"  # lab | down | conflict | other | self | gateway | lb-free | free
+    note: str = ""
 
 
 def read(path: pathlib.Path) -> str:
@@ -73,7 +105,7 @@ def planned_addresses() -> tuple[dict[str, str], str | None]:
     for start, stop in re.findall(r"start:\s*([\d.]+)\s*\n\s*stop:\s*([\d.]+)", read(LB_POOL)):
         first, last = ipaddress.ip_address(start), ipaddress.ip_address(stop)
         for n in range(int(first), int(last) + 1):
-            planned.setdefault(str(ipaddress.ip_address(n)), "LoadBalancer pool")
+            planned.setdefault(str(ipaddress.ip_address(n)), LB)
 
     # DNS: {name: git-ssh, type: A, value: 192.168.1.62}  # comment
     for line in read(DNS_RECORDS).splitlines():
@@ -104,28 +136,26 @@ def arp_table() -> dict[str, str]:
     return table
 
 
-def local_addresses() -> set[str]:
+def ip_command(*args: str) -> str:
     if not shutil.which("ip"):
-        return set()
-    out = subprocess.run(["ip", "-4", "-o", "addr", "show"], capture_output=True, text=True, check=False).stdout
-    return set(re.findall(r"inet ([\d.]+)/", out))
+        return ""
+    return subprocess.run(["ip", *args], capture_output=True, text=True, check=False).stdout
 
 
 def on_vm(plan: str) -> bool:
     """Addresses that only a Proxmox VM should answer: VMs, VIPs, the LB pool.
     DNS-only names (pve: the Proxmox host's own NIC) are not checked."""
-    return any(word in plan for word in ("VM ", "VIP", "LoadBalancer pool"))
+    return any(word in plan for word in ("VM ", "VIP", LB))
 
 
 def random_mac(mac: str) -> bool:
     return bool(int(mac.split(":")[0], 16) & 0x2)
 
 
-def ranges(ips: list[str]) -> str:
-    """192.168.1.44, .45, .46, .50 -> '.44-.46, .50'."""
-    nums = sorted(int(ip.rsplit(".", 1)[1]) for ip in ips)
+def ranges(nums: list[int]) -> str:
+    """[44, 45, 46, 50] -> '.44-.46, .50'."""
     parts, start, prev = [], None, None
-    for n in nums + [None]:
+    for n in [*sorted(nums), None]:
         if start is None:
             start = prev = n
         elif n is not None and n == prev + 1:
@@ -136,6 +166,73 @@ def ranges(ips: list[str]) -> str:
     return ", ".join(parts)
 
 
+def classify(a: Address, mine: set[str], gateway: str) -> None:
+    used = a.answered or bool(a.mac)
+    if a.ip in mine:
+        a.kind, a.note = "self", "this machine"
+    elif a.ip == gateway:
+        a.kind, a.note = "gateway", "default gateway (router)"
+    elif a.plan and not used:
+        a.kind = "lb-free" if a.plan == LB else "down"
+    elif not used:
+        a.kind = "free"
+    elif on_vm(a.plan) and a.mac and not a.mac.startswith(PROXMOX_OUI):
+        a.kind = "conflict"
+        a.note = "not a Proxmox VM" + (" (random MAC: phone/laptop)" if random_mac(a.mac) else "")
+    elif a.plan:
+        a.kind = "lab"
+    else:
+        a.kind = "other"
+        a.note = "random MAC: phone/laptop" if a.mac and random_mac(a.mac) else "device"
+    if used and not a.answered and a.kind not in ("self", "gateway"):
+        a.note = (a.note + ", " if a.note else "") + "ARP only (drops ping)"
+
+
+# Map glyph and colour per kind; the legend lists them in this order.
+GLYPH = {
+    "lab": ("■", ("green",), "lab (repo)"),
+    "down": ("□", ("red", "bold"), "planned, down"),
+    "conflict": ("✕", ("red", "bold"), "conflict"),
+    "other": ("■", ("yellow",), "other device"),
+    "gateway": ("■", ("cyan",), "gateway"),
+    "self": ("■", ("magenta",), "this machine"),
+    "lb-free": ("-", ("blue",), "LB pool, free"),
+    "free": ("·", ("dim",), "free"),
+}
+STATE = {"lab": ("ok", ("green",)), "down": ("DOWN", ("red", "bold")), "conflict": ("CONFLICT", ("red", "bold"))}
+
+
+def print_map(addrs: dict[int, Address], network: ipaddress.IPv4Network) -> None:
+    prefix = str(network.network_address).rsplit(".", 1)[0]
+    print(paint(f"  {prefix}.", "bold"))
+    for row in range(0, 256, 32):
+        cells = []
+        for n in range(row, row + 32):
+            if n % 8 == 0 and n != row:
+                cells.append(" ")
+            a = addrs.get(n)
+            if a is None:  # .0, .255 and anything outside --start/--end
+                cells.append(" ")
+                continue
+            glyph, styles, _ = GLYPH[a.kind]
+            cells.append(paint(glyph, *styles))
+        print(f"  {paint(f'.{row:<3}', 'dim')} {''.join(cells)}")
+    legend = "   ".join(f"{paint(g, *s)} {label}" for g, s, label in GLYPH.values())
+    print(f"\n  {legend}\n")
+
+
+def table(title: str, headers: list[str], rows: list[list[tuple[str, tuple[str, ...]]]]) -> None:
+    """Rows of (text, styles) cells; columns sized to the plain text."""
+    if not rows:
+        return
+    widths = [max(len(h), *(len(r[i][0]) for r in rows)) for i, h in enumerate(headers)]
+    print(paint(f"  {title} ({len(rows)})", "bold"))
+    print("  " + "  ".join(paint(h.ljust(w), "dim") for h, w in zip(headers, widths, strict=True)).rstrip())
+    for r in rows:
+        print("  " + "  ".join(paint(text.ljust(w), *st) for (text, st), w in zip(r, widths, strict=True)).rstrip())
+    print()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--cidr", help="network to scan (default: lab_network_cidr from the inventory, else 192.168.1.0/24)")
@@ -143,55 +240,77 @@ def main() -> int:
     parser.add_argument("--end", type=int, default=254, help="last host number (default 254)")
     parser.add_argument("--tries", type=int, default=2, help="pings per address (default 2)")
     parser.add_argument("--timeout", type=int, default=1, help="seconds to wait per ping (default 1)")
-    parser.add_argument("--free", action="store_true", help="list only free addresses the repo doesn't plan for")
+    parser.add_argument("--free", action="store_true", help="print only free, unplanned addresses, one per line")
+    parser.add_argument("--no-map", action="store_true", help="leave out the map of the /24")
+    parser.add_argument("--no-color", action="store_true", help="plain text (also: NO_COLOR=1)")
     args = parser.parse_args()
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # quiet exit when piped into head
 
+    if args.free or args.no_color or os.environ.get("NO_COLOR") or not sys.stdout.isatty():
+        C.update(dict.fromkeys(C, ""))
     if not shutil.which("ping"):
         sys.exit("ping not found (package iputils-ping)")
+
     planned, inv_cidr = planned_addresses()
     network = ipaddress.ip_network(args.cidr or inv_cidr or "192.168.1.0/24", strict=False)
-    hosts = [str(network.network_address + n) for n in range(args.start, args.end + 1)
-             if network.network_address + n in network]
+    addrs = {n: Address(str(network.network_address + n), n, plan=planned.get(str(network.network_address + n), ""))
+             for n in range(args.start, args.end + 1) if network.network_address + n in network}
 
+    began = time.monotonic()
     with concurrent.futures.ThreadPoolExecutor(max_workers=64) as pool:
-        answered = dict(zip(hosts, pool.map(lambda ip: ping(ip, args.tries, args.timeout), hosts)))
+        for a, ok in zip(addrs.values(), pool.map(lambda a: ping(a.ip, args.tries, args.timeout), addrs.values()),
+                         strict=True):
+            a.answered = ok
     arp = arp_table()
-    mine = local_addresses()
+    mine = set(re.findall(r"inet ([\d.]+)/", ip_command("-4", "-o", "addr", "show")))
+    m = re.search(r"default via ([\d.]+)", ip_command("-4", "route", "show", "default"))
+    gateway = m.group(1) if m else ""
+    for a in addrs.values():
+        a.mac = arp.get(a.ip, "")
+        classify(a, mine, gateway)
+    took = time.monotonic() - began
 
-    rows, free, conflicts = [], [], 0
-    for ip in hosts:
-        mac = arp.get(ip, "")
-        used = answered[ip] or bool(mac) or ip in mine
-        plan = planned.get(ip, "")
-        if ip in mine:
-            status, note = "used", "this machine"
-        elif not used:
-            status, note = ("planned" if plan else "free"), ""
-        elif on_vm(plan) and mac and not mac.startswith(PROXMOX_OUI):
-            status, note = "CONFLICT", "not a Proxmox VM" + (" (random MAC: phone/laptop)" if random_mac(mac) else "")
-            conflicts += 1
-        else:
-            status = "used"
-            note = "" if plan else ("random MAC: phone/laptop" if mac and random_mac(mac) else "not in the repo")
-            if not answered[ip] and mac:
-                note = (note + ", " if note else "") + "ARP only (drops ping)"
-        if status == "free":
-            free.append(ip)
-        rows.append((ip, status, mac or "-", plan or "-", note))
-
+    free = [n for n, a in addrs.items() if a.kind == "free"]
     if args.free:
-        for ip in free:
-            print(ip)
-    else:
-        print(f"{'ADDRESS':<16}{'STATUS':<10}{'MAC':<19}{'PLANNED IN REPO':<34}NOTE")
-        for ip, status, mac, plan, note in rows:
-            if status == "free" or (status == "planned" and plan == "LoadBalancer pool"):
-                continue
-            print(f"{ip:<16}{status:<10}{mac:<19}{plan:<34}{note}")
-        print(f"\nfree and unplanned ({len(free)}): {ranges(free) if free else 'none'}")
-        if conflicts:
-            print(f"{conflicts} CONFLICT(s): a lab address is held by a device that isn't a Proxmox VM.")
-    return 1 if conflicts else 0
+        for n in free:
+            print(addrs[n].ip)
+        return 0
+
+    count = {k: sum(a.kind == k for a in addrs.values()) for k in GLYPH}
+    print()
+    print(paint(f"  {network}", "bold"), paint(f"· .{args.start}-.{args.end} · {took:.0f} s", "dim"))
+    print()
+    if not args.no_map:
+        print_map(addrs, network)
+
+    lab = [a for a in addrs.values() if a.kind in STATE]
+    table("Lab addresses", ["ADDRESS", "STATE", "PLANNED IN REPO", "MAC", "NOTE"], [
+        [(a.ip, ()), (STATE[a.kind][0], STATE[a.kind][1]), (a.plan, ()),
+         (a.mac or "-", ("dim",) if a.mac.startswith(PROXMOX_OUI) else ("yellow",)), (a.note, ("dim",))]
+        for a in lab])
+
+    others = [a for a in addrs.values() if a.kind in ("other", "gateway", "self")]
+    table("Other devices", ["ADDRESS", "MAC", "WHAT", "DNS"], [
+        [(a.ip, GLYPH[a.kind][1]), (a.mac or "-", ("dim",)), (a.note, ()), (a.plan or "", ("dim",))]
+        for a in others])
+
+    print(paint(f"  Free, not planned in the repo ({len(free)})", "bold"))
+    print("  " + (paint(ranges(free), "green") if free else paint("none", "yellow")))
+    lb_free = [n for n, a in addrs.items() if a.kind == "lb-free"]
+    if lb_free:
+        print(paint(f"  LoadBalancer pool, unassigned ({len(lb_free)}): {ranges(lb_free)}", "blue"))
+    print()
+
+    summary = [paint(f"{count['lab']} lab ok", "green"),
+               paint(f"{count['down']} down", "red", "bold") if count["down"] else paint("0 down", "dim"),
+               paint(f"{count['conflict']} conflict", "red", "bold") if count["conflict"] else paint("0 conflict", "dim"),
+               paint(f"{count['other'] + count['gateway'] + count['self']} other devices", "yellow"),
+               paint(f"{len(free)} free", "green")]
+    print("  " + paint(" · ", "dim").join(summary))
+    if count["conflict"]:
+        print(paint("  A lab address is held by a device that isn't a Proxmox VM. Fix that before it bites.", "red"))
+    print()
+    return 1 if count["conflict"] else 0
 
 
 if __name__ == "__main__":
