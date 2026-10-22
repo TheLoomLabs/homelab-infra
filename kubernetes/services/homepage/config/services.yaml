@@ -15,6 +15,7 @@
 - Status:
     - Alerts:
         icon: alertmanager.svg
+        href: https://alertmanager.lab.theloomlabs.org
         description: Alertmanager (Watchdog, info not counted)
         namespace: monitoring
         app: alertmanager
@@ -90,7 +91,8 @@
     # can delete volumes.
     - Longhorn:
         icon: longhorn.svg
-        description: Storage (UI after SSO)
+        href: https://longhorn.lab.theloomlabs.org
+        description: Storage
         namespace: longhorn-system
         podSelector: app=longhorn-manager
         widget:
@@ -218,7 +220,8 @@
 
     - Prometheus:
         icon: prometheus.svg
-        description: Metrics (UI after SSO)
+        href: https://prometheus.lab.theloomlabs.org
+        description: Metrics
         namespace: monitoring
         app: prometheus
         widget:
