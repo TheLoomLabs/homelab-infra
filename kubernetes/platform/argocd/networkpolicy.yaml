@@ -149,3 +149,33 @@ spec:
         - ports:
             - port: "8080"
               protocol: TCP
+---
+# argocd-server talks to Authentik (OIDC discovery, JWKS, token exchange) at
+# https://auth.lab.theloomlabs.org, which is the shared Gateway. Cilium checks
+# a pod's traffic to the Gateway against the Gateway's address and, after
+# Envoy, against the backend (Authentik's server pod); both are allowed.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: server-to-authentik
+  namespace: argocd
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-server
+  egress:
+    - toFQDNs:
+        - matchName: auth.lab.theloomlabs.org
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: authentik
+            app.kubernetes.io/name: authentik
+            app.kubernetes.io/component: server
+      toPorts:
+        - ports:
+            - port: "9000"
+              protocol: TCP
