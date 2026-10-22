@@ -156,7 +156,7 @@ Each app is an OAuth2/OIDC provider + application in a blueprint (`lab-app-<slug
 
 | App | Login | Admin from | Others allowed | Break-glass |
 |---|---|---|---|---|
-| Argo CD (`argocd`) | **Log in via Authentik**; CLI `argocd login argocd.lab.theloomlabs.org --sso --grpc-web` | `lab-admins` → `role:admin` (`policy.csv`) | nobody | `kubectl` (cluster admin); local `admin` until it's turned off |
+| Argo CD (`argocd`) | **Log in via Authentik**; CLI `argocd login argocd.lab.theloomlabs.org --sso --grpc-web` | `lab-admins` → `role:admin` (`policy.csv`) | nobody | `kubectl` (cluster admin); the local `admin` is off (`admin.enabled: "false"`) |
 | Grafana (`grafana`) | **Sign in with Authentik** | `lab-admins` → Admin (`role_attribute_path`) | `lab-users` → Viewer | the admin form (`grafana-admin`) |
 
 Issuer and discovery for an app: `https://auth.lab.theloomlabs.org/application/o/<slug>/.well-known/openid-configuration`.

@@ -18,6 +18,10 @@ configs:
     # Local account for the Homepage widget (docs/homepage.md): API tokens
     # only, no UI login. Its token is in Homepage's SOPS secret.
     accounts.homepage: apiKey
+    # No local admin: people log in with Authentik (lab-admins → role:admin).
+    # Break-glass is kubectl (cluster admin), not a password (docs/sso.md).
+    # The homepage account is separate and keeps working (API token only).
+    admin.enabled: "false"
     # Login with Authentik (docs/sso.md). Argo CD's own OIDC client, no Dex.
     # The secret is read from the Secret argocd-oidc (oidc.sops.yaml; it
     # carries the label app.kubernetes.io/part-of: argocd, which Argo CD

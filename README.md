@@ -131,11 +131,10 @@ kubectl get nodes -o wide         # KUBECONFIG is set by devbox
 cilium status
 kubectl -n argocd get applications
 
-# Argo CD UI on https://argocd.lab.theloomlabs.org (user admin). First login only:
-# read the generated password, change it (User Info → Update Password), then
-# delete the secret. Argo CD doesn't recreate it once a password is set.
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
-kubectl -n argocd delete secret argocd-initial-admin-secret
+# Argo CD UI on https://argocd.lab.theloomlabs.org: Log in via Authentik (group
+# lab-admins). The local admin is off; until Authentik has your account, use
+# kubectl. Argo CD still creates an initial admin secret on a fresh install: delete it.
+kubectl -n argocd delete secret argocd-initial-admin-secret --ignore-not-found
 # Lab DNS (docs/dns.md): point the router's DNS, or your workstation, at dns-01 and dns-02.
 # Without it: kubectl -n argocd port-forward svc/argocd-server 8080:80 → http://localhost:8080
 ```

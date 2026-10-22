@@ -144,7 +144,7 @@ Then open `https://home.lab.theloomlabs.org` and log in with the password from s
 
 ### 6. Argo CD token
 
-1. `https://argocd.lab.theloomlabs.org` → log in as admin → **Settings** → **Accounts** → **homepage** → **Tokens** → **Generate New** (no expiry, or a date you'll rotate at) → copy the token.
+1. `https://argocd.lab.theloomlabs.org` → **Log in via Authentik** (lab-admins) → **Settings** → **Accounts** → **homepage** → **Tokens** → **Generate New** (no expiry, or a date you'll rotate at) → copy the token.
 2. Put it into the secret and restart the pod (it reads its environment at start):
 
 ```bash
