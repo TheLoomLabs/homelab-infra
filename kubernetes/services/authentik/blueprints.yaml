@@ -468,7 +468,8 @@ data:
         attrs:
           name: Proxmox
           provider: !KeyOf provider
-          meta_launch_url: https://pve.lab.theloomlabs.org:8006
+          # By IP, like Homepage (self-signed cert, HSTS blocks pve.lab).
+          meta_launch_url: https://192.168.1.200:8006
           meta_icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/proxmox.svg
           policy_engine_mode: any
       - model: authentik_policies.policybinding
