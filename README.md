@@ -79,7 +79,7 @@ flowchart LR
   UK -- down/up --> AL
 ```
 
-More detail is in [docs/architecture.md](docs/architecture.md). The design decisions are recorded as ADRs in [docs/adr](docs/adr), the plan in [docs/roadmap.md](docs/roadmap.md).
+More detail is in [docs/architecture.md](docs/architecture.md). The design decisions are recorded as ADRs in [docs/adr](docs/adr).
 
 | Runbook | Covers |
 |---|---|
@@ -172,7 +172,7 @@ The one-time Proxmox preparation (API token, storage content types) is in [docs/
 ├── scripts/                    # check-manifests.py (make manifests), scan-images.py (make images), hubble-flows.py, lan-scan.py, swarm-restic.sh, vaultwarden-restic.sh, forgejo-restic.sh, authentik-restic.sh
 └── docs/                       # architecture, bootstrap, runbooks (dns, secrets, storage,
                                 # backup, swarm-backup, monitoring, edge, alerting, uptime, portainer, vaultwarden, forgejo, forgejo-runner, sso, homepage, logging, ci, maintenance, encryption,
-                                # pod-security, network-policy, audit-logging), ADRs, roadmap
+                                # pod-security, network-policy, audit-logging), ADRs
 ```
 
 ## Security notes

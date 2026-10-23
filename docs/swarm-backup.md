@@ -193,6 +193,6 @@ Stale locks after a crash: `scripts/swarm-restic.sh unlock`.
 
 ## Limitations
 
-- Only stacks pinned to a node are covered, and only on managers (the script scales services). Swarm HA (roadmap) keeps the stateful stacks pinned.
+- Only stacks pinned to a node are covered, and only on managers (the script scales services). Swarm HA keeps the stateful stacks pinned.
 - A backup costs each stopped service 10–20 seconds of downtime every night.
 - If an upload is interrupted after R2 stored the object, restic's retry of the same object is refused by the lock and that night's backup of the volume fails; the next night succeeds.
