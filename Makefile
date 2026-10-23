@@ -86,7 +86,7 @@ uptime: ## Deploy Uptime Kuma on Swarm (needs the alerting stack)
 portainer: ## Deploy Portainer on Swarm (needs the alerting stack and swarm/portainer.sops.yaml)
 	$(PLAYBOOK) playbooks/portainer.yml
 
-logs: ## Ship the DNS and Swarm VMs' logs to Loki (Alloy)
+logs: ## Alloy on the DNS, Swarm and runner VMs: logs to Loki, host metrics for Prometheus
 	$(PLAYBOOK) playbooks/logs.yml
 
 swarm-backup: ## Nightly restic backups of the Swarm volumes to R2 (needs make logs and swarm/backup.sops.yaml)
