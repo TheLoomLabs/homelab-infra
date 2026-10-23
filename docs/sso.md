@@ -348,7 +348,9 @@ ssh root@pve.lab.theloomlabs.org pveum acl modify / --groups lab-admins-authenti
 ssh root@pve.lab.theloomlabs.org pveum realm list
 ```
 
-Log in at https://pve.lab.theloomlabs.org:8006 with **Realm: Authentik SSO** → **Login (OpenID redirect)** → Authentik → back in Proxmox with full rights. **Datacenter → Permissions → Users** lists `<you>@authentik`, in group `lab-admins-authentik`. Proxmox's own TOTP is not needed for this realm (Authentik asked).
+Log in at https://192.168.1.200:8006 with **Realm: Authentik SSO** → **Login (OpenID redirect)** → Authentik → back in Proxmox with full rights. **Datacenter → Permissions → Users** lists `<you>@authentik`, in group `lab-admins-authentik`. Proxmox's own TOTP is not needed for this realm (Authentik asked).
+
+**Open Proxmox by IP, not by name.** Proxmox serves its own self-signed certificate. On `pve.lab.theloomlabs.org` the browser applies the domain's HSTS rule and refuses it outright (Firefox: `SEC_ERROR_UNKNOWN_ISSUER` with no way to add an exception); on the IP it lets you accept the certificate once. Homepage's Proxmox card and the Authentik app's launch URL point at the IP. Proxmox sends the browser's origin as the redirect URI, so the provider in `lab-app-proxmox.yaml` lists both `https://192.168.1.200:8006` and `https://pve.lab.theloomlabs.org:8006`; open it under another address and Authentik answers *Redirect URI Error* until that origin is added. SSH and the API by name are unaffected (HSTS is a browser rule). To use the name again, give Proxmox a Let's Encrypt certificate with its built-in ACME client and the Cloudflare DNS plugin (`pvenode acme …`); not done.
 
 Unset the helper when done: `unset -f oidc_secret`.
 
@@ -532,6 +534,8 @@ Also look at **Events → Logs** for failed logins and **System → System Tasks
 | App: *invalid_request* (Argo CD) / *Login provider denied login request* (Grafana); server log *Invalid grant_type for provider* | The provider's `grant_types` is empty (the default for new providers): list `authorization_code` and `refresh_token` in the blueprint |
 | App: *invalid_client* / *unauthorized_client* | The two copies of the client secret differ, or the worker started before the key existed (restart it) |
 | App: *redirect_uri mismatch* | The app's callback URL isn't in the provider's `redirect_uris` (exact match) |
+| Proxmox: Authentik *Redirect URI Error* | Proxmox was opened under an address not in the provider's `redirect_uris`: use https://192.168.1.200:8006, or add the origin to `lab-app-proxmox.yaml` |
+| Proxmox by name: `SEC_ERROR_UNKNOWN_ISSUER`, no exception allowed | Self-signed certificate + HSTS on the domain: open it by IP ([Proxmox](#proxmox-cli-on-pve)) |
 | App: login works but no admin rights | The `groups` claim: is your user in `lab-admins`? Argo CD **User Info** shows the groups |
 | App: timeout after the Authentik login | The app's egress to `auth.lab` (Hubble `--verdict DROPPED`) |
 | Login loop or *CSRF* error | The browser reached Authentik under another name than `auth.lab.theloomlabs.org`, or cookies blocked |

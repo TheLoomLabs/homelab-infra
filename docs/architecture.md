@@ -86,6 +86,20 @@ HTTP(S) traffic enters the cluster through one shared Gateway, served by Cilium'
 - There are no public DNS records for lab hosts. Names resolve to the Gateway address only on the LAN, through the lab DNS servers, and later over Tailscale (split DNS).
 - Argo CD itself is at `https://argocd.lab.theloomlabs.org`.
 
+## Single sign-on
+
+**Authentik** (`https://auth.lab.theloomlabs.org`, Kubernetes, namespace `authentik`) is the one login for every lab UI (ADR 0021):
+
+- **OIDC** for Argo CD, Grafana, Forgejo, Homepage, Portainer and Proxmox. Membership in `lab-admins` becomes admin rights in each app (Portainer CE: promoted once by hand); `lab-users` get a normal or read-only account where the app has one.
+- **Proxy login** for UIs without one: the embedded outpost in the Authentik server stands in front of Longhorn, Prometheus and Alertmanager (`lab-admins` only), because the Cilium Gateway has no forward-auth. Each of those pods accepts traffic only from the Authentik server.
+- **MFA for every account**: a passkey/security key or TOTP after the password; recovery codes offline.
+- **Config as blueprints in Git** (groups, login flow, providers, applications, the outpost), client secrets from SOPS. Users, passkeys and sessions live only in Authentik's PostgreSQL, backed up nightly with `pg_dump` + restic to its own locked bucket.
+- No egress outside the cluster: no update check, analytics or SMTP.
+- **Break-glass**: every app keeps a local admin (`root@pam`, Grafana's admin form, Forgejo's CLI, Portainer's internal login); Argo CD's local admin is off, `kubectl` is its way in. Homepage has no other login.
+- **Proxmox is opened by IP** (`https://192.168.1.200:8006`): it keeps its self-signed certificate, and the browser's HSTS for the domain refuses that on `pve.lab`. The OIDC client lists both origins as redirect URIs.
+
+Runbook: [sso.md](sso.md).
+
 ## DNS
 
 Two BIND servers on their own VMs are the DNS for the lab and the whole house (ADR 0008). They don't run on Kubernetes or Swarm, so DNS keeps working while a cluster is down.
@@ -160,7 +174,6 @@ kube-prometheus-stack runs in the namespace `monitoring` (ADR 0011). The receive
 - ntfy and healthchecks are the Swarm stack `alerting`, deployed by Ansible (role `alerting`). Their state is in local volumes on one Swarm node.
 - **Uptime Kuma** (Swarm stack `uptime`, role `uptime_kuma`) checks the lab from outside Kubernetes: the API VIP, web UIs through the Gateway and Traefik, both DNS servers, the Proxmox UI. It notifies through ntfy, so a dead Gateway or app is reported even when Prometheus can't see it. The monitors and the notification are a list in the role, applied by AutoKuma next to it; Prometheus in turn alerts when Uptime Kuma's replica or node is down ([uptime.md](uptime.md)).
 - **Forgejo** (`https://git.lab.theloomlabs.org`, Kubernetes) hosts Git repositories, packages and Actions; Git over SSH on `git-ssh.lab.theloomlabs.org` (LoadBalancer `.62`). No egress: no mirrors or migrations from other hosts. GitHub stays the home of the public repos and of Argo CD's source ([forgejo.md](forgejo.md), ADR 0020).
-- **Authentik** (`https://auth.lab.theloomlabs.org`, Kubernetes) is the identity provider: OIDC for the apps, a proxy login for UIs without one, MFA (passkey or TOTP) for every account. Config as blueprints in Git, users only in its PostgreSQL; no egress outside the cluster. Its embedded outpost puts a login in front of Longhorn, Prometheus and Alertmanager. Every app keeps a local break-glass admin ([sso.md](sso.md), ADR 0021).
 - **Homepage** (`https://home.lab.theloomlabs.org`, Kubernetes) is the start page: every app with a status dot, node and pod load from metrics-server, read-only widgets (Argo CD, Proxmox, healthchecks, Uptime Kuma) and Prometheus queries for Longhorn, Swarm services and firing alerts. Its read access to the cluster comes from the platform app `app-rbac` ([homepage.md](homepage.md), ADR 0019).
 - Not covered: the whole Proxmox host, power or the Starlink link going down. Nothing on the host can report that; the stack moves to a second machine later.
 
