@@ -299,12 +299,14 @@
 - Infrastructure:
     - Proxmox:
         icon: proxmox.svg
-        href: https://pve.lab.theloomlabs.org:8006
+        # By IP: Proxmox has a self-signed certificate, and the browser's HSTS
+        # rule for *.theloomlabs.org blocks the exception on pve.lab.
+        href: https://192.168.1.200:8006
         description: pve
-        siteMonitor: https://pve.lab.theloomlabs.org:8006
+        siteMonitor: https://192.168.1.200:8006
         widget:
           type: proxmox
-          url: https://pve.lab.theloomlabs.org:8006
+          url: https://192.168.1.200:8006
           # API token of homepage@pve, role PVEAuditor (read only).
           username: "{{HOMEPAGE_VAR_PROXMOX_TOKEN_ID}}"
           password: "{{HOMEPAGE_VAR_PROXMOX_TOKEN_SECRET}}"
