@@ -1,0 +1,41 @@
+---
+# kube-vip upgrade on a running control-plane node (docs/maintenance.md).
+# init.yml and join.yml place the manifest on fresh nodes only, so a new
+# kube_vip_version would otherwise reach the first node alone. The kubelet
+# restarts the static pod when the manifest changes; while it restarts, the
+# VIP moves to another node within the lease duration (5 s). The callers run
+# this with serial: 1 (playbooks/kube-vip.yml, playbooks/kubernetes.yml), so
+# two kube-vip pods always hold the lease election. The checks also pass at
+# once when nothing changed.
+
+- name: Kube-vip | Place the manifest
+  ansible.builtin.template:
+    src: kube-vip.yaml.j2
+    dest: /etc/kubernetes/manifests/kube-vip.yaml
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Kube-vip | Wait for the pod to run the new image
+  ansible.builtin.shell: |
+    set -o pipefail
+    id=$(crictl ps --name '^kube-vip$' --state running --quiet | head -n 1)
+    test -n "$id"
+    crictl inspect "$id" | grep -q 'kube-vip/kube-vip:{{ kube_vip_version }}"'
+  args:
+    executable: /bin/bash
+  register: k8s_control_plane_kube_vip_running
+  retries: 30
+  delay: 5
+  until: k8s_control_plane_kube_vip_running.rc == 0
+  changed_when: false
+
+- name: Kube-vip | Wait for the API server behind the VIP
+  ansible.builtin.uri:
+    url: "https://{{ k8s_api_vip }}:6443/livez"
+    validate_certs: false
+    status_code: 200
+  register: k8s_control_plane_kube_vip_livez
+  retries: 30
+  delay: 5
+  until: k8s_control_plane_kube_vip_livez.status == 200

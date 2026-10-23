@@ -56,6 +56,9 @@ pod-security: ## Pod Security defaults on the running cluster (checks running po
 audit: ## Kubernetes audit log on the running cluster (one control-plane node at a time)
 	$(PLAYBOOK) playbooks/audit.yml
 
+kube-vip: ## Roll out kube_vip_version on the running control plane (one node at a time)
+	$(PLAYBOOK) playbooks/kube-vip.yml
+
 cilium: ## Re-apply Cilium Helm values (cilium upgrade if they changed)
 	$(PLAYBOOK) playbooks/cilium.yml
 

@@ -39,6 +39,23 @@ Notes:
 - Rebooting `swarm-m-01` restarts the alerting stack (ntfy and healthchecks are pinned there), so notifications pause for a minute or two. Rebooting the node that holds the Swarm VIP moves the VIP to another manager within a few seconds; the other Swarm UIs stay reachable ([edge.md](edge.md)).
 - The Proxmox host itself is not part of this play.
 
+## Upgrading kube-vip
+
+kube-vip runs as a static pod on every control-plane node (`/etc/kubernetes/manifests/kube-vip.yaml`, template `ansible/roles/k8s_control_plane/templates/kube-vip.yaml.j2`). It is not managed by Argo CD. Renovate bumps `kube_vip_version` in `ansible/inventory/group_vars/k8s.yml`; after the merge:
+
+```
+make kube-vip
+```
+
+`ansible/playbooks/kube-vip.yml` goes through the control-plane nodes one at a time: it writes the manifest, the kubelet restarts the pod, and the play waits until the new image is running and the API server answers on the VIP before it moves on. If the restarted pod held the VIP, another node takes it over within the lease duration (5 s); kubectl may fail for those seconds. `make k8s` runs the same tasks on running nodes (tag `kube_vip`).
+
+Check afterwards:
+
+```
+kubectl -n kube-system get pods -o custom-columns=NAME:.metadata.name,IMAGE:.spec.containers[0].image,STATUS:.status.phase | grep kube-vip
+kubectl -n kube-system get lease plndr-cp-lock -o jsonpath='{.spec.holderIdentity}{"\n"}'
+```
+
 ## Resizing a VM
 
 Memory and CPU live in `nodes` (`terraform/envs/homelab/variables.tf`, or an override in `terraform.tfvars`). The VM module sets `reboot_after_update = false`, so Terraform never restarts a running VM: Proxmox keeps the new values as pending changes until the VM is restarted **from the host**. A reboot inside the guest (`make reboot`, `ansible.builtin.reboot`) keeps the same QEMU process and does not apply them; `qm reboot` on `pve` does.
