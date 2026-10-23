@@ -52,6 +52,16 @@
     - inventory_hostname != k8s_control_plane_first_node
     - not k8s_control_plane_kubelet_conf.stat.exists
 
+# init.yml/join.yml place the manifest on fresh nodes only; this rolls a new
+# kube_vip_version out to the running ones.
+- name: Kube-vip on running nodes
+  ansible.builtin.include_tasks:
+    file: kube-vip.yml
+    apply:
+      tags: kube_vip
+  when: k8s_control_plane_kubelet_conf.stat.exists
+  tags: kube_vip
+
 - name: Control-plane metrics on running nodes
   ansible.builtin.import_tasks: metrics.yml
   tags: cp_metrics

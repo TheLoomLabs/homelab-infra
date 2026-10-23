@@ -1,0 +1,19 @@
+---
+# kube-vip upgrade on the running cluster (docs/maintenance.md). Bump
+# kube_vip_version in inventory/group_vars/k8s.yml, then:
+#
+#   make kube-vip
+#
+# One control-plane node at a time: the kubelet restarts the static pod and
+# the VIP moves to another node for a few seconds, then the play waits for
+# the new image and the API server behind the VIP before the next node.
+
+- name: Kube-vip | Control-plane nodes, one at a time
+  hosts: k8s_control_plane
+  become: true
+  serial: 1
+  tasks:
+    - name: Roll out the kube-vip manifest
+      ansible.builtin.include_role:
+        name: k8s_control_plane
+        tasks_from: kube-vip.yml
