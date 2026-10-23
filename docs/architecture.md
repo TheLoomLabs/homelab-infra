@@ -30,6 +30,8 @@ That adds up to about 50 GB of RAM. The rest stays free for the Proxmox host and
 
 The VMs, VIPs and the LoadBalancer pool use static addresses in the same /24 the Starlink router hands out by DHCP. Before giving an address to something new, check it with `scripts/lan-scan.py` (from a machine on the LAN). It pings the network, reads the ARP table and compares what answers with the inventory, `dns/records.yml` and the LoadBalancer pool. `--free` lists unplanned free addresses; a lab address held by a non-Proxmox MAC is reported as CONFLICT (exit code 1).
 
+**Accepted risk: DHCP overlap.** The Starlink router has no DHCP settings (range, reservations, off), so it may lease a lab address to a phone or laptop, most likely while the VM or VIP that owns it is down (reboot, `make reboot`). Symptoms: a VM, VIP or LoadBalancer service unreachable from some devices, or flapping between MACs. Fix: run `scripts/lan-scan.py`; for a CONFLICT, take the device off the network (Wi-Fi off/on gets it a new lease once the lab address answers again) and bring the VM back. The real fix is an own router behind Starlink in bypass mode, with its DHCP range outside the lab addresses ([roadmap](roadmap.md), Phase 4).
+
 UFW on each node denies incoming traffic by default. Traffic is accepted from the lab, pod and service ranges (`trusted_cidrs`). SSH accepts keys only and is rate-limited.
 
 The lab is IPv4 only. The Starlink router advertises a public IPv6 prefix, so the VMs ignore router advertisements (netplan `accept-ra: false`, role `common`) and have no global IPv6 address, only `fe80::` link-local. UFW denies incoming IPv6 too.
@@ -64,7 +66,7 @@ Cilium gives `LoadBalancer` services an address on the LAN, so no MetalLB is nee
 - Control-plane nodes don't announce. The API VIP (`.20`) is separate and stays with kube-vip.
 - The pool and the announcement policy are an Argo CD Application (`cilium-lb`). Cilium itself is still installed by Ansible.
 
-The pool range must stay outside the router's DHCP range. `externalTrafficPolicy: Local` does not work with L2 announcements, so services keep the default `Cluster`.
+The Starlink router's DHCP range can't be narrowed, so the pool shares the DHCP overlap risk of the static addresses ([Network](#network)). `externalTrafficPolicy: Local` does not work with L2 announcements, so services keep the default `Cluster`.
 
 ## Ingress and TLS
 
