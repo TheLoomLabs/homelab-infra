@@ -225,10 +225,17 @@
         path: /var/run/reboot-required
       register: reboot_required
 
-    # A reboot cancels the jobs running on the VM; Forgejo marks them failed.
+    # The runner is stopped first: it takes no new job and waits up to
+    # forgejo_runner_shutdown_minutes (role forgejo_runner) for running ones,
+    # outside the reboot module's timeout. Jobs still running then fail.
     - name: Reboot and wait for the runner
       when: not reboot_required_only | bool or reboot_required.stat.exists
       block:
+        - name: Stop forgejo-runner (lets running jobs finish)
+          ansible.builtin.systemd_service:
+            name: forgejo-runner
+            state: stopped
+
         - name: Reboot
           ansible.builtin.reboot:
             reboot_timeout: 600

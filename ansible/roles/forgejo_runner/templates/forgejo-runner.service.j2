@@ -15,6 +15,9 @@ WorkingDirectory={{ forgejo_runner_home }}
 ExecStart=/usr/local/bin/forgejo-runner daemon --config /etc/forgejo-runner/config.yml
 Restart=on-failure
 RestartSec=10s
+# The daemon waits shutdown_timeout (config.yml) for running jobs on SIGTERM;
+# systemd waits one minute longer before it kills it.
+TimeoutStopSec={{ forgejo_runner_shutdown_minutes | int + 1 }}min
 # The daemon only talks to Forgejo and the Docker socket; the jobs run in
 # containers.
 NoNewPrivileges=true

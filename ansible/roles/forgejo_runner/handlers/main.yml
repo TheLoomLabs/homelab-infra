@@ -1,5 +1,6 @@
 ---
-# A running job is cancelled by the restart; Forgejo marks it failed.
+# The stop waits up to forgejo_runner_shutdown_minutes for running jobs; jobs
+# still running then are cancelled and Forgejo marks them failed.
 - name: Restart forgejo-runner
   ansible.builtin.systemd_service:
     name: forgejo-runner.service

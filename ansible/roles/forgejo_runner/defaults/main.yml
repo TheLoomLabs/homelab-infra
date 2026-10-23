@@ -19,6 +19,12 @@ forgejo_runner_capacity: 2
 # A job that runs longer is cancelled.
 forgejo_runner_job_timeout: 1h
 
+# A stop or restart of the runner (make runner, make reboot, a Docker update)
+# waits this long for running jobs to finish, then cancels the rest. The
+# runner takes no new job once it is stopping. systemd gives it one minute
+# more (TimeoutStopSec) before it kills the daemon.
+forgejo_runner_shutdown_minutes: 15
+
 # Labels a workflow picks with runs-on. <name>:docker://<image>: the job runs
 # in that image. node is in it, which JavaScript actions (actions/checkout)
 # need. No host label: nothing runs directly on the VM.

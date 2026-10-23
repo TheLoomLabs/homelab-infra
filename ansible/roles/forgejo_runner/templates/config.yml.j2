@@ -9,6 +9,8 @@ runner:
   # No .runner file: the connection is in server.connections below.
   capacity: {{ forgejo_runner_capacity }}
   timeout: {{ forgejo_runner_job_timeout }}
+  # On SIGTERM: stop taking jobs, wait this long for the running ones.
+  shutdown_timeout: {{ forgejo_runner_shutdown_minutes | int }}m
   insecure: false
   labels: {{ forgejo_runner_labels | to_json }}
 
