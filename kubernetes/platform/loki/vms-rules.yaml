@@ -1,0 +1,34 @@
+---
+# Log-based alerts for the VMs outside Kubernetes (docs/monitoring.md). Same
+# ruler as audit-rules.yaml: values.yaml mounts every loki-rules-* ConfigMap
+# into /etc/loki/rules/fake, so the file names (data keys) must differ.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-rules-vms
+  namespace: monitoring
+data:
+  vms.yaml: |
+    groups:
+      - name: ci-runner
+        rules:
+          # The service runs (ForgejoRunnerDown stays quiet), but the runner
+          # can't fetch jobs: Forgejo down or unreachable, or the UUID/token
+          # no longer accepted. The runner polls every 2 seconds and logs each
+          # failure as level=error (logrus text format in the journal).
+          - alert: ForgejoRunnerErrors
+            expr: |
+              sum by (host) (
+                count_over_time({source="journal", unit="forgejo-runner.service"} |= "level=error" [15m])
+              ) > 20
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "The Forgejo runner on {{ $labels.host }} keeps logging errors."
+              description: >-
+                It likely can't fetch jobs and shows as offline under Site
+                administration → Actions → Runners. Grafana → Explore → Loki:
+                {host="{{ $labels.host }}", unit="forgejo-runner.service"}.
+                `unauthenticated` or `runner not found`: register again
+                (Troubleshooting in docs/forgejo-runner.md).

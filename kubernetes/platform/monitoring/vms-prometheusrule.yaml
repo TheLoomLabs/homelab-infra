@@ -255,3 +255,29 @@ spec:
           annotations:
             summary: "The Traefik instances serve different certificates"
             description: "`docker service ps edge_traefik` and `docker service inspect edge_traefik --pretty` (UpdateStatus)."
+
+    - name: ci-runner
+      rules:
+        - alert: ForgejoRunnerDown
+          # The runner has no metrics of its own: Alloy's systemd collector
+          # reports the unit's state (role alloy, alloy_systemd_units). No
+          # series at all while the VM is up means that collector is off on
+          # runner-01 (run make logs). While the VM is down, VMHostDown fires
+          # instead. A graceful stop waits up to 15 minutes for running jobs
+          # (forgejo_runner_shutdown_minutes), hence the 20 minutes.
+          expr: |
+            max by (host) (node_systemd_unit_state{job="node-exporter", name="forgejo-runner.service", state="active"}) == 0
+            or
+            (
+              absent(node_systemd_unit_state{job="node-exporter", name="forgejo-runner.service"})
+                unless on () (min(up{job="alloy-vm", group="ci"}) == 0)
+            )
+          for: 20m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The Forgejo Actions runner isn't running"
+            description: >-
+              forgejo-runner.service is not active on runner-01, or its state isn't reported. Jobs wait in
+              *Waiting*. `systemctl status forgejo-runner` and `journalctl -u forgejo-runner` on runner-01; no
+              series at all: `make logs`. See docs/forgejo-runner.md.

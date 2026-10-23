@@ -87,6 +87,16 @@ loki.source.docker "containers" {
 // Host metrics: node_exporter built in, plus the *.prom files in the
 // textfile directory (Swarm service replicas on the managers).
 prometheus.exporter.unix "node" {
+{% if alloy_systemd_units | length > 0 %}
+  // State of the units in alloy_systemd_units (node_systemd_unit_state),
+  // read over D-Bus. Other units are left out.
+  enable_collectors = ["systemd"]
+
+  systemd {
+    unit_include = {{ alloy_systemd_units | map('regex_escape') | join('|') | to_json }}
+  }
+
+{% endif %}
   textfile {
     directory = "{{ alloy_textfile_dir }}"
   }

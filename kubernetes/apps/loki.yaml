@@ -2,8 +2,8 @@
 # Logs: Loki in single-binary mode, filesystem storage on a Longhorn volume,
 # 15 days of retention (ADR 0012). Alloy (app alloy) ships the logs. The same
 # app ships the push endpoint's basic-auth secret (SopsSecret), the HTTPRoute
-# for the VMs outside the cluster, Loki's alerts, and the Kubernetes audit
-# log's ruler rules and Grafana dashboard (docs/audit-logging.md).
+# for the VMs outside the cluster, Loki's alerts, the ruler rules (Kubernetes
+# audit log, VMs) and the audit Grafana dashboard (docs/audit-logging.md).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

@@ -34,9 +34,10 @@ loki:
     chunk_encoding: snappy
 
   # Log-based alerts (docs/audit-logging.md). In single-binary mode the ruler
-  # runs inside the one Loki process. Rules come from Git: the ConfigMap
-  # loki-rules-audit (audit-rules.yaml) is mounted read-only below; Loki
-  # re-reads the directory on every poll, so a rule change needs no restart.
+  # runs inside the one Loki process. Rules come from Git: the ConfigMaps
+  # loki-rules-audit (audit-rules.yaml) and loki-rules-vms (vms-rules.yaml)
+  # are mounted read-only below; Loki re-reads the directory on every poll,
+  # so a rule change needs no restart.
   # Firing alerts go to Alertmanager, which routes them like Prometheus'.
   rulerConfig:
     storage:
@@ -73,12 +74,18 @@ singleBinary:
   # Rules come from the ConfigMap below, not from the sidecar.
   sidecar: false
   # Tenant "fake" (auth_enabled: false) is the directory name.
+  # Every loki-rules-* ConfigMap in one directory (audit-rules.yaml,
+  # vms-rules.yaml); their data keys are the rule file names.
   extraVolumes:
-    - name: rules-audit
-      configMap:
-        name: loki-rules-audit
+    - name: rules
+      projected:
+        sources:
+          - configMap:
+              name: loki-rules-audit
+          - configMap:
+              name: loki-rules-vms
   extraVolumeMounts:
-    - name: rules-audit
+    - name: rules
       mountPath: /etc/loki/rules/fake
       readOnly: true
   # Plain longhorn class (two replicas, no encryption, no backups), like

@@ -41,6 +41,11 @@ alloy_listen_address: "{{ ansible_host }}:12345"
 # alerts and dashboards cover these VMs too.
 alloy_node_metrics: true
 
+# systemd units whose state the node exporter reports (node_systemd_unit_state),
+# for services without metrics of their own. Only these units: the collector
+# is off when the list is empty. Needs alloy_node_metrics.
+alloy_systemd_units: "{{ ['forgejo-runner.service'] if 'ci_runners' in group_names else [] }}"
+
 # Container metrics (Alloy's built-in cAdvisor) on Docker hosts.
 alloy_container_metrics: "{{ alloy_docker_logs }}"
 
