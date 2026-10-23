@@ -24,7 +24,8 @@ Forgejo Actions jobs run on their own VM, **runner-01** (`192.168.1.45`), not on
 - **Networks.** Every job gets its own bridge network from `172.18.0.0/16` (`default-address-pools`, `/24` each). The pool is set explicitly, so Docker never picks a `192.168.x` range that overlaps the LAN. Jobs reach the internet (actions from `data.forgejo.org`, images, packages) and the LAN (Forgejo at `git.lab.theloomlabs.org` through the Gateway). Routed traffic is allowed (role `hardening`).
 - **Cache server** for `actions/cache` runs inside the runner on the VM address. UFW trusts `172.17.0.0/16` and `172.18.0.0/16` on this VM so job containers can reach it. Without that, `actions/cache` hangs until it times out.
 - **Clean-up:** `forgejo-runner-prune.timer` (Sundays 04:30) removes images and build cache unused for a week, then unused anonymous volumes. Job images are never re-pulled while they exist, so the weekly clean-up is also what brings in a newer `node:22-bookworm`.
-- **Observability:** Alloy ships the journal (the runner's own log is there: `unit="forgejo-runner.service"`) and serves host metrics. Container logs and cAdvisor are off on this VM, because every job container would be a new log stream and a new set of series. Job logs live in Forgejo (**Actions** tab), and their retention is Forgejo's (`LOG_RETENTION_DAYS`, default 365). `VMHostDown` and the node alerts cover the VM; the Docker Swarm dashboard shows it under Hosts.
+- **Graceful stop:** on a stop or restart (`make runner`, `make reboot`, a Docker update) the runner takes no new job and waits up to 15 minutes for running ones (`forgejo_runner_shutdown_minutes`, `runner.shutdown_timeout` in the config). Jobs still running then are cancelled. systemd waits one minute longer (`TimeoutStopSec`) before it kills the daemon.
+- **Observability:** Alloy ships the journal (the runner's own log is there: `unit="forgejo-runner.service"`) and serves host metrics. Container logs and cAdvisor are off on this VM, because every job container would be a new log stream and a new set of series. Job logs live in Forgejo (**Actions** tab), and their retention is Forgejo's (`LOG_RETENTION_DAYS`, default 365). `VMHostDown` and the node alerts cover the VM; the Docker Swarm dashboard shows it under Hosts. Two alerts cover the runner itself, which has no metrics of its own: `ForgejoRunnerDown` when `forgejo-runner.service` isn't active for 20 minutes (Alloy's systemd collector reports the unit's state, `alloy_systemd_units` in role `alloy`), and `ForgejoRunnerErrors` when the service runs but keeps logging errors, usually because it can't fetch jobs from Forgejo (Loki rule, `kubernetes/platform/loki/vms-rules.yaml`).
 
 ### Accepted risks
 
@@ -121,7 +122,7 @@ Expected: the job is green; the first run shows one line in `runs` and the cache
 
 ### Upgrade
 
-Renovate opens a PR when a new runner release comes out (`forgejo-releases` datasource). Read the release notes; majors change workflow behaviour and config keys. Then do step 1 for the new version, put the hash into the PR (`forgejo_runner_sha256`), merge, and run `make runner`. The restart cancels running jobs. A Forgejo LTS move may need a newer runner first ([forgejo.md](forgejo.md#upgrades)).
+Renovate opens a PR when a new runner release comes out (`forgejo-releases` datasource). Read the release notes; majors change workflow behaviour and config keys. Then do step 1 for the new version, put the hash into the PR (`forgejo_runner_sha256`), merge, and run `make runner`. The restart waits up to 15 minutes for running jobs, then cancels the rest. A Forgejo LTS move may need a newer runner first ([forgejo.md](forgejo.md#upgrades)).
 
 ### Rotate the secret
 
@@ -144,17 +145,18 @@ Change `forgejo_runner_labels` or `forgejo_runner_capacity` in the role defaults
 
 ### Reboot
 
-`make reboot` reboots the runner last (after the Swarm managers) and waits for the service. Jobs running at that moment fail. Check **Site administration → Actions → Runners** for an idle runner first.
+`make reboot` reboots the runner last (after the Swarm managers). It stops the service first, which waits up to 15 minutes for running jobs, then reboots and waits for the service. Jobs still running after the 15 minutes fail. Check **Site administration → Actions → Runners** for an idle runner first to skip the wait.
 
 ### Remove the runner
 
-**Site administration → Actions → Runners → runner-01 → Delete**, then remove the node from Terraform (`make tf-plan`, `make tf-apply`), the VM targets from `scrapeconfig-vms.yaml` and the address from the `prometheus` network policy.
+**Site administration → Actions → Runners → runner-01 → Delete**, then remove the node from Terraform (`make tf-plan`, `make tf-apply`), the VM targets from `scrapeconfig-vms.yaml`, the address from the `prometheus` network policy, and the `ci-runner` rule groups from `vms-prometheusrule.yaml` and `kubernetes/platform/loki/vms-rules.yaml`.
 
 ## Troubleshooting
 
 | Symptom | Cause, fix |
 |---|---|
 | Runner offline in Forgejo, journal shows `unauthenticated` or `runner not found` | UUID or token doesn't match what Forgejo has. Run the register command again with the token from `ci/runner.sops.yaml`; compare the printed UUID with `forgejo_runner_uuid` |
+| `ForgejoRunnerDown` fires while the service is active | No `node_systemd_unit_state` series for the runner: the systemd collector is off. Run `make logs`; then `journalctl -u alloy` on runner-01 shows D-Bus errors if Alloy can't read the unit state |
 | Journal shows TLS or DNS errors for `git.lab.theloomlabs.org` | The VM resolves through dns-01/dns-02 (`resolvectl status`). The certificate is the Gateway's wildcard certificate |
 | Job waits forever in *Waiting* | No runner has the job's `runs-on` label (`docker` or `ubuntu-latest`), or both slots are busy |
 | `actions/cache` hangs, then warns that the cache service is unreachable | UFW on the VM doesn't trust the Docker ranges: `sudo ufw status \| grep 172.1`. Run `cd ansible && ansible-playbook playbooks/base.yml --limit runner-01` |

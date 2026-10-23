@@ -204,6 +204,7 @@ Prometheus on Kubernetes also scrapes the VMs outside the cluster (dns-01, dns-0
 - **Targets are static** (`scrapeconfig-vms.yaml`, ScrapeConfig CRD): the VMs' LAN addresses, with the labels `host` (VM name, also used as `instance`) and `group` (`dns`, `swarm`, `ci`). A new or re-addressed VM means changing that file and the `prometheus` network policy (egress `toCIDR` per address and port).
 - **Host metrics use job `node-exporter`**, like the cluster nodes. kube-prometheus-stack's node alerts (disk filling up, memory, clock, network errors), its recording rules and the *Node Exporter / Nodes* and *USE Method* dashboards cover the VMs without new rules. Pick the VM as instance there.
 - **Replicas per Swarm service:** the Swarm has no exporter for desired versus running tasks. A systemd timer on every manager (`swarm-services-metrics.timer`, every 30 s, as user `alloy`) runs `docker service ls` and writes `swarm_service_replicas_desired` and `swarm_service_replicas_running` (labels `stack`, `service`, `mode`) into `/var/lib/alloy/textfile/`, which the node exporter serves. All three managers write the same numbers; the rules take the max.
+- **Services without metrics** (the Forgejo runner): Alloy's node exporter runs its systemd collector for the units in `alloy_systemd_units` (role `alloy`) and reports `node_systemd_unit_state`. Only those units, so the collector adds a handful of series.
 - **Network:** UFW on these VMs already trusts the whole lab network, and pod traffic leaves the cluster with the node's address, so the firewall needs nothing new. Alloy's HTTP server (metrics and a read-only UI) now listens on the VM address instead of 127.0.0.1, without authentication: reachable from the LAN only. Traefik's port is published by Docker, which bypasses UFW; also LAN-only.
 - **Dashboard:** *Docker Swarm* (`swarm-dashboard.yaml`): managers, leader, nodes and tasks by state, services with desired and running tasks, Raft latency, CPU/memory/disk/network per VM, CPU/memory/network per Swarm service, Traefik requests, latency and certificate days left.
 
@@ -224,6 +225,13 @@ Alerts (`vms-prometheusrule.yaml`):
 | EdgeCertRenewalFailing | warning | edge-cert hasn't succeeded anywhere for two days, or never reported |
 | TraefikCertificateExpiringSoon | warning | The wildcard certificate has under 14 days left (edge-cert renews with a third of the lifetime left, 30 of 90 days) |
 | TraefikCertificateMismatch | warning | The Traefik instances serve different certificates for 2 hours (a renewal's rolling update stopped) |
+| ForgejoRunnerDown | warning | `forgejo-runner.service` isn't active for 20 minutes, or its state isn't reported while runner-01 is up ([forgejo-runner.md](forgejo-runner.md)) |
+
+Log-based alert for the VMs (Loki ruler, `kubernetes/platform/loki/vms-rules.yaml`, same ruler as the [audit alerts](audit-logging.md)):
+
+| Alert | Severity | Fires when |
+|---|---|---|
+| ForgejoRunnerErrors | warning | The runner's journal has more than 20 `level=error` lines in 15 minutes, for 10 minutes: it can't fetch jobs (Forgejo unreachable, or UUID/token rejected) |
 
 ### Roll out
 
