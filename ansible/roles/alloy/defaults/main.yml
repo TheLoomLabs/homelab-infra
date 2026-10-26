@@ -9,7 +9,7 @@
 # SHA256SUMS. Keep it at the version of the Alloy Helm chart's appVersion
 # (kubernetes/apps/alloy.yaml).
 # renovate: datasource=github-releases depName=grafana/alloy extractVersion=^v(?<version>.+)$
-alloy_version: 1.20.1
+alloy_version: 1.21.1
 
 # Loki's push endpoint: the chart's nginx gateway behind the shared Gateway
 # (kubernetes/platform/loki/httproute.yaml). Basic auth with the user from
