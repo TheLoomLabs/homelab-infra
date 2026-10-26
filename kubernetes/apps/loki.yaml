@@ -20,7 +20,7 @@ spec:
     # in March 2026; grafana/loki 7.x is the Enterprise (GEL) chart.
     - repoURL: https://grafana-community.github.io/helm-charts
       chart: loki
-      targetRevision: 18.17.0
+      targetRevision: 19.1.1
       helm:
         releaseName: loki
         valueFiles:
