@@ -102,7 +102,7 @@ jobs:
       PROMETHEUS_SHA256: 2a542df32eac02ee17b9d844fb2aa1de00dafa5476579ba8a3ba862e9d572ea0
       # Same version as the Loki that the loki chart deploys
       # renovate: datasource=github-releases depName=grafana/loki extractVersion=^v(?<version>.+)$
-      LOKITOOL_VERSION: 3.7.8
+      LOKITOOL_VERSION: 3.7.9
       LOKITOOL_SHA256: 72b7c1ee1adfa28a3d4e3715221e26acacf5657bdef5643a34f859a8d2949672
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
