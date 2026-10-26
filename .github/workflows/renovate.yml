@@ -6,10 +6,16 @@ name: renovate
 
 on:
   schedule:
-    # Monday early morning; renovate.json only creates PRs Mondays before 08:00
-    # Europe/Zagreb.
+    # Monday early morning. renovate.json creates PRs all of Monday
+    # (Europe/Zagreb), so a run that GitHub starts hours late still opens them.
     - cron: "17 3 * * 1"
   workflow_dispatch:
+    inputs:
+      log_level:
+        description: Renovate log level
+        type: choice
+        options: [info, debug]
+        default: info
 
 permissions:
   contents: read
@@ -33,4 +39,5 @@ jobs:
           RENOVATE_REPOSITORIES: ${{ github.repository }}
           RENOVATE_ONBOARDING: "false"
           RENOVATE_REQUIRE_CONFIG: required
-          LOG_LEVEL: info
+          # Scheduled runs have no inputs: info.
+          LOG_LEVEL: ${{ inputs.log_level || 'info' }}
