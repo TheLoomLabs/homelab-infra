@@ -14,7 +14,7 @@ uptime_kuma_node: "{{ groups['swarm_managers'] | last }}"
 
 # slim: no embedded MariaDB, no Chromium (no browser checks); rootless: runs
 # as the image's `node` user.
-uptime_kuma_image: louislam/uptime-kuma:2.5.6-slim-rootless
+uptime_kuma_image: louislam/uptime-kuma:2.5.7-slim-rootless
 
 # Traefik's overlay network (role edge, edge_network).
 uptime_kuma_edge_network: edge
