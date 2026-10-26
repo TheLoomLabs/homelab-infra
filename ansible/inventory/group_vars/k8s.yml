@@ -17,7 +17,7 @@ cilium_cli_version: v0.20.1
 # instead (docs/network-policy.md); `make cilium` applies a change.
 cilium_policy_audit_mode: false
 # renovate: datasource=github-releases depName=helm/helm
-helm_version: v4.2.3 # installed on the first control-plane node for the Argo CD bootstrap
+helm_version: v4.3.1 # installed on the first control-plane node for the Argo CD bootstrap
 
 # Gateway API CRDs (standard channel) for Cilium's Gateway controller. Keep this
 # at the version the Cilium release supports (see the Cilium Gateway API docs).
