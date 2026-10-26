@@ -61,7 +61,7 @@ edge_container_cidrs:
 
 # lego from the GitHub release, checked against the release's checksums.
 # renovate: datasource=github-releases depName=go-acme/lego extractVersion=^v(?<version>.+)$
-edge_lego_version: 5.4.1
+edge_lego_version: 5.5.2
 
 # Let's Encrypt (account without e-mail). The DNS-01 propagation check must
 # use public resolvers: BIND answers lab.theloomlabs.org itself (ADR 0007).
