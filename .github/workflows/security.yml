@@ -34,7 +34,7 @@ jobs:
       security-events: write
     env:
       # renovate: datasource=github-releases depName=helm/helm
-      HELM_VERSION: v4.2.3
+      HELM_VERSION: v4.3.1
       # renovate: datasource=github-releases depName=aquasecurity/trivy extractVersion=^v(?<version>.+)$
       TRIVY_VERSION: 0.76.0
       TRIVY_SHA256: e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7
