@@ -98,7 +98,7 @@ jobs:
       KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
       # Same version as the Prometheus that kube-prometheus-stack deploys
       # renovate: datasource=github-releases depName=prometheus/prometheus extractVersion=^v(?<version>.+)$
-      PROMETHEUS_VERSION: 3.15.0
+      PROMETHEUS_VERSION: 3.15.1
       PROMETHEUS_SHA256: 2a542df32eac02ee17b9d844fb2aa1de00dafa5476579ba8a3ba862e9d572ea0
       # Same version as the Loki that the loki chart deploys
       # renovate: datasource=github-releases depName=grafana/loki extractVersion=^v(?<version>.+)$
