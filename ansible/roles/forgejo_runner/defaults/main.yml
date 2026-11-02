@@ -7,7 +7,7 @@
 # A version bump needs the new checksum, taken from a GPG-verified download
 # (docs/forgejo-runner.md, "Upgrade").
 # renovate: datasource=forgejo-releases depName=forgejo/runner extractVersion=^v(?<version>.+)$
-forgejo_runner_version: 13.2.0
+forgejo_runner_version: 13.2.1
 forgejo_runner_sha256: fadaec897f5e6641c363f87ecaf75f866f99c81b7097ec6b433e4c48123fcad1
 
 # The Forgejo instance the runner connects to (web URL, not the SSH name).
