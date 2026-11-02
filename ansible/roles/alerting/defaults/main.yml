@@ -13,8 +13,8 @@ alerting_healthchecks_host: "hc.{{ alerting_domain }}"
 # this node over the edge network.
 alerting_node: "{{ groups['swarm_managers'] | first }}"
 
-alerting_ntfy_image: binwiederhier/ntfy:v2.33.1
-alerting_healthchecks_image: healthchecks/healthchecks:v5.0.1
+alerting_ntfy_image: binwiederhier/ntfy:v2.34.0
+alerting_healthchecks_image: healthchecks/healthchecks:v5.0.3
 
 # Traefik's overlay network (role edge, edge_network).
 alerting_edge_network: edge
