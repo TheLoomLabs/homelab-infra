@@ -8,7 +8,7 @@ cluster_dns_domain: cluster.local
 # renovate: datasource=docker depName=ghcr.io/kube-vip/kube-vip
 kube_vip_version: v1.3.1
 # renovate: datasource=github-releases depName=cilium/cilium extractVersion=^v(?<version>.+)$
-cilium_version: 1.20.3
+cilium_version: 1.20.4
 # renovate: datasource=github-releases depName=cilium/cilium-cli
 cilium_cli_version: v0.20.1
 # true: network policies only log what they would drop (verdict AUDIT in
